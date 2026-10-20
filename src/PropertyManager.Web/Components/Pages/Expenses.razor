@@ -1,0 +1,166 @@
+@page "/expenses"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+<PageTitle>Expenses</PageTitle>
+
+<h1>Expenses</h1>
+
+<div class="row g-2 mb-3">
+    <div class="col-auto">
+        <select class="form-select" @bind="year" @bind:after="LoadAsync">
+            @foreach (var y in Enumerable.Range(today.Year - 5, 6).Reverse())
+            {
+                <option value="@y">@y</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="propertyFilter" @bind:after="LoadAsync">
+            <option value="0">All properties</option>
+            @foreach (var p in properties)
+            {
+                <option value="@p.Id">@p.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto ms-auto fs-5">Total: <strong>@expenses.Sum(e => e.Amount).ToString("C")</strong></div>
+</div>
+
+<table class="table table-sm align-middle">
+    <thead>
+        <tr><th>Date</th><th>Property</th><th>Unit</th><th>Category</th><th>Description</th><th>Vendor</th><th class="text-end">Amount</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var e in expenses)
+        {
+            <tr>
+                <td>@e.Date.ToString("d")</td>
+                <td>@e.Property?.Name</td>
+                <td>@e.Unit?.Label</td>
+                <td>@e.Category.DisplayName()</td>
+                <td>@e.Description</td>
+                <td>@e.Vendor?.Name</td>
+                <td class="text-end">@e.Amount.ToString("C")</td>
+                <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(e.Id)">Delete</button></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 class="h4 mt-4">Add expense</h2>
+<EditForm Model="form" OnValidSubmit="AddAsync" FormName="expense" class="row g-2 align-items-end">
+    <div class="col-md-2"><label class="form-label">Date</label><InputDate @bind-Value="form.Date" class="form-control" /></div>
+    <div class="col-md-2">
+        <label class="form-label">Property</label>
+        <InputSelect @bind-Value="form.PropertyId" class="form-select">
+            <option value="0">Select…</option>
+            @foreach (var p in properties)
+            {
+                <option value="@p.Id">@p.Name</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-1">
+        <label class="form-label">Unit</label>
+        <InputSelect @bind-Value="form.UnitId" class="form-select">
+            <option value="">All</option>
+            @foreach (var u in properties.FirstOrDefault(p => p.Id == form.PropertyId)?.Units ?? [])
+            {
+                <option value="@u.Id">@u.Label</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Category</label>
+        <InputSelect @bind-Value="form.Category" class="form-select">
+            @foreach (var c in Enum.GetValues<ExpenseCategory>())
+            {
+                <option value="@c">@c.DisplayName()</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-2"><label class="form-label">Description</label><InputText @bind-Value="form.Description" class="form-control" /></div>
+    <div class="col-md-1">
+        <label class="form-label">Vendor</label>
+        <InputSelect @bind-Value="form.VendorId" class="form-select">
+            <option value="">—</option>
+            @foreach (var v in vendors)
+            {
+                <option value="@v.Id">@v.Name</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-1"><label class="form-label">Amount</label><InputNumber @bind-Value="form.Amount" class="form-control" /></div>
+    <div class="col-md-1"><button type="submit" class="btn btn-primary w-100">Add</button></div>
+</EditForm>
+<FormError Message="@error" />
+
+@code {
+    private List<Expense> expenses = [];
+    private List<Property> properties = [];
+    private List<Vendor> vendors = [];
+    private Expense form = new();
+    private int year;
+    private int propertyFilter;
+    private string? error;
+    private DateOnly today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        year = today.Year;
+        form = NewForm();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
+        vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private Expense NewForm() => new() { Date = today, Category = ExpenseCategory.Repairs };
+
+    private async Task LoadAsync()
+    {
+        var start = new DateOnly(year, 1, 1);
+        var end = new DateOnly(year, 12, 31);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.Expenses.AsNoTracking()
+            .Include(e => e.Property).Include(e => e.Unit).Include(e => e.Vendor)
+            .Where(e => e.Date >= start && e.Date <= end);
+        if (propertyFilter != 0)
+        {
+            query = query.Where(e => e.PropertyId == propertyFilter);
+        }
+        expenses = await query.OrderByDescending(e => e.Date).ThenByDescending(e => e.Id).ToListAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        if (form.PropertyId == 0 || form.Amount <= 0 || string.IsNullOrWhiteSpace(form.Description))
+        {
+            error = "Property, description, and a positive amount are required.";
+            return;
+        }
+        // Clear a unit left over from a previously selected property.
+        if (form.UnitId is { } unitId && properties.First(p => p.Id == form.PropertyId).Units.All(u => u.Id != unitId))
+        {
+            form.UnitId = null;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Expenses.Add(form);
+        await db.SaveChangesAsync();
+        form = NewForm();
+        error = null;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int expenseId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Expenses.Where(e => e.Id == expenseId).ExecuteDeleteAsync();
+        await LoadAsync();
+    }
+}

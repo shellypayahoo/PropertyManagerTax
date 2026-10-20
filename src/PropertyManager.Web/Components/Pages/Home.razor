@@ -1,0 +1,36 @@
+@page "/"
+@inject DashboardService Dashboard
+
+<PageTitle>Dashboard</PageTitle>
+
+<h1>Dashboard</h1>
+
+@if (summary is null)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <StatCard Label="Properties" Value="@summary.PropertyCount.ToString()" />
+        <StatCard Label="Units occupied" Value="@($"{summary.OccupiedUnitCount} / {summary.UnitCount}")" />
+        <StatCard Label="Monthly rent under lease" Value="@summary.MonthlyLeaseRent.ToString("C0")"
+                  Detail="@($"Market rent: {summary.MonthlyMarketRent:C0}")" />
+        <StatCard Label="Open maintenance" Value="@summary.OpenMaintenanceCount.ToString()" Href="maintenance" />
+        <StatCard Label="Expenses year to date" Value="@summary.ExpensesYearToDate.ToString("C0")" Href="expenses" />
+    </div>
+
+    @if (summary.OccupiedUnitCount == 0)
+    {
+        <div class="alert alert-info">
+            No active leases yet. Add your <a href="tenants">tenants</a>, then create their <a href="leases">leases</a>
+            to start tracking rent income.
+        </div>
+    }
+}
+
+@code {
+    private DashboardSummary? summary;
+
+    protected override async Task OnInitializedAsync() => summary = await Dashboard.GetSummaryAsync();
+}

@@ -1,0 +1,79 @@
+@page "/vendors"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+
+<PageTitle>Vendors</PageTitle>
+
+<h1>Vendors</h1>
+
+<table class="table align-middle">
+    <thead>
+        <tr><th>Name</th><th>Trade</th><th>Phone</th><th>Email</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var v in vendors)
+        {
+            <tr>
+                <td>@v.Name</td>
+                <td>@v.Trade</td>
+                <td>@v.Phone</td>
+                <td>@v.Email</td>
+                <td><button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(v)">Edit</button></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 class="h4 mt-4">@(form.Id == 0 ? "Add vendor" : $"Edit {form.Name}")</h2>
+<EditForm Model="form" OnValidSubmit="SaveAsync" FormName="vendor" class="row g-2">
+    <div class="col-md-3"><InputText @bind-Value="form.Name" class="form-control" placeholder="Name" /></div>
+    <div class="col-md-2"><InputText @bind-Value="form.Trade" class="form-control" placeholder="Trade (e.g. Plumber)" /></div>
+    <div class="col-md-2"><InputText @bind-Value="form.Phone" class="form-control" placeholder="Phone" type="tel" /></div>
+    <div class="col-md-3"><InputText @bind-Value="form.Email" class="form-control" placeholder="Email" type="email" /></div>
+    <div class="col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">@(form.Id == 0 ? "Add" : "Save")</button>
+        @if (form.Id != 0) { <button type="button" class="btn btn-link" @onclick="() => form = new()">Cancel</button> }
+    </div>
+</EditForm>
+<FormError Message="@error" />
+
+@code {
+    private List<Vendor> vendors = [];
+    private Vendor form = new();
+    private string? error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+    }
+
+    private void Edit(Vendor v) => form = new Vendor
+    {
+        Id = v.Id, Name = v.Name, Trade = v.Trade, Phone = v.Phone, Email = v.Email, Notes = v.Notes,
+    };
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name))
+        {
+            error = "Name is required.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (form.Id == 0)
+        {
+            db.Vendors.Add(form);
+        }
+        else
+        {
+            db.Vendors.Update(form);
+        }
+        await db.SaveChangesAsync();
+        form = new();
+        error = null;
+        await LoadAsync();
+    }
+}

@@ -1,0 +1,28 @@
+<div class="col-sm-6 col-lg-4 col-xl">
+    <div class="card h-100">
+        <div class="card-body">
+            <div class="text-muted small">@Label</div>
+            <div class="fs-3 fw-semibold">
+                @if (Href is null)
+                {
+                    @Value
+                }
+                else
+                {
+                    <a href="@Href" class="text-reset text-decoration-none">@Value</a>
+                }
+            </div>
+            @if (Detail is not null)
+            {
+                <div class="text-muted small">@Detail</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public string? Detail { get; set; }
+    [Parameter] public string? Href { get; set; }
+}

@@ -1,0 +1,167 @@
+@page "/leases"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+<PageTitle>Leases</PageTitle>
+
+<h1>Leases</h1>
+
+<div class="form-check mb-2">
+    <input class="form-check-input" type="checkbox" id="showEnded" @bind="showEnded" />
+    <label class="form-check-label" for="showEnded">Show ended leases</label>
+</div>
+
+<table class="table align-middle">
+    <thead>
+        <tr><th>Unit</th><th>Tenant</th><th>Start</th><th>End</th><th class="text-end">Rent</th><th class="text-end">Deposit</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var l in leases.Where(l => showEnded || l.EndDate is null || l.EndDate >= today))
+        {
+            <tr class="@(l.IsActiveOn(today) ? "" : "text-muted")">
+                <td>@l.Unit?.DisplayName</td>
+                <td>@l.Tenant?.FullName</td>
+                <td>@l.StartDate.ToString("d")</td>
+                <td>@(l.EndDate?.ToString("d") ?? "Month-to-month")</td>
+                <td class="text-end">@l.MonthlyRent.ToString("C0")</td>
+                <td class="text-end">@l.SecurityDeposit.ToString("C0")</td>
+                <td>
+                    @if (l.IsActiveOn(today))
+                    {
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => EndLeaseAsync(l.Id)">End today</button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 class="h4 mt-4">New lease</h2>
+@if (tenants.Count == 0)
+{
+    <p>Add a <a href="tenants">tenant</a> first.</p>
+}
+else
+{
+    <EditForm Model="form" OnValidSubmit="AddAsync" FormName="lease" class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">Unit</label>
+            <InputSelect TValue="int" Value="form.UnitId" ValueChanged="OnUnitChanged" ValueExpression="() => form.UnitId" class="form-select">
+                <option value="0">Select…</option>
+                @foreach (var u in units)
+                {
+                    <option value="@u.Id">@u.DisplayName</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Tenant</label>
+            <InputSelect @bind-Value="form.TenantId" class="form-select">
+                <option value="0">Select…</option>
+                @foreach (var t in tenants)
+                {
+                    <option value="@t.Id">@t.FullName</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="col-md-2"><label class="form-label">Start</label><InputDate @bind-Value="form.StartDate" class="form-control" /></div>
+        <div class="col-md-2"><label class="form-label">End (blank = month-to-month)</label><InputDate @bind-Value="form.EndDate" class="form-control" /></div>
+        <div class="col-md-1"><label class="form-label">Rent</label><InputNumber @bind-Value="form.MonthlyRent" class="form-control" /></div>
+        <div class="col-md-1"><label class="form-label">Deposit</label><InputNumber @bind-Value="form.SecurityDeposit" class="form-control" /></div>
+        <div class="col-md-1"><button type="submit" class="btn btn-primary w-100">Add</button></div>
+    </EditForm>
+    <FormError Message="@error" />
+}
+
+@code {
+    private List<Lease> leases = [];
+    private List<Unit> units = [];
+    private List<Tenant> tenants = [];
+    private Lease form = new();
+    private bool showEnded;
+    private string? error;
+    private DateOnly today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        form = NewForm();
+        await LoadAsync();
+    }
+
+    private Lease NewForm() => new() { StartDate = today };
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        leases = await db.Leases.AsNoTracking()
+            .Include(l => l.Tenant)
+            .Include(l => l.Unit).ThenInclude(u => u!.Property)
+            .OrderByDescending(l => l.StartDate)
+            .ToListAsync();
+        units = await db.Units.AsNoTracking().Include(u => u.Property)
+            .OrderBy(u => u.Property!.Name).ThenBy(u => u.Label)
+            .ToListAsync();
+        tenants = await db.Tenants.AsNoTracking().OrderBy(t => t.LastName).ThenBy(t => t.FirstName).ToListAsync();
+    }
+
+    private void OnUnitChanged(int unitId)
+    {
+        form.UnitId = unitId;
+        // Default the lease rent to the unit's market rent.
+        if (form.MonthlyRent == 0 && units.FirstOrDefault(u => u.Id == unitId) is { } unit)
+        {
+            form.MonthlyRent = unit.MarketRent;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        error = Validate();
+        if (error is not null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Leases.Add(form);
+        await db.SaveChangesAsync();
+        form = NewForm();
+        await LoadAsync();
+    }
+
+    private string? Validate()
+    {
+        if (form.UnitId == 0 || form.TenantId == 0)
+        {
+            return "Select a unit and a tenant.";
+        }
+        if (form.EndDate is { } end && end < form.StartDate)
+        {
+            return "End date must be on or after the start date.";
+        }
+        if (form.MonthlyRent <= 0)
+        {
+            return "Rent must be greater than zero.";
+        }
+
+        var overlap = leases.FirstOrDefault(l => l.UnitId == form.UnitId
+            && l.StartDate <= (form.EndDate ?? DateOnly.MaxValue)
+            && (l.EndDate ?? DateOnly.MaxValue) >= form.StartDate);
+        return overlap is null
+            ? null
+            : $"That unit already has a lease for {overlap.Tenant?.FullName} covering those dates.";
+    }
+
+    private async Task EndLeaseAsync(int leaseId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var lease = await db.Leases.FindAsync(leaseId);
+        if (lease is not null)
+        {
+            lease.EndDate = today;
+            await db.SaveChangesAsync();
+        }
+        await LoadAsync();
+    }
+}

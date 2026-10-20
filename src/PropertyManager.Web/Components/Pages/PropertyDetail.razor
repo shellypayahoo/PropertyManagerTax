@@ -1,0 +1,205 @@
+@page "/properties/{Id:int}"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+<PageTitle>@(property?.Name ?? "Property")</PageTitle>
+
+@if (property is null)
+{
+    <p><em>@(loaded ? "Property not found." : "Loading…")</em></p>
+}
+else
+{
+    <p><a href="properties">← Properties</a></p>
+    <h1>@property.Name</h1>
+    <p class="text-muted">@property.FullAddress</p>
+
+    <h2 class="h4 mt-4">Units</h2>
+    <table class="table align-middle">
+        <thead>
+            <tr><th>Unit</th><th>Tenant</th><th class="text-end">Lease rent</th><th class="text-end">Market rent</th><th>Beds / baths</th><th>Sq ft</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var u in property.Units.OrderBy(u => u.Label))
+            {
+                var lease = u.ActiveLease(today);
+                if (editingUnit?.Id == u.Id)
+                {
+                    <tr>
+                        <td><InputText @bind-Value="editingUnit.Label" class="form-control form-control-sm" style="width:5rem" /></td>
+                        <td>@(lease?.Tenant?.FullName ?? "Vacant")</td>
+                        <td class="text-end">@(lease?.MonthlyRent.ToString("C0"))</td>
+                        <td><InputNumber @bind-Value="editingUnit.MarketRent" class="form-control form-control-sm text-end" /></td>
+                        <td class="d-flex gap-1">
+                            <InputNumber @bind-Value="editingUnit.Bedrooms" class="form-control form-control-sm" placeholder="Beds" />
+                            <InputNumber @bind-Value="editingUnit.Bathrooms" class="form-control form-control-sm" placeholder="Baths" />
+                        </td>
+                        <td><InputNumber @bind-Value="editingUnit.SquareFeet" class="form-control form-control-sm" /></td>
+                        <td class="text-nowrap">
+                            <button class="btn btn-sm btn-primary" @onclick="SaveUnitAsync">Save</button>
+                            <button class="btn btn-sm btn-link" @onclick="() => editingUnit = null">Cancel</button>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <tr>
+                        <td>@u.Label</td>
+                        <td>@(lease?.Tenant?.FullName ?? "Vacant")</td>
+                        <td class="text-end">@(lease?.MonthlyRent.ToString("C0"))</td>
+                        <td class="text-end">@u.MarketRent.ToString("C0")</td>
+                        <td>@(u.Bedrooms is null && u.Bathrooms is null ? "" : $"{u.Bedrooms} bd / {u.Bathrooms} ba")</td>
+                        <td>@u.SquareFeet</td>
+                        <td><button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(u)">Edit</button></td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+
+    <EditForm Model="newUnit" OnValidSubmit="AddUnitAsync" FormName="add-unit" class="row g-2">
+        <div class="col-md-2"><InputText @bind-Value="newUnit.Label" class="form-control" placeholder="Unit label" /></div>
+        <div class="col-md-2"><InputNumber @bind-Value="newUnit.MarketRent" class="form-control" placeholder="Market rent" /></div>
+        <div class="col-md-2"><button type="submit" class="btn btn-outline-primary w-100">Add unit</button></div>
+    </EditForm>
+    <FormError Message="@error" />
+
+    <h2 class="h4 mt-5">Property details</h2>
+    <EditForm Model="property" OnValidSubmit="SavePropertyAsync" FormName="edit-property" class="row g-2">
+        <div class="col-md-4"><label class="form-label">Name</label><InputText @bind-Value="property.Name" class="form-control" /></div>
+        <div class="col-md-4"><label class="form-label">Street</label><InputText @bind-Value="property.Street" class="form-control" /></div>
+        <div class="col-md-2"><label class="form-label">City</label><InputText @bind-Value="property.City" class="form-control" /></div>
+        <div class="col-md-1"><label class="form-label">State</label><InputText @bind-Value="property.State" class="form-control" /></div>
+        <div class="col-md-1"><label class="form-label">ZIP</label><InputText @bind-Value="property.PostalCode" class="form-control" /></div>
+        <div class="col-md-3"><label class="form-label">Purchase date</label><InputDate @bind-Value="property.PurchaseDate" class="form-control" /></div>
+        <div class="col-md-3"><label class="form-label">Purchase price</label><InputNumber @bind-Value="property.PurchasePrice" class="form-control" /></div>
+        <div class="col-12"><label class="form-label">Notes</label><InputTextArea @bind-Value="property.Notes" class="form-control" rows="3" /></div>
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">Save details</button>
+            @if (saved) { <span class="text-success ms-2">Saved.</span> }
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Property? property;
+    private Unit newUnit = new();
+    private Unit? editingUnit;
+    private string? error;
+    private bool loaded;
+    private bool saved;
+    private DateOnly today;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        property = await db.Properties.AsNoTracking()
+            .Include(p => p.Units).ThenInclude(u => u.Leases).ThenInclude(l => l.Tenant)
+            .FirstOrDefaultAsync(p => p.Id == Id);
+        loaded = true;
+    }
+
+    private void StartEdit(Unit unit) => editingUnit = new Unit
+    {
+        Id = unit.Id,
+        PropertyId = unit.PropertyId,
+        Label = unit.Label,
+        MarketRent = unit.MarketRent,
+        Bedrooms = unit.Bedrooms,
+        Bathrooms = unit.Bathrooms,
+        SquareFeet = unit.SquareFeet,
+    };
+
+    private async Task SaveUnitAsync()
+    {
+        if (editingUnit is null || property is null)
+        {
+            return;
+        }
+
+        error = ValidateLabel(editingUnit.Label, editingUnit.Id);
+        if (error is not null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var unit = await db.Units.FindAsync(editingUnit.Id);
+        if (unit is not null)
+        {
+            unit.Label = editingUnit.Label.Trim();
+            unit.MarketRent = editingUnit.MarketRent;
+            unit.Bedrooms = editingUnit.Bedrooms;
+            unit.Bathrooms = editingUnit.Bathrooms;
+            unit.SquareFeet = editingUnit.SquareFeet;
+            await db.SaveChangesAsync();
+        }
+        editingUnit = null;
+        await LoadAsync();
+    }
+
+    private async Task AddUnitAsync()
+    {
+        if (property is null)
+        {
+            return;
+        }
+
+        error = ValidateLabel(newUnit.Label, 0);
+        if (error is not null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        newUnit.PropertyId = property.Id;
+        newUnit.Label = newUnit.Label.Trim();
+        db.Units.Add(newUnit);
+        await db.SaveChangesAsync();
+        newUnit = new();
+        await LoadAsync();
+    }
+
+    private string? ValidateLabel(string label, int unitId)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return "Unit label is required.";
+        }
+        return property!.Units.Any(u => u.Id != unitId && string.Equals(u.Label, label.Trim(), StringComparison.OrdinalIgnoreCase))
+            ? $"Unit {label.Trim()} already exists."
+            : null;
+    }
+
+    private async Task SavePropertyAsync()
+    {
+        if (property is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Properties.FindAsync(property.Id);
+        if (entity is not null)
+        {
+            entity.Name = property.Name;
+            entity.Street = property.Street;
+            entity.City = property.City;
+            entity.State = property.State;
+            entity.PostalCode = property.PostalCode;
+            entity.PurchaseDate = property.PurchaseDate;
+            entity.PurchasePrice = property.PurchasePrice;
+            entity.Notes = property.Notes;
+            await db.SaveChangesAsync();
+            saved = true;
+        }
+    }
+}

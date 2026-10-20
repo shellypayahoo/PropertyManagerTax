@@ -1,0 +1,166 @@
+@page "/maintenance"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+<PageTitle>Maintenance</PageTitle>
+
+<h1>Maintenance</h1>
+
+<div class="form-check mb-2">
+    <input class="form-check-input" type="checkbox" id="showClosed" @bind="showClosed" />
+    <label class="form-check-label" for="showClosed">Show completed and cancelled</label>
+</div>
+
+<table class="table align-middle">
+    <thead>
+        <tr><th>Reported</th><th>Unit</th><th>Issue</th><th>Priority</th><th>Vendor</th><th>Status</th><th class="text-end">Cost</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var m in requests.Where(r => showClosed || r.IsOpen))
+        {
+            <tr>
+                <td>@m.ReportedOn.ToString("d")</td>
+                <td>@m.Unit?.DisplayName</td>
+                <td>
+                    <div>@m.Title</div>
+                    @if (!string.IsNullOrWhiteSpace(m.Description)) { <div class="small text-muted">@m.Description</div> }
+                </td>
+                <td><span class="badge @PriorityBadge(m.Priority)">@m.Priority</span></td>
+                <td>
+                    <select class="form-select form-select-sm" value="@(m.VendorId?.ToString() ?? "")"
+                            @onchange="e => SetVendorAsync(m.Id, e.Value as string)">
+                        <option value="">—</option>
+                        @foreach (var v in vendors)
+                        {
+                            <option value="@v.Id">@v.Name</option>
+                        }
+                    </select>
+                </td>
+                <td>
+                    <select class="form-select form-select-sm" value="@m.Status"
+                            @onchange="e => SetStatusAsync(m.Id, Enum.Parse<MaintenanceStatus>((string)e.Value!))">
+                        @foreach (var s in Enum.GetValues<MaintenanceStatus>())
+                        {
+                            <option value="@s">@s</option>
+                        }
+                    </select>
+                    @if (m.CompletedOn is { } done) { <div class="small text-muted">Completed @done.ToString("d")</div> }
+                </td>
+                <td class="text-end">@(m.Expenses.Count == 0 ? "" : m.Expenses.Sum(e => e.Amount).ToString("C"))</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 class="h4 mt-4">New request</h2>
+<EditForm Model="form" OnValidSubmit="AddAsync" FormName="maintenance" class="row g-2 align-items-end">
+    <div class="col-md-3">
+        <label class="form-label">Unit</label>
+        <InputSelect @bind-Value="form.UnitId" class="form-select">
+            <option value="0">Select…</option>
+            @foreach (var u in units)
+            {
+                <option value="@u.Id">@u.DisplayName</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-3"><label class="form-label">Issue</label><InputText @bind-Value="form.Title" class="form-control" /></div>
+    <div class="col-md-2">
+        <label class="form-label">Priority</label>
+        <InputSelect @bind-Value="form.Priority" class="form-select">
+            @foreach (var p in Enum.GetValues<MaintenancePriority>())
+            {
+                <option value="@p">@p</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-2"><label class="form-label">Reported</label><InputDate @bind-Value="form.ReportedOn" class="form-control" /></div>
+    <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Add</button></div>
+    <div class="col-12"><InputTextArea @bind-Value="form.Description" class="form-control" rows="2" placeholder="Details" /></div>
+</EditForm>
+<FormError Message="@error" />
+<p class="small text-muted mt-2">To record what a repair cost, add an expense on the <a href="expenses">Expenses</a> page.</p>
+
+@code {
+    private List<MaintenanceRequest> requests = [];
+    private List<Unit> units = [];
+    private List<Vendor> vendors = [];
+    private MaintenanceRequest form = new();
+    private bool showClosed;
+    private string? error;
+    private DateOnly today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        form = NewForm();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        units = await db.Units.AsNoTracking().Include(u => u.Property)
+            .OrderBy(u => u.Property!.Name).ThenBy(u => u.Label)
+            .ToListAsync();
+        vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private MaintenanceRequest NewForm() => new() { ReportedOn = today };
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        requests = await db.MaintenanceRequests.AsNoTracking()
+            .Include(m => m.Unit).ThenInclude(u => u!.Property)
+            .Include(m => m.Expenses)
+            .OrderByDescending(m => m.ReportedOn).ThenByDescending(m => m.Id)
+            .ToListAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        if (form.UnitId == 0 || string.IsNullOrWhiteSpace(form.Title))
+        {
+            error = "Select a unit and describe the issue.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.MaintenanceRequests.Add(form);
+        await db.SaveChangesAsync();
+        form = NewForm();
+        error = null;
+        await LoadAsync();
+    }
+
+    private async Task SetStatusAsync(int id, MaintenanceStatus status)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var request = await db.MaintenanceRequests.FindAsync(id);
+        if (request is not null)
+        {
+            request.Status = status;
+            request.CompletedOn = status == MaintenanceStatus.Completed ? request.CompletedOn ?? today : null;
+            await db.SaveChangesAsync();
+        }
+        await LoadAsync();
+    }
+
+    private async Task SetVendorAsync(int id, string? vendorId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var request = await db.MaintenanceRequests.FindAsync(id);
+        if (request is not null)
+        {
+            request.VendorId = int.TryParse(vendorId, out var v) ? v : null;
+            await db.SaveChangesAsync();
+        }
+        await LoadAsync();
+    }
+
+    private static string PriorityBadge(MaintenancePriority p) => p switch
+    {
+        MaintenancePriority.Emergency => "text-bg-danger",
+        MaintenancePriority.High => "text-bg-warning",
+        MaintenancePriority.Normal => "text-bg-secondary",
+        _ => "text-bg-light",
+    };
+}

@@ -1,0 +1,78 @@
+@page "/properties"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+<PageTitle>Properties</PageTitle>
+
+<h1>Properties</h1>
+
+<table class="table align-middle">
+    <thead>
+        <tr><th>Property</th><th>Address</th><th class="text-end">Units</th><th class="text-end">Occupied</th><th class="text-end">Market rent / mo</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var p in properties)
+        {
+            <tr>
+                <td><a href="properties/@p.Id">@p.Name</a></td>
+                <td>@p.FullAddress</td>
+                <td class="text-end">@p.Units.Count</td>
+                <td class="text-end">@p.Units.Count(u => u.ActiveLease(today) is not null)</td>
+                <td class="text-end">@p.Units.Sum(u => u.MarketRent).ToString("C0")</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 class="h4 mt-4">Add property</h2>
+<EditForm Model="newProperty" OnValidSubmit="AddPropertyAsync" FormName="add-property" class="row g-2">
+    <div class="col-md-3"><InputText @bind-Value="newProperty.Name" class="form-control" placeholder="Name" /></div>
+    <div class="col-md-3"><InputText @bind-Value="newProperty.Street" class="form-control" placeholder="Street" /></div>
+    <div class="col-md-2"><InputText @bind-Value="newProperty.City" class="form-control" placeholder="City" /></div>
+    <div class="col-md-1"><InputText @bind-Value="newProperty.State" class="form-control" placeholder="State" /></div>
+    <div class="col-md-1"><InputText @bind-Value="newProperty.PostalCode" class="form-control" placeholder="ZIP" /></div>
+    <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Add</button></div>
+</EditForm>
+<FormError Message="@error" />
+
+@code {
+    private List<Property> properties = [];
+    private Property newProperty = new();
+    private string? error;
+    private DateOnly today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        properties = await db.Properties.AsNoTracking()
+            .Include(p => p.Units).ThenInclude(u => u.Leases)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+    }
+
+    private async Task AddPropertyAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newProperty.Street))
+        {
+            error = "Street is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(newProperty.Name))
+        {
+            newProperty.Name = newProperty.Street;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Properties.Add(newProperty);
+        await db.SaveChangesAsync();
+        newProperty = new();
+        error = null;
+        await LoadAsync();
+    }
+}

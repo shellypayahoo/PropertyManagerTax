@@ -1,0 +1,91 @@
+@page "/reports"
+@inject ReportService ReportService
+@inject TimeProvider Clock
+
+<PageTitle>Reports</PageTitle>
+
+<h1>Annual profit &amp; loss</h1>
+<p class="text-muted">
+    Expenses are grouped by IRS Schedule E line. Rent income is the scheduled rent from leases, prorated by day
+    for partial months. It is not the rent actually collected.
+</p>
+
+<div class="mb-3" style="max-width: 10rem">
+    <select class="form-select" @bind="year" @bind:after="LoadAsync">
+        @foreach (var y in Enumerable.Range(currentYear - 5, 6).Reverse())
+        {
+            <option value="@y">@y</option>
+        }
+    </select>
+</div>
+
+@if (statements is null)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Line</th>
+                    <th></th>
+                    @foreach (var s in statements) { <th class="text-end">@s.PropertyName</th> }
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="fw-semibold">
+                    <td>3</td>
+                    <td>Rents received</td>
+                    @foreach (var s in statements) { <td class="text-end">@s.RentIncome.ToString("C")</td> }
+                    <td class="text-end">@statements.Sum(s => s.RentIncome).ToString("C")</td>
+                </tr>
+                @foreach (var category in UsedCategories)
+                {
+                    <tr>
+                        <td>@category.ScheduleELine()</td>
+                        <td>@category.DisplayName()</td>
+                        @foreach (var s in statements) { <td class="text-end">@Amount(s, category)</td> }
+                        <td class="text-end">@statements.Sum(s => s.Expenses.Where(e => e.Category == category).Sum(e => e.Amount)).ToString("C")</td>
+                    </tr>
+                }
+                <tr class="fw-semibold border-top">
+                    <td>20</td>
+                    <td>Total expenses</td>
+                    @foreach (var s in statements) { <td class="text-end">@s.TotalExpenses.ToString("C")</td> }
+                    <td class="text-end">@statements.Sum(s => s.TotalExpenses).ToString("C")</td>
+                </tr>
+                <tr class="fw-bold">
+                    <td>21</td>
+                    <td>Net income (loss)</td>
+                    @foreach (var s in statements) { <td class="text-end @(s.NetIncome < 0 ? "text-danger" : "")">@s.NetIncome.ToString("C")</td> }
+                    <td class="text-end">@statements.Sum(s => s.NetIncome).ToString("C")</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="small text-muted">This is a bookkeeping summary, not tax advice. Check the figures with your tax preparer before filing.</p>
+}
+
+@code {
+    private IReadOnlyList<PropertyProfitAndLoss>? statements;
+    private int year;
+    private int currentYear;
+
+    private IEnumerable<ExpenseCategory> UsedCategories =>
+        statements!.SelectMany(s => s.Expenses).Select(e => e.Category).Distinct().Order();
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentYear = Clock.GetLocalNow().Year;
+        year = currentYear;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => statements = await ReportService.GetAnnualProfitAndLossAsync(year);
+
+    private static string Amount(PropertyProfitAndLoss s, ExpenseCategory c) =>
+        s.Expenses.FirstOrDefault(e => e.Category == c)?.Amount.ToString("C") ?? "";
+}

@@ -1,0 +1,90 @@
+@page "/tenants"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+<PageTitle>Tenants</PageTitle>
+
+<h1>Tenants</h1>
+
+<table class="table align-middle">
+    <thead>
+        <tr><th>Name</th><th>Email</th><th>Phone</th><th>Current unit</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var t in tenants)
+        {
+            var lease = t.Leases.FirstOrDefault(l => l.IsActiveOn(today));
+            <tr>
+                <td>@t.FullName</td>
+                <td>@t.Email</td>
+                <td>@t.Phone</td>
+                <td>@(lease?.Unit?.DisplayName ?? "—")</td>
+                <td><button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(t)">Edit</button></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 class="h4 mt-4">@(form.Id == 0 ? "Add tenant" : $"Edit {form.FullName}")</h2>
+<EditForm Model="form" OnValidSubmit="SaveAsync" FormName="tenant" class="row g-2">
+    <div class="col-md-2"><InputText @bind-Value="form.FirstName" class="form-control" placeholder="First name" /></div>
+    <div class="col-md-2"><InputText @bind-Value="form.LastName" class="form-control" placeholder="Last name" /></div>
+    <div class="col-md-3"><InputText @bind-Value="form.Email" class="form-control" placeholder="Email" type="email" /></div>
+    <div class="col-md-2"><InputText @bind-Value="form.Phone" class="form-control" placeholder="Phone" type="tel" /></div>
+    <div class="col-md-3 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">@(form.Id == 0 ? "Add" : "Save")</button>
+        @if (form.Id != 0) { <button type="button" class="btn btn-link" @onclick="() => form = new()">Cancel</button> }
+    </div>
+    <div class="col-12"><InputTextArea @bind-Value="form.Notes" class="form-control" rows="2" placeholder="Notes" /></div>
+</EditForm>
+<FormError Message="@error" />
+
+@code {
+    private List<Tenant> tenants = [];
+    private Tenant form = new();
+    private string? error;
+    private DateOnly today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        tenants = await db.Tenants.AsNoTracking()
+            .Include(t => t.Leases).ThenInclude(l => l.Unit).ThenInclude(u => u!.Property)
+            .OrderBy(t => t.LastName).ThenBy(t => t.FirstName)
+            .ToListAsync();
+    }
+
+    private void Edit(Tenant t) => form = new Tenant
+    {
+        Id = t.Id, FirstName = t.FirstName, LastName = t.LastName, Email = t.Email, Phone = t.Phone, Notes = t.Notes,
+    };
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(form.FirstName) || string.IsNullOrWhiteSpace(form.LastName))
+        {
+            error = "First and last name are required.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (form.Id == 0)
+        {
+            db.Tenants.Add(form);
+        }
+        else
+        {
+            db.Tenants.Update(form);
+        }
+        await db.SaveChangesAsync();
+        form = new();
+        error = null;
+        await LoadAsync();
+    }
+}
