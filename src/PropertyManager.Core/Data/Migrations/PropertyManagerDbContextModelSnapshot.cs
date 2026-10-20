@@ -98,6 +98,46 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("Leases");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.LeaseDocument", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LeaseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeaseId");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.ToTable("LeaseDocuments");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.MaintenanceRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -329,6 +369,17 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Unit");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.LeaseDocument", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Lease", "Lease")
+                        .WithMany("Documents")
+                        .HasForeignKey("LeaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Lease");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.MaintenanceRequest", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.Unit", "Unit")
@@ -356,6 +407,11 @@ namespace PropertyManager.Core.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.Lease", b =>
+                {
+                    b.Navigation("Documents");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.MaintenanceRequest", b =>

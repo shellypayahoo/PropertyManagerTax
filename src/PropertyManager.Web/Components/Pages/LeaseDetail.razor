@@ -1,0 +1,224 @@
+@page "/leases/{Id:int}"
+@using PropertyManager.Core.Storage
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject IDocumentStorage Storage
+@inject TimeProvider Clock
+
+<PageTitle>Lease</PageTitle>
+
+@if (lease is null)
+{
+    <p><em>@(loaded ? "Lease not found." : "Loading…")</em></p>
+}
+else
+{
+    <p><a href="leases">← Leases</a></p>
+    <h1>@lease.Tenant?.FullName</h1>
+    <p class="text-muted">@lease.Unit?.DisplayName</p>
+
+    <h2 class="h4 mt-4">Lease terms</h2>
+    <EditForm Model="form" OnValidSubmit="SaveAsync" FormName="edit-lease" class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label">Start</label><InputDate @bind-Value="form.StartDate" class="form-control" /></div>
+        <div class="col-md-3"><label class="form-label">End (blank = month-to-month)</label><InputDate @bind-Value="form.EndDate" class="form-control" /></div>
+        <div class="col-md-2"><label class="form-label">Monthly rent</label><InputNumber @bind-Value="form.MonthlyRent" class="form-control" /></div>
+        <div class="col-md-2"><label class="form-label">Security deposit</label><InputNumber @bind-Value="form.SecurityDeposit" class="form-control" /></div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary w-100">Save</button>
+        </div>
+    </EditForm>
+    <FormError Message="@error" />
+    @if (saved) { <div class="text-success small mt-1">Saved.</div> }
+
+    <h2 class="h4 mt-5">Documents</h2>
+    @if (lease.Documents.Count == 0)
+    {
+        <p class="text-muted">No documents uploaded yet.</p>
+    }
+    else
+    {
+        <table class="table align-middle">
+            <thead><tr><th>File</th><th class="text-end">Size</th><th>Uploaded</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var d in lease.Documents.OrderByDescending(d => d.UploadedAt))
+                {
+                    <tr>
+                        <td><a href="documents/@d.Id" target="_blank">@d.FileName</a></td>
+                        <td class="text-end">@FormatSize(d.SizeBytes)</td>
+                        <td>@d.UploadedAt.ToLocalTime().ToString("g")</td>
+                        <td class="text-nowrap text-end">
+                            <a class="btn btn-sm btn-outline-secondary" href="documents/@d.Id?download=true">Download</a>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteDocumentAsync(d)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <label class="form-label">Upload signed lease, addenda, or move-in inspection (PDF, Word, or image, up to @(MaxFileBytes / 1024 / 1024) MB each)</label>
+    <InputFile OnChange="UploadAsync" multiple accept="@string.Join(',', AllowedTypes.Keys)" class="form-control" disabled="@uploading" />
+    @if (uploading) { <div class="small text-muted mt-1">Uploading…</div> }
+    <FormError Message="@uploadError" />
+}
+
+@code {
+    private const long MaxFileBytes = 25 * 1024 * 1024;
+
+    // Content type is decided here from the extension, never taken from the browser.
+    private static readonly Dictionary<string, string> AllowedTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".pdf"] = "application/pdf",
+        [".doc"] = "application/msword",
+        [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        [".jpg"] = "image/jpeg",
+        [".jpeg"] = "image/jpeg",
+        [".png"] = "image/png",
+        [".heic"] = "image/heic",
+    };
+
+    [Parameter] public int Id { get; set; }
+
+    private Lease? lease;
+    private Lease form = new();
+    private bool loaded;
+    private bool saved;
+    private bool uploading;
+    private string? error;
+    private string? uploadError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+        if (lease is not null)
+        {
+            form = new Lease
+            {
+                StartDate = lease.StartDate,
+                EndDate = lease.EndDate,
+                MonthlyRent = lease.MonthlyRent,
+                SecurityDeposit = lease.SecurityDeposit,
+            };
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        lease = await db.Leases.AsNoTracking()
+            .Include(l => l.Tenant)
+            .Include(l => l.Unit).ThenInclude(u => u!.Property)
+            .Include(l => l.Documents)
+            .FirstOrDefaultAsync(l => l.Id == Id);
+        loaded = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        saved = false;
+        error = await ValidateAsync();
+        if (error is not null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Leases.FindAsync(Id);
+        if (entity is not null)
+        {
+            entity.StartDate = form.StartDate;
+            entity.EndDate = form.EndDate;
+            entity.MonthlyRent = form.MonthlyRent;
+            entity.SecurityDeposit = form.SecurityDeposit;
+            await db.SaveChangesAsync();
+            saved = true;
+        }
+        await LoadAsync();
+    }
+
+    private async Task<string?> ValidateAsync()
+    {
+        if (form.EndDate is { } end && end < form.StartDate)
+        {
+            return "End date must be on or after the start date.";
+        }
+        if (form.MonthlyRent <= 0)
+        {
+            return "Rent must be greater than zero.";
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var others = await db.Leases.AsNoTracking().Include(l => l.Tenant)
+            .Where(l => l.UnitId == lease!.UnitId && l.Id != Id)
+            .ToListAsync();
+        var overlap = others.FirstOrDefault(l => l.StartDate <= (form.EndDate ?? DateOnly.MaxValue)
+            && (l.EndDate ?? DateOnly.MaxValue) >= form.StartDate);
+        return overlap is null
+            ? null
+            : $"Those dates overlap the lease for {overlap.Tenant?.FullName} ({overlap.StartDate:d} – {overlap.EndDate?.ToString("d") ?? "month-to-month"}).";
+    }
+
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        uploading = true;
+        uploadError = null;
+        var problems = new List<string>();
+
+        foreach (var file in e.GetMultipleFiles(maximumFileCount: 20))
+        {
+            var extension = Path.GetExtension(file.Name);
+            if (!AllowedTypes.TryGetValue(extension, out var contentType))
+            {
+                problems.Add($"{file.Name}: file type not allowed.");
+                continue;
+            }
+            if (file.Size > MaxFileBytes)
+            {
+                problems.Add($"{file.Name}: larger than {MaxFileBytes / 1024 / 1024} MB.");
+                continue;
+            }
+
+            string key;
+            await using (var stream = file.OpenReadStream(MaxFileBytes))
+            {
+                key = await Storage.SaveAsync(stream, file.Name);
+            }
+
+            try
+            {
+                await using var db = await DbFactory.CreateDbContextAsync();
+                db.LeaseDocuments.Add(new LeaseDocument
+                {
+                    LeaseId = Id,
+                    FileName = Path.GetFileName(file.Name),
+                    ContentType = contentType,
+                    SizeBytes = file.Size,
+                    StorageKey = key,
+                    UploadedAt = Clock.GetUtcNow(),
+                });
+                await db.SaveChangesAsync();
+            }
+            catch
+            {
+                await Storage.DeleteAsync(key);
+                throw;
+            }
+        }
+
+        uploadError = problems.Count == 0 ? null : string.Join(" ", problems);
+        uploading = false;
+        await LoadAsync();
+    }
+
+    private async Task DeleteDocumentAsync(LeaseDocument document)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.LeaseDocuments.Where(d => d.Id == document.Id).ExecuteDeleteAsync();
+        await Storage.DeleteAsync(document.StorageKey);
+        await LoadAsync();
+    }
+
+    private static string FormatSize(long bytes) =>
+        bytes >= 1024 * 1024 ? $"{bytes / 1024.0 / 1024.0:0.0} MB"
+        : bytes >= 1024 ? $"{bytes / 1024.0:0} KB"
+        : $"{bytes} B";
+}

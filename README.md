@@ -48,7 +48,13 @@ dotnet ef migrations add <Name> --project src/PropertyManager.Core --startup-pro
 - `src/PropertyManager.Web`: Blazor Server UI (`Components/Pages`)
 - `tests/PropertyManager.Tests`: xUnit tests for rent proration, the P&L report, and seeding
 
+## Lease documents
+
+Open a lease from the **Leases** page to edit its terms and upload the signed lease, addenda, or inspection reports (PDF, Word, JPG, PNG, HEIC; up to 25 MB each).
+
+The database stores only each file's name, size, and upload time. The files themselves are saved under `src/PropertyManager.Web/App_Data/documents` (set `DocumentStorage:LocalPath` in `appsettings.json` to use another folder, such as one in iCloud Drive or OneDrive). File access goes through `IDocumentStorage`, so moving to Azure Blob Storage later means adding one class and changing one line in `Program.cs`.
+
 ## Notes
 
 - Rent income on the report is the *scheduled* rent from leases, prorated by day. It is not the rent actually collected; payment tracking isn't built yet.
-- Back up `propertymanager.db`. It is excluded from git.
+- Back up `propertymanager.db` and `App_Data/documents`. Both are excluded from git.

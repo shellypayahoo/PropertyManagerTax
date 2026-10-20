@@ -9,6 +9,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<Unit> Units => Set<Unit>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Lease> Leases => Set<Lease>();
+    public DbSet<LeaseDocument> LeaseDocuments => Set<LeaseDocument>();
     public DbSet<Vendor> Vendors => Set<Vendor>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<MaintenanceRequest> MaintenanceRequests => Set<MaintenanceRequest>();
@@ -39,6 +40,14 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
         modelBuilder.Entity<Lease>(e =>
         {
             e.HasOne(l => l.Tenant).WithMany(t => t.Leases).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LeaseDocument>(e =>
+        {
+            e.Property(d => d.FileName).HasMaxLength(255).IsRequired();
+            e.Property(d => d.ContentType).HasMaxLength(100).IsRequired();
+            e.Property(d => d.StorageKey).HasMaxLength(100).IsRequired();
+            e.HasIndex(d => d.StorageKey).IsUnique();
         });
 
         modelBuilder.Entity<Expense>(e =>

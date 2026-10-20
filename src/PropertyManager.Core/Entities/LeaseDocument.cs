@@ -1,0 +1,20 @@
+namespace PropertyManager.Core.Entities;
+
+/// <summary>A file attached to a lease, such as the signed lease PDF or an addendum.</summary>
+public class LeaseDocument
+{
+    public int Id { get; set; }
+    public int LeaseId { get; set; }
+    public Lease? Lease { get; set; }
+
+    /// <summary>Original file name as uploaded; for display and download only.</summary>
+    public string FileName { get; set; } = "";
+
+    public string ContentType { get; set; } = "application/octet-stream";
+    public long SizeBytes { get; set; }
+
+    /// <summary>Key the file is stored under in <see cref="Storage.IDocumentStorage"/>.</summary>
+    public string StorageKey { get; set; } = "";
+
+    public DateTimeOffset UploadedAt { get; set; }
+}

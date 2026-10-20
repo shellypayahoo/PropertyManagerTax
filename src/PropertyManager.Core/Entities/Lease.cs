@@ -16,6 +16,8 @@ public class Lease
     public decimal MonthlyRent { get; set; }
     public decimal SecurityDeposit { get; set; }
 
+    public List<LeaseDocument> Documents { get; set; } = [];
+
     public bool IsActiveOn(DateOnly date) =>
         StartDate <= date && (EndDate is null || EndDate >= date);
 }
