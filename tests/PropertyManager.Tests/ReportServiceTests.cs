@@ -58,7 +58,7 @@ public sealed class ReportServiceTests : IDisposable
             await DbSeeder.SeedAsync(db);
             var taylorA = await db.Units.SingleAsync(u => u.Property!.Name == "1354 Taylor St NW" && u.Label == "A");
             var tenant = new Tenant { FirstName = "Test", LastName = "Tenant" };
-            var lease = new Lease { Unit = taylorA, Tenant = tenant, StartDate = new(2026, 1, 1), MonthlyRent = 4500m };
+            var lease = new Lease { Unit = taylorA, Tenants = [tenant], StartDate = new(2026, 1, 1), MonthlyRent = 4500m };
             db.Leases.Add(lease);
             db.RentPayments.AddRange(
                 new RentPayment { Lease = lease, Date = new(2026, 1, 2), Amount = 4500m },

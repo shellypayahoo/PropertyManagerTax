@@ -53,14 +53,16 @@ public static class TransactionClassifier
             item.UnitId = rule.UnitId;
             item.Category = rule.Category ?? ExpenseCategory.Other;
             item.VendorId = rule.VendorId;
-            item.LeaseId = rule.TenantId is { } tenantId ? FindLease(context.Leases.Where(l => l.TenantId == tenantId), row.Date)?.Id : null;
+            item.LeaseId = rule.TenantId is { } tenantId ? FindLease(context.Leases.Where(l => l.Tenants.Any(t => t.Id == tenantId)), row.Date)?.Id : null;
             item.Reason = $"Rule: \"{rule.MatchText}\"";
         }
-        else if (row.Amount > 0 && FindTenantLease(row, context) is { } lease)
+        else if (row.Amount > 0 && FindTenantLease(row, context) is ({ } lease, { } tenant))
         {
             item.Kind = TransactionKind.RentPayment;
             item.LeaseId = lease.Id;
-            item.Reason = $"Sender matches tenant {lease.Tenant?.FullName}";
+            item.Reason = lease.Tenants.Count > 1
+                ? $"Sender matches {tenant.FullName}, on the lease with {string.Join(" & ", lease.Tenants.Where(t => t.Id != tenant.Id).Select(t => t.FullName))}"
+                : $"Sender matches tenant {tenant.FullName}";
         }
         else if (row.Description.Contains("transfer", StringComparison.OrdinalIgnoreCase))
         {
@@ -119,16 +121,24 @@ public static class TransactionClassifier
         }
     }
 
-    /// <summary>Matches a deposit to a tenant when the description contains the tenant's first and last name, as Zelle descriptions do.</summary>
-    private static Lease? FindTenantLease(BankRow row, ClassifierContext context)
+    /// <summary>
+    /// Matches a deposit to a tenant when the description contains the tenant's first and last name, as Zelle
+    /// descriptions do, and returns that tenant's lease. Any co-tenant's payment counts toward the shared lease.
+    /// </summary>
+    private static (Lease? Lease, Tenant? Tenant) FindTenantLease(BankRow row, ClassifierContext context)
     {
-        var tenantLeases = context.Leases
-            .Where(l => l.Tenant is { } t
-                && t.FirstName.Length > 0 && t.LastName.Length > 0
-                && row.Description.Contains(t.FirstName, StringComparison.OrdinalIgnoreCase)
-                && row.Description.Contains(t.LastName, StringComparison.OrdinalIgnoreCase));
-        return FindLease(tenantLeases, row.Date);
+        var tenant = context.Leases
+            .SelectMany(l => l.Tenants)
+            .FirstOrDefault(t => IsNamedIn(t, row.Description));
+        return tenant is null
+            ? (null, null)
+            : (FindLease(context.Leases.Where(l => l.Tenants.Any(t => t.Id == tenant.Id)), row.Date), tenant);
     }
+
+    public static bool IsNamedIn(Tenant t, string description) =>
+        t.FirstName.Length > 0 && t.LastName.Length > 0
+        && description.Contains(t.FirstName, StringComparison.OrdinalIgnoreCase)
+        && description.Contains(t.LastName, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The lease active on the date, otherwise the most recent one that started before it.</summary>
     public static Lease? FindLease(IEnumerable<Lease> leases, DateOnly date)

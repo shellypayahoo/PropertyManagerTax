@@ -13,8 +13,40 @@
 else
 {
     <p><a href="leases">← Leases</a></p>
-    <h1>@lease.Tenant?.FullName</h1>
+    <h1>@lease.TenantNames</h1>
     <p class="text-muted">@lease.Unit?.DisplayName</p>
+
+    <h2 class="h4 mt-4">Tenants</h2>
+    <ul class="list-group mb-2" style="max-width: 32rem">
+        @foreach (var t in lease.Tenants.OrderBy(t => t.LastName).ThenBy(t => t.FirstName))
+        {
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>
+                    @t.FullName
+                    @if (!string.IsNullOrWhiteSpace(t.Phone) || !string.IsNullOrWhiteSpace(t.Email))
+                    {
+                        <span class="small text-muted ms-2">@t.Phone @t.Email</span>
+                    }
+                </span>
+                @if (lease.Tenants.Count > 1)
+                {
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveTenantAsync(t.Id)">Remove</button>
+                }
+            </li>
+        }
+    </ul>
+    var others = allTenants.Where(t => lease.Tenants.All(lt => lt.Id != t.Id)).ToList();
+    @if (others.Count > 0)
+    {
+        <div class="d-flex gap-2" style="max-width: 32rem">
+            <select class="form-select" @bind="tenantToAdd">
+                <option value="0">Add a roommate or co-signer…</option>
+                @foreach (var t in others) { <option value="@t.Id">@t.FullName</option> }
+            </select>
+            <button class="btn btn-outline-primary text-nowrap" disabled="@(tenantToAdd == 0)" @onclick="AddTenantAsync">Add to lease</button>
+        </div>
+    }
+    <p class="small text-muted mt-1">Not listed? Add them on the <a href="tenants">Tenants</a> page first. Rent payments from anyone on this lease count toward it.</p>
 
     <h2 class="h4 mt-4">Lease terms</h2>
     <EditForm Model="form" OnValidSubmit="SaveAsync" FormName="edit-lease" class="row g-2 align-items-end">
@@ -127,6 +159,8 @@ else
     private string? error;
     private string? uploadError;
     private RentPayment newPayment = new();
+    private List<Tenant> allTenants = [];
+    private int tenantToAdd;
     private string? paymentError;
 
     protected override async Task OnParametersSetAsync()
@@ -149,12 +183,39 @@ else
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         lease = await db.Leases.AsNoTracking()
-            .Include(l => l.Tenant)
+            .Include(l => l.Tenants)
             .Include(l => l.Unit).ThenInclude(u => u!.Property)
             .Include(l => l.Documents)
             .Include(l => l.Payments)
             .FirstOrDefaultAsync(l => l.Id == Id);
+        allTenants = await db.Tenants.AsNoTracking().OrderBy(t => t.LastName).ThenBy(t => t.FirstName).ToListAsync();
         loaded = true;
+    }
+
+    private async Task AddTenantAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Leases.Include(l => l.Tenants).SingleAsync(l => l.Id == Id);
+        if (entity.Tenants.All(t => t.Id != tenantToAdd) && await db.Tenants.FindAsync(tenantToAdd) is { } tenant)
+        {
+            entity.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+        }
+        tenantToAdd = 0;
+        await LoadAsync();
+    }
+
+    private async Task RemoveTenantAsync(int tenantId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Leases.Include(l => l.Tenants).SingleAsync(l => l.Id == Id);
+        // A lease always keeps at least one tenant.
+        if (entity.Tenants.Count > 1)
+        {
+            entity.Tenants.RemoveAll(t => t.Id == tenantId);
+            await db.SaveChangesAsync();
+        }
+        await LoadAsync();
     }
 
     private async Task SaveAsync()
@@ -192,14 +253,14 @@ else
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        var others = await db.Leases.AsNoTracking().Include(l => l.Tenant)
+        var others = await db.Leases.AsNoTracking().Include(l => l.Tenants)
             .Where(l => l.UnitId == lease!.UnitId && l.Id != Id)
             .ToListAsync();
         var overlap = others.FirstOrDefault(l => l.StartDate <= (form.EndDate ?? DateOnly.MaxValue)
             && (l.EndDate ?? DateOnly.MaxValue) >= form.StartDate);
         return overlap is null
             ? null
-            : $"Those dates overlap the lease for {overlap.Tenant?.FullName} ({overlap.StartDate:d} – {overlap.EndDate?.ToString("d") ?? "month-to-month"}).";
+            : $"Those dates overlap the lease for {overlap.TenantNames} ({overlap.StartDate:d} – {overlap.EndDate?.ToString("d") ?? "month-to-month"}).";
     }
 
     private async Task UploadAsync(InputFileChangeEventArgs e)

@@ -27,7 +27,7 @@ else
                 {
                     <tr>
                         <td><InputText @bind-Value="editingUnit.Label" class="form-control form-control-sm" style="width:5rem" /></td>
-                        <td>@(lease?.Tenant?.FullName ?? "Vacant")</td>
+                        <td>@(lease?.TenantNames ?? "Vacant")</td>
                         <td class="text-end">@(lease?.MonthlyRent.ToString("C0"))</td>
                         <td><InputNumber @bind-Value="editingUnit.MarketRent" class="form-control form-control-sm text-end" /></td>
                         <td class="d-flex gap-1">
@@ -45,7 +45,7 @@ else
                 {
                     <tr>
                         <td>@u.Label</td>
-                        <td>@(lease?.Tenant?.FullName ?? "Vacant")</td>
+                        <td>@(lease?.TenantNames ?? "Vacant")</td>
                         <td class="text-end">@(lease?.MonthlyRent.ToString("C0"))</td>
                         <td class="text-end">@u.MarketRent.ToString("C0")</td>
                         <td>@(u.Bedrooms is null && u.Bathrooms is null ? "" : $"{u.Bedrooms} bd / {u.Bathrooms} ba")</td>
@@ -102,7 +102,7 @@ else
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         property = await db.Properties.AsNoTracking()
-            .Include(p => p.Units).ThenInclude(u => u.Leases).ThenInclude(l => l.Tenant)
+            .Include(p => p.Units).ThenInclude(u => u.Leases).ThenInclude(l => l.Tenants)
             .FirstOrDefaultAsync(p => p.Id == Id);
         loaded = true;
     }

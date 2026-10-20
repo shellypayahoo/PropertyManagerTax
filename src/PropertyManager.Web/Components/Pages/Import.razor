@@ -152,7 +152,7 @@
                             {
                                 <select class="form-select form-select-sm" @bind="r.LeaseId">
                                     <option value="">Tenant…</option>
-                                    @foreach (var l in leases) { <option value="@l.Id">@l.Tenant?.FullName – @l.Unit?.DisplayName</option> }
+                                    @foreach (var l in leases) { <option value="@l.Id">@l.TenantNames – @l.Unit?.DisplayName</option> }
                                 </select>
                             }
                         </td>
@@ -241,9 +241,9 @@
         accountId = accounts.FirstOrDefault()?.Id ?? 0;
         properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
         leases = await db.Leases.AsNoTracking()
-            .Include(l => l.Tenant).Include(l => l.Unit).ThenInclude(u => u!.Property)
-            .OrderBy(l => l.Tenant!.LastName)
+            .Include(l => l.Tenants).Include(l => l.Unit).ThenInclude(u => u!.Property)
             .ToListAsync();
+        leases = leases.OrderBy(l => l.TenantNames).ToList();
     }
 
     private async Task LoadFileAsync(InputFileChangeEventArgs e)
@@ -392,7 +392,7 @@
             UnitId = r.Kind == TransactionKind.Expense ? r.UnitId : null,
             Category = r.Kind == TransactionKind.Expense ? r.Category : null,
             VendorId = r.Kind == TransactionKind.Expense ? r.VendorId : null,
-            TenantId = r.Kind == TransactionKind.RentPayment ? leases.FirstOrDefault(l => l.Id == r.LeaseId)?.TenantId : null,
+            TenantId = r.Kind == TransactionKind.RentPayment ? RuleTenantId(r) : null,
         });
 
         // Re-run suggestions so other matching rows pick up the new rule.
@@ -402,6 +402,13 @@
             TransactionClassifier.Classify(other, account, context);
         }
         ruleRow = null;
+    }
+
+    /// <summary>For a rent rule, the co-tenant named in the description, or the lease's first tenant.</summary>
+    private int? RuleTenantId(ImportRow r)
+    {
+        var tenants = leases.FirstOrDefault(l => l.Id == r.LeaseId)?.Tenants ?? [];
+        return (tenants.FirstOrDefault(t => TransactionClassifier.IsNamedIn(t, r.Row.Description)) ?? tenants.FirstOrDefault())?.Id;
     }
 
     private async Task CommitAsync()

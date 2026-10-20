@@ -14,14 +14,14 @@
 
 <table class="table align-middle">
     <thead>
-        <tr><th>Unit</th><th>Tenant</th><th>Start</th><th>End</th><th class="text-end">Rent</th><th class="text-end">Deposit</th><th class="text-end">Docs</th><th></th></tr>
+        <tr><th>Unit</th><th>Tenants</th><th>Start</th><th>End</th><th class="text-end">Rent</th><th class="text-end">Deposit</th><th class="text-end">Docs</th><th></th></tr>
     </thead>
     <tbody>
         @foreach (var l in leases.Where(l => showEnded || l.EndDate is null || l.EndDate >= today))
         {
             <tr class="@(l.IsActiveOn(today) ? "" : "text-muted")">
                 <td>@l.Unit?.DisplayName</td>
-                <td><a href="leases/@l.Id">@l.Tenant?.FullName</a></td>
+                <td><a href="leases/@l.Id">@l.TenantNames</a></td>
                 <td>@l.StartDate.ToString("d")</td>
                 <td>@(l.EndDate?.ToString("d") ?? "Month-to-month")</td>
                 <td class="text-end">@l.MonthlyRent.ToString("C0")</td>
@@ -56,21 +56,24 @@ else
                 }
             </InputSelect>
         </div>
-        <div class="col-md-2">
-            <label class="form-label">Tenant</label>
-            <InputSelect @bind-Value="form.TenantId" class="form-select">
-                <option value="0">Select…</option>
-                @foreach (var t in tenants)
-                {
-                    <option value="@t.Id">@t.FullName</option>
-                }
-            </InputSelect>
-        </div>
         <div class="col-md-2"><label class="form-label">Start</label><InputDate @bind-Value="form.StartDate" class="form-control" /></div>
         <div class="col-md-2"><label class="form-label">End (blank = month-to-month)</label><InputDate @bind-Value="form.EndDate" class="form-control" /></div>
         <div class="col-md-1"><label class="form-label">Rent</label><InputNumber @bind-Value="form.MonthlyRent" class="form-control" /></div>
-        <div class="col-md-1"><label class="form-label">Deposit</label><InputNumber @bind-Value="form.SecurityDeposit" class="form-control" /></div>
-        <div class="col-md-1"><button type="submit" class="btn btn-primary w-100">Add</button></div>
+        <div class="col-md-2"><label class="form-label">Deposit</label><InputNumber @bind-Value="form.SecurityDeposit" class="form-control" /></div>
+        <div class="col-12">
+            <label class="form-label">Tenants on this lease <span class="text-muted small">(check everyone who signed it)</span></label>
+            <div class="border rounded p-2 d-flex flex-wrap gap-3" style="max-height: 10rem; overflow-y: auto">
+                @foreach (var t in tenants)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="tenant-@t.Id" checked="@selectedTenantIds.Contains(t.Id)"
+                               @onchange="e => ToggleTenant(t.Id, (bool)e.Value!)" />
+                        <label class="form-check-label" for="tenant-@t.Id">@t.FullName</label>
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Add lease</button></div>
     </EditForm>
     <FormError Message="@error" />
 }
@@ -80,6 +83,7 @@ else
     private List<Unit> units = [];
     private List<Tenant> tenants = [];
     private Lease form = new();
+    private HashSet<int> selectedTenantIds = [];
     private bool showEnded;
     private string? error;
     private DateOnly today;
@@ -97,7 +101,7 @@ else
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         leases = await db.Leases.AsNoTracking()
-            .Include(l => l.Tenant)
+            .Include(l => l.Tenants)
             .Include(l => l.Unit).ThenInclude(u => u!.Property)
             .Include(l => l.Documents)
             .OrderByDescending(l => l.StartDate)
@@ -118,6 +122,18 @@ else
         }
     }
 
+    private void ToggleTenant(int tenantId, bool selected)
+    {
+        if (selected)
+        {
+            selectedTenantIds.Add(tenantId);
+        }
+        else
+        {
+            selectedTenantIds.Remove(tenantId);
+        }
+    }
+
     private async Task AddAsync()
     {
         error = Validate();
@@ -127,6 +143,7 @@ else
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
+        form.Tenants = await db.Tenants.Where(t => selectedTenantIds.Contains(t.Id)).ToListAsync();
         db.Leases.Add(form);
         await db.SaveChangesAsync();
         Navigation.NavigateTo($"leases/{form.Id}");
@@ -134,9 +151,9 @@ else
 
     private string? Validate()
     {
-        if (form.UnitId == 0 || form.TenantId == 0)
+        if (form.UnitId == 0 || selectedTenantIds.Count == 0)
         {
-            return "Select a unit and a tenant.";
+            return "Select a unit and at least one tenant.";
         }
         if (form.EndDate is { } end && end < form.StartDate)
         {
@@ -152,7 +169,7 @@ else
             && (l.EndDate ?? DateOnly.MaxValue) >= form.StartDate);
         return overlap is null
             ? null
-            : $"That unit already has a lease for {overlap.Tenant?.FullName} covering those dates.";
+            : $"That unit already has a lease for {overlap.TenantNames} covering those dates. To add a roommate, open that lease and add them to it.";
     }
 
     private async Task EndLeaseAsync(int leaseId)

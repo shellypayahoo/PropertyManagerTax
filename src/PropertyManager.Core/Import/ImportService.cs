@@ -13,7 +13,7 @@ public class ImportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
         await using var db = await dbFactory.CreateDbContextAsync(ct);
 
         var rules = await db.CategorizationRules.AsNoTracking().ToListAsync(ct);
-        var leases = await db.Leases.AsNoTracking().Include(l => l.Tenant).Include(l => l.Unit).ToListAsync(ct);
+        var leases = await db.Leases.AsNoTracking().Include(l => l.Tenants).Include(l => l.Unit).ToListAsync(ct);
         var vendors = await db.Vendors.AsNoTracking().ToListAsync(ct);
         var expenses = await db.Expenses.AsNoTracking().ToListAsync(ct);
         var payments = await db.RentPayments.AsNoTracking().ToListAsync(ct);

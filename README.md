@@ -48,6 +48,10 @@ dotnet ef migrations add <Name> --project src/PropertyManager.Core --startup-pro
 - `src/PropertyManager.Web`: Blazor Server UI (`Components/Pages`)
 - `tests/PropertyManager.Tests`: xUnit tests for rent proration, the P&L report, and seeding
 
+## Leases with more than one tenant
+
+A lease can have several tenants (roommates, a couple, a co-signer) who share one rent. Check everyone when creating the lease, or add and remove people later on the lease's page. Rent payments from any of them, including Zelle payments matched during an import, count toward the shared lease.
+
 ## Lease documents
 
 Open a lease from the **Leases** page to edit its terms and upload the signed lease, addenda, or inspection reports (PDF, Word, JPG, PNG, HEIC; up to 25 MB each).

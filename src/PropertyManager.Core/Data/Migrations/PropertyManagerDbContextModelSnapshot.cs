@@ -17,6 +17,21 @@ namespace PropertyManager.Core.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
+            modelBuilder.Entity("LeaseTenants", b =>
+                {
+                    b.Property<int>("LeasesId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TenantsId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("LeasesId", "TenantsId");
+
+                    b.HasIndex("TenantsId");
+
+                    b.ToTable("LeaseTenants");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.BankAccount", b =>
                 {
                     b.Property<int>("Id")
@@ -223,15 +238,10 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("TenantId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int>("UnitId")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("TenantId");
 
                     b.HasIndex("UnitId");
 
@@ -490,6 +500,21 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("Vendors");
                 });
 
+            modelBuilder.Entity("LeaseTenants", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Lease", null)
+                        .WithMany()
+                        .HasForeignKey("LeasesId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PropertyManager.Core.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantsId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.CategorizationRule", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.Property", "Property")
@@ -580,19 +605,11 @@ namespace PropertyManager.Core.Data.Migrations
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Lease", b =>
                 {
-                    b.HasOne("PropertyManager.Core.Entities.Tenant", "Tenant")
-                        .WithMany("Leases")
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("PropertyManager.Core.Entities.Unit", "Unit")
                         .WithMany("Leases")
                         .HasForeignKey("UnitId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Tenant");
 
                     b.Navigation("Unit");
                 });
@@ -665,11 +682,6 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Expenses");
 
                     b.Navigation("Units");
-                });
-
-            modelBuilder.Entity("PropertyManager.Core.Entities.Tenant", b =>
-                {
-                    b.Navigation("Leases");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Unit", b =>

@@ -43,7 +43,8 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
 
         modelBuilder.Entity<Lease>(e =>
         {
-            e.HasOne(l => l.Tenant).WithMany(t => t.Leases).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(l => l.Tenants).WithMany(t => t.Leases).UsingEntity("LeaseTenants");
+            e.Ignore(l => l.TenantNames);
         });
 
         modelBuilder.Entity<LeaseDocument>(e =>

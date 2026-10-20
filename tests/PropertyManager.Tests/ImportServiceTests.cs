@@ -44,7 +44,7 @@ public sealed class ImportServiceTests : IDisposable
     {
         await using var db = dbFactory.CreateDbContext();
         var taylorA = await db.Units.Include(u => u.Property).SingleAsync(u => u.Property!.Name == "1354 Taylor St NW" && u.Label == "A");
-        var lease = new Lease { Unit = taylorA, Tenant = new Tenant { FirstName = "Jane", LastName = "Sample" }, StartDate = new(2024, 1, 1), MonthlyRent = 4500m };
+        var lease = new Lease { Unit = taylorA, Tenants = [new Tenant { FirstName = "Jane", LastName = "Sample" }], StartDate = new(2024, 1, 1), MonthlyRent = 4500m };
         db.Leases.Add(lease);
         // Wilbur's lawn bill, entered by hand from his text and paid by personal Zelle.
         db.Expenses.Add(new Expense { PropertyId = taylorA.PropertyId, Date = new(2026, 2, 4), Category = ExpenseCategory.CleaningAndMaintenance, Amount = 180m, Description = "Lawn", PaidWith = PaymentMethod.Zelle });
