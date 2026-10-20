@@ -4,7 +4,11 @@
 
 <PageTitle>Expenses</PageTitle>
 
-<h1>Expenses</h1>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <h1 class="me-auto mb-0">Expenses</h1>
+    <a class="btn btn-outline-primary" href="expenses/from-text">Add from a text message</a>
+    <a class="btn btn-outline-secondary" href="import">Import from bank</a>
+</div>
 
 <div class="row g-2 mb-3">
     <div class="col-auto">
@@ -29,7 +33,7 @@
 
 <table class="table table-sm align-middle">
     <thead>
-        <tr><th>Date</th><th>Property</th><th>Unit</th><th>Category</th><th>Description</th><th>Vendor</th><th class="text-end">Amount</th><th></th></tr>
+        <tr><th>Date</th><th>Property</th><th>Unit</th><th>Category</th><th>Description</th><th>Vendor</th><th>Paid with</th><th class="text-end">Amount</th><th></th></tr>
     </thead>
     <tbody>
         @foreach (var e in expenses)
@@ -39,8 +43,12 @@
                 <td>@e.Property?.Name</td>
                 <td>@e.Unit?.Label</td>
                 <td>@e.Category.DisplayName()</td>
-                <td>@e.Description</td>
+                <td>
+                    @e.Description
+                    @if (!string.IsNullOrWhiteSpace(e.Notes)) { <div class="small text-muted text-truncate" style="max-width: 24rem" title="@e.Notes">@e.Notes</div> }
+                </td>
                 <td>@e.Vendor?.Name</td>
+                <td>@e.PaidWith</td>
                 <td class="text-end">@e.Amount.ToString("C")</td>
                 <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(e.Id)">Delete</button></td>
             </tr>
@@ -92,6 +100,16 @@
         </InputSelect>
     </div>
     <div class="col-md-1"><label class="form-label">Amount</label><InputNumber @bind-Value="form.Amount" class="form-control" /></div>
+    <div class="col-md-1">
+        <label class="form-label">Paid with</label>
+        <InputSelect @bind-Value="form.PaidWith" class="form-select">
+            <option value="">—</option>
+            @foreach (var m in Enum.GetValues<PaymentMethod>())
+            {
+                <option value="@m">@m</option>
+            }
+        </InputSelect>
+    </div>
     <div class="col-md-1"><button type="submit" class="btn btn-primary w-100">Add</button></div>
 </EditForm>
 <FormError Message="@error" />
@@ -160,6 +178,9 @@
     private async Task DeleteAsync(int expenseId)
     {
         await using var db = await DbFactory.CreateDbContextAsync();
+        // Keep the import record (so the bank row isn't re-imported) but unlink it from the expense.
+        await db.ImportedTransactions.Where(t => t.ExpenseId == expenseId)
+            .ExecuteUpdateAsync(u => u.SetProperty(t => t.ExpenseId, (int?)null).SetProperty(t => t.Kind, TransactionKind.Ignored));
         await db.Expenses.Where(e => e.Id == expenseId).ExecuteDeleteAsync();
         await LoadAsync();
     }

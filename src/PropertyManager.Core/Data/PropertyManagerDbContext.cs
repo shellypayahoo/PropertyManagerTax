@@ -13,6 +13,10 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<Vendor> Vendors => Set<Vendor>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<MaintenanceRequest> MaintenanceRequests => Set<MaintenanceRequest>();
+    public DbSet<RentPayment> RentPayments => Set<RentPayment>();
+    public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
+    public DbSet<ImportedTransaction> ImportedTransactions => Set<ImportedTransaction>();
+    public DbSet<CategorizationRule> CategorizationRules => Set<CategorizationRule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +57,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
         modelBuilder.Entity<Expense>(e =>
         {
             e.Property(x => x.Category).HasConversion<string>().HasMaxLength(40);
+            e.Property(x => x.PaidWith).HasConversion<string>().HasMaxLength(20);
             e.HasOne(x => x.Unit).WithMany().OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.MaintenanceRequest).WithMany(m => m.Expenses).OnDelete(DeleteBehavior.SetNull);
@@ -66,6 +71,40 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             e.HasOne(m => m.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
             e.Ignore(m => m.IsOpen);
+        });
+
+        modelBuilder.Entity<RentPayment>(e =>
+        {
+            e.Property(p => p.Method).HasConversion<string>().HasMaxLength(20);
+            e.HasOne(p => p.Lease).WithMany(l => l.Payments).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(p => p.Date);
+        });
+
+        modelBuilder.Entity<BankAccount>(e =>
+        {
+            e.Property(a => a.Name).HasMaxLength(100).IsRequired();
+            e.HasIndex(a => a.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<ImportedTransaction>(e =>
+        {
+            e.Property(t => t.Description).HasMaxLength(500);
+            e.Property(t => t.Fingerprint).HasMaxLength(100).IsRequired();
+            e.Property(t => t.Kind).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(t => new { t.BankAccountId, t.Fingerprint }).IsUnique();
+            e.HasOne(t => t.Expense).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(t => t.RentPayment).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<CategorizationRule>(e =>
+        {
+            e.Property(r => r.MatchText).HasMaxLength(200).IsRequired();
+            e.Property(r => r.Kind).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.Category).HasConversion<string>().HasMaxLength(40);
+            e.HasOne(r => r.Property).WithMany().OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(r => r.Unit).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(r => r.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(r => r.Tenant).WithMany().OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

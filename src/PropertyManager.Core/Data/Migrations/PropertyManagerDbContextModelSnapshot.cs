@@ -17,6 +17,88 @@ namespace PropertyManager.Core.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.BankAccount", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AmountColumn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreditColumn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DateColumn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DebitColumn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DescriptionColumn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsRentalOnly")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("BankAccounts");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.CategorizationRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MatchText")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PropertyId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("TenantId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("UnitId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("VendorId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UnitId");
+
+                    b.HasIndex("VendorId");
+
+                    b.ToTable("CategorizationRules");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.Expense", b =>
                 {
                     b.Property<int>("Id")
@@ -41,6 +123,13 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Property<int?>("MaintenanceRequestId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PaidWith")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("PropertyId")
                         .HasColumnType("INTEGER");
 
@@ -63,6 +152,57 @@ namespace PropertyManager.Core.Data.Migrations
                     b.HasIndex("VendorId");
 
                     b.ToTable("Expenses");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.ImportedTransaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ExpenseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ImportedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RentPaymentId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpenseId");
+
+                    b.HasIndex("RentPaymentId");
+
+                    b.HasIndex("BankAccountId", "Fingerprint")
+                        .IsUnique();
+
+                    b.ToTable("ImportedTransactions");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Lease", b =>
@@ -227,6 +367,38 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("Properties");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.RentPayment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LeaseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date");
+
+                    b.HasIndex("LeaseId");
+
+                    b.ToTable("RentPayments");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.Tenant", b =>
                 {
                     b.Property<int>("Id")
@@ -318,6 +490,37 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("Vendors");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.CategorizationRule", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("PropertyManager.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("PropertyManager.Core.Entities.Unit", "Unit")
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Property");
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("Unit");
+
+                    b.Navigation("Vendor");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.Expense", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.MaintenanceRequest", "MaintenanceRequest")
@@ -348,6 +551,31 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Unit");
 
                     b.Navigation("Vendor");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.ImportedTransaction", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.BankAccount", "BankAccount")
+                        .WithMany()
+                        .HasForeignKey("BankAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PropertyManager.Core.Entities.Expense", "Expense")
+                        .WithMany()
+                        .HasForeignKey("ExpenseId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.RentPayment", "RentPayment")
+                        .WithMany()
+                        .HasForeignKey("RentPaymentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("BankAccount");
+
+                    b.Navigation("Expense");
+
+                    b.Navigation("RentPayment");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Lease", b =>
@@ -398,6 +626,17 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Vendor");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.RentPayment", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Lease", "Lease")
+                        .WithMany("Payments")
+                        .HasForeignKey("LeaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Lease");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.Unit", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.Property", "Property")
@@ -412,6 +651,8 @@ namespace PropertyManager.Core.Data.Migrations
             modelBuilder.Entity("PropertyManager.Core.Entities.Lease", b =>
                 {
                     b.Navigation("Documents");
+
+                    b.Navigation("Payments");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.MaintenanceRequest", b =>

@@ -1,0 +1,443 @@
+@page "/import"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject ImportService ImportService
+
+<PageTitle>Import</PageTitle>
+
+<h1>Import bank transactions</h1>
+
+@switch (step)
+{
+    case Step.Upload:
+        <p class="text-muted">
+            Download transactions as a CSV file from your bank's website, then upload the file here. You'll review every
+            row before anything is saved, and rows you've imported before are skipped automatically.
+        </p>
+        <div class="row g-3" style="max-width: 48rem">
+            <div class="col-md-6">
+                <label class="form-label">Account</label>
+                <select class="form-select" @bind="accountId">
+                    @foreach (var a in accounts)
+                    {
+                        <option value="@a.Id">@a.Name</option>
+                    }
+                    <option value="0">New account…</option>
+                </select>
+            </div>
+            @if (accountId == 0)
+            {
+                <div class="col-md-6">
+                    <label class="form-label">Account name</label>
+                    <input class="form-control" @bind="newAccountName" @bind:event="oninput" placeholder="e.g. Business checking, Personal (Zelle)" />
+                </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="rentalOnly" @bind="newAccountRentalOnly" />
+                        <label class="form-check-label" for="rentalOnly">
+                            This account is only used for the rentals
+                            <span class="text-muted small d-block">Leave unchecked for a personal account. Unrecognized spending will then be ignored instead of treated as a rental expense.</span>
+                        </label>
+                    </div>
+                </div>
+            }
+            <div class="col-12">
+                <label class="form-label">CSV file</label>
+                <InputFile OnChange="LoadFileAsync" accept=".csv,text/csv" class="form-control" />
+            </div>
+        </div>
+        <FormError Message="@error" />
+        <p class="mt-4"><a href="import/rules">Manage saved rules</a></p>
+        break;
+
+    case Step.Map:
+        <p>Tell me which columns hold the date, description, and amount. This is saved for <strong>@account.Name</strong> so you only do it once.</p>
+        <div class="row g-2" style="max-width: 60rem">
+            <div class="col-md-3"><label class="form-label">Date</label><ColumnSelect @bind-Value="account.DateColumn" Headers="headers" /></div>
+            <div class="col-md-3"><label class="form-label">Description</label><ColumnSelect @bind-Value="account.DescriptionColumn" Headers="headers" /></div>
+            <div class="col-md-2"><label class="form-label">Amount</label><ColumnSelect @bind-Value="account.AmountColumn" Headers="headers" /></div>
+            <div class="col-md-2"><label class="form-label">or Debit</label><ColumnSelect @bind-Value="account.DebitColumn" Headers="headers" /></div>
+            <div class="col-md-2"><label class="form-label">and Credit</label><ColumnSelect @bind-Value="account.CreditColumn" Headers="headers" /></div>
+        </div>
+        <p class="small text-muted mt-1">Use <em>Amount</em> if the bank has a single column where money out is negative, or <em>Debit</em> and <em>Credit</em> if it has two columns.</p>
+        <button class="btn btn-primary" @onclick="ReviewAsync">Continue</button>
+        <button class="btn btn-link" @onclick="Reset">Cancel</button>
+        <FormError Message="@error" />
+        break;
+
+    case Step.Review:
+        var pending = rows.Where(r => !r.AlreadyImported).ToList();
+        var visible = pending.Where(Matches).ToList();
+        var problems = pending.Count(r => r.Problem is not null);
+
+        <p>
+            <strong>@pending.Count</strong> new transactions from <strong>@account.Name</strong>.
+            @if (rows.Count > pending.Count) { <span class="text-muted">@(rows.Count - pending.Count) already imported were skipped.</span> }
+        </p>
+        @if (readErrors.Count > 0)
+        {
+            <details class="mb-2 text-warning"><summary>@readErrors.Count lines couldn't be read</summary><ul class="small">@foreach (var e in readErrors) { <li>@e</li> }</ul></details>
+        }
+
+        <ul class="nav nav-pills mb-3">
+            @foreach (var (f, label) in Filters)
+            {
+                var count = pending.Count(r => FilterMatches(f, r));
+                <li class="nav-item">
+                    <button class="nav-link @(filter == f ? "active" : "")" @onclick="() => filter = f">@label <span class="badge text-bg-light">@count</span></button>
+                </li>
+            }
+        </ul>
+
+        <div class="card mb-3">
+            <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+                <span class="small text-muted">@visible.Count(r => r.Selected) selected:</span>
+                <select class="form-select form-select-sm w-auto" @bind="bulkKind">
+                    <option value="">Type…</option>
+                    @foreach (var k in Enum.GetValues<TransactionKind>()) { <option value="@k">@KindLabel(k)</option> }
+                </select>
+                <select class="form-select form-select-sm w-auto" @bind="bulkPropertyId">
+                    <option value="">Property…</option>
+                    @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
+                </select>
+                <select class="form-select form-select-sm w-auto" @bind="bulkCategory">
+                    <option value="">Category…</option>
+                    @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
+                </select>
+                <button class="btn btn-sm btn-outline-primary" @onclick="() => ApplyBulk(visible)">Apply</button>
+            </div>
+        </div>
+
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" class="form-check-input" checked="@(visible.Count > 0 && visible.All(r => r.Selected))" @onchange="e => visible.ForEach(r => r.Selected = (bool)e.Value!)" /></th>
+                    <th>Date</th><th>Description</th><th class="text-end">Amount</th><th>Record as</th><th>Details</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in visible)
+                {
+                    <tr class="@(r.Problem is null ? "" : "table-warning")">
+                        <td><input type="checkbox" class="form-check-input" @bind="r.Selected" /></td>
+                        <td class="text-nowrap">@r.Row.Date.ToString("d")</td>
+                        <td>
+                            <div>@r.Row.Description</div>
+                            @if (r.Reason is not null) { <div class="small text-muted">@r.Reason</div> }
+                            @if (r.Problem is not null) { <div class="small text-danger">@r.Problem</div> }
+                        </td>
+                        <td class="text-end text-nowrap @(r.Row.Amount < 0 ? "" : "text-success")">@r.Row.Amount.ToString("C")</td>
+                        <td>
+                            <select class="form-select form-select-sm" @bind="r.Kind">
+                                @foreach (var k in Enum.GetValues<TransactionKind>()) { <option value="@k">@KindLabel(k)</option> }
+                            </select>
+                        </td>
+                        <td>
+                            @if (r.Kind == TransactionKind.Expense)
+                            {
+                                <div class="d-flex gap-1">
+                                    <select class="form-select form-select-sm" @bind="r.PropertyId">
+                                        <option value="">Property…</option>
+                                        @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
+                                    </select>
+                                    <select class="form-select form-select-sm" style="max-width: 6rem" @bind="r.UnitId">
+                                        <option value="">All units</option>
+                                        @foreach (var u in properties.FirstOrDefault(p => p.Id == r.PropertyId)?.Units ?? []) { <option value="@u.Id">Unit @u.Label</option> }
+                                    </select>
+                                    <select class="form-select form-select-sm" @bind="r.Category">
+                                        @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
+                                    </select>
+                                </div>
+                            }
+                            else if (r.Kind == TransactionKind.RentPayment)
+                            {
+                                <select class="form-select form-select-sm" @bind="r.LeaseId">
+                                    <option value="">Tenant…</option>
+                                    @foreach (var l in leases) { <option value="@l.Id">@l.Tenant?.FullName – @l.Unit?.DisplayName</option> }
+                                </select>
+                            }
+                        </td>
+                        <td><button class="btn btn-sm btn-outline-secondary text-nowrap" title="Always record transactions like this one the same way" @onclick="() => StartRule(r)">Remember</button></td>
+                    </tr>
+                    @if (ruleRow == r)
+                    {
+                        <tr class="table-light">
+                            <td></td>
+                            <td colspan="6">
+                                <div class="d-flex flex-wrap gap-2 align-items-center">
+                                    <span class="small">When the description contains</span>
+                                    <input class="form-control form-control-sm w-auto" @bind="ruleText" />
+                                    <span class="small">record it as shown above.</span>
+                                    <button class="btn btn-sm btn-primary" @onclick="SaveRuleAsync">Save rule</button>
+                                    <button class="btn btn-sm btn-link" @onclick="() => ruleRow = null">Cancel</button>
+                                </div>
+                                <FormError Message="@ruleError" />
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        <div class="d-flex gap-2 align-items-center sticky-bottom bg-body py-2 border-top">
+            <button class="btn btn-primary" disabled="@(problems > 0 || saving)" @onclick="CommitAsync">Import @pending.Count transactions</button>
+            <button class="btn btn-link" @onclick="Reset">Cancel</button>
+            @if (problems > 0) { <span class="text-danger small">@problems rows need a property or tenant. Use the "Needs attention" tab.</span> }
+            <FormError Message="@error" />
+        </div>
+        break;
+
+    case Step.Done:
+        <div class="alert alert-success">
+            Imported from <strong>@account.Name</strong>: @summary!.Expenses expenses, @summary.RentPayments rent payments,
+            @summary.Transfers transfers, and @summary.Ignored ignored.
+        </div>
+        <a class="btn btn-primary" href="reports">View reports</a>
+        <button class="btn btn-outline-secondary" @onclick="Reset">Import another file</button>
+        break;
+}
+
+@code {
+    private enum Step { Upload, Map, Review, Done }
+    private enum Filter { All, NeedsAttention, Expense, RentPayment, Transfer, Ignored }
+
+    private static readonly (Filter, string)[] Filters =
+    [
+        (Filter.All, "All"), (Filter.NeedsAttention, "Needs attention"), (Filter.Expense, "Expenses"),
+        (Filter.RentPayment, "Rent"), (Filter.Transfer, "Transfers"), (Filter.Ignored, "Ignored"),
+    ];
+
+    private const long MaxFileBytes = 10 * 1024 * 1024;
+
+    private Step step;
+    private Filter filter;
+    private List<BankAccount> accounts = [];
+    private List<Property> properties = [];
+    private List<Lease> leases = [];
+    private int accountId;
+    private string newAccountName = "";
+    private bool newAccountRentalOnly = true;
+    private BankAccount account = new();
+    private string csvText = "";
+    private IReadOnlyList<string> headers = [];
+    private List<ImportRow> rows = [];
+    private IReadOnlyList<string> readErrors = [];
+    private ClassifierContext? context;
+    private ImportSummary? summary;
+    private string? error;
+    private bool saving;
+
+    private string bulkKind = "";
+    private int? bulkPropertyId;
+    private string bulkCategory = "";
+
+    private ImportRow? ruleRow;
+    private string ruleText = "";
+    private string? ruleError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        accounts = await db.BankAccounts.AsNoTracking().OrderBy(a => a.Name).ToListAsync();
+        accountId = accounts.FirstOrDefault()?.Id ?? 0;
+        properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
+        leases = await db.Leases.AsNoTracking()
+            .Include(l => l.Tenant).Include(l => l.Unit).ThenInclude(u => u!.Property)
+            .OrderBy(l => l.Tenant!.LastName)
+            .ToListAsync();
+    }
+
+    private async Task LoadFileAsync(InputFileChangeEventArgs e)
+    {
+        error = null;
+        if (accountId == 0 && string.IsNullOrWhiteSpace(newAccountName))
+        {
+            error = "Name the account first, then choose the file again.";
+            return;
+        }
+        if (accountId == 0 && accounts.Any(a => a.Name.Equals(newAccountName.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            error = "An account with that name already exists; pick it from the list.";
+            return;
+        }
+        if (e.File.Size > MaxFileBytes)
+        {
+            error = "That file is larger than 10 MB.";
+            return;
+        }
+
+        using (var reader = new StreamReader(e.File.OpenReadStream(MaxFileBytes)))
+        {
+            csvText = await reader.ReadToEndAsync();
+        }
+
+        account = accountId == 0
+            ? new BankAccount { Name = newAccountName.Trim(), IsRentalOnly = newAccountRentalOnly }
+            : accounts.Single(a => a.Id == accountId);
+
+        var parsed = CsvParser.Parse(csvText);
+        var (found, dataStart) = BankCsvReader.FindHeader(parsed);
+        headers = found;
+        if (headers.Count == 0)
+        {
+            error = "That file doesn't look like a bank CSV export (no dates found).";
+            return;
+        }
+
+        var savedLayoutFits = BankCsvReader.IsComplete(account)
+            && new[] { account.DateColumn, account.DescriptionColumn, account.AmountColumn, account.DebitColumn, account.CreditColumn }
+                .All(c => c is null || headers.Contains(c, StringComparer.OrdinalIgnoreCase));
+        if (!savedLayoutFits)
+        {
+            var detected = BankCsvReader.DetectColumns(headers, parsed, dataStart);
+            account.DateColumn = detected.DateColumn;
+            account.DescriptionColumn = detected.DescriptionColumn;
+            account.AmountColumn = detected.AmountColumn;
+            account.DebitColumn = detected.DebitColumn;
+            account.CreditColumn = detected.CreditColumn;
+        }
+
+        if (savedLayoutFits && account.Id != 0)
+        {
+            await ReviewAsync();
+        }
+        else
+        {
+            step = Step.Map;
+        }
+    }
+
+    private async Task ReviewAsync()
+    {
+        error = null;
+        if (account.AmountColumn is not null)
+        {
+            account.DebitColumn = account.CreditColumn = null;
+        }
+        var result = BankCsvReader.Read(csvText, account);
+        if (result.Rows.Count == 0)
+        {
+            error = result.Errors.FirstOrDefault() ?? "No transactions found with those columns.";
+            step = Step.Map;
+            return;
+        }
+
+        readErrors = result.Errors;
+        context = await ImportService.LoadContextAsync();
+        rows = await ImportService.PrepareAsync(account, result.Rows, context);
+        filter = rows.Any(r => !r.AlreadyImported && r.Problem is not null) ? Filter.NeedsAttention : Filter.All;
+        step = Step.Review;
+    }
+
+    private bool Matches(ImportRow r) => FilterMatches(filter, r);
+
+    private static bool FilterMatches(Filter f, ImportRow r) => f switch
+    {
+        Filter.All => true,
+        Filter.NeedsAttention => r.Problem is not null,
+        Filter.Expense => r.Kind == TransactionKind.Expense,
+        Filter.RentPayment => r.Kind == TransactionKind.RentPayment,
+        Filter.Transfer => r.Kind == TransactionKind.Transfer,
+        _ => r.Kind == TransactionKind.Ignored,
+    };
+
+    private void ApplyBulk(List<ImportRow> visible)
+    {
+        foreach (var r in visible.Where(r => r.Selected))
+        {
+            if (Enum.TryParse<TransactionKind>(bulkKind, out var kind))
+            {
+                r.Kind = kind;
+            }
+            if (bulkPropertyId is { } propertyId)
+            {
+                r.PropertyId = propertyId;
+                r.UnitId = null;
+            }
+            if (Enum.TryParse<ExpenseCategory>(bulkCategory, out var category))
+            {
+                r.Category = category;
+            }
+            r.Selected = false;
+        }
+        bulkKind = bulkCategory = "";
+        bulkPropertyId = null;
+    }
+
+    private void StartRule(ImportRow r)
+    {
+        ruleRow = r;
+        ruleText = RuleSuggestions.MatchTextFor(r.Row.Description);
+        ruleError = null;
+    }
+
+    private async Task SaveRuleAsync()
+    {
+        var r = ruleRow!;
+        if (string.IsNullOrWhiteSpace(ruleText) || !r.Row.Description.Contains(ruleText.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            ruleError = "The text must appear in this transaction's description.";
+            return;
+        }
+        if (r.Problem is not null)
+        {
+            ruleError = "Finish filling in this row first: " + r.Problem;
+            return;
+        }
+
+        var rule = await ImportService.AddRuleAsync(new CategorizationRule
+        {
+            MatchText = ruleText.Trim(),
+            Kind = r.Kind,
+            PropertyId = r.Kind == TransactionKind.Expense ? r.PropertyId : null,
+            UnitId = r.Kind == TransactionKind.Expense ? r.UnitId : null,
+            Category = r.Kind == TransactionKind.Expense ? r.Category : null,
+            VendorId = r.Kind == TransactionKind.Expense ? r.VendorId : null,
+            TenantId = r.Kind == TransactionKind.RentPayment ? leases.FirstOrDefault(l => l.Id == r.LeaseId)?.TenantId : null,
+        });
+
+        // Re-run suggestions so other matching rows pick up the new rule.
+        context = context! with { Rules = [.. context.Rules, rule] };
+        foreach (var other in rows.Where(o => !o.AlreadyImported && o != r && rule.Matches(o.Row.Description)))
+        {
+            TransactionClassifier.Classify(other, account, context);
+        }
+        ruleRow = null;
+    }
+
+    private async Task CommitAsync()
+    {
+        saving = true;
+        error = null;
+        try
+        {
+            summary = await ImportService.CommitAsync(account, rows);
+            step = Step.Done;
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task Reset()
+    {
+        step = Step.Upload;
+        rows = [];
+        csvText = "";
+        error = null;
+        newAccountName = "";
+        await OnInitializedAsync();
+    }
+
+    private static string KindLabel(TransactionKind k) => k switch
+    {
+        TransactionKind.RentPayment => "Rent received",
+        TransactionKind.Transfer => "Transfer (skip)",
+        TransactionKind.Ignored => "Ignore",
+        _ => "Expense",
+    };
+}

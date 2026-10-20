@@ -29,6 +29,47 @@ else
     <FormError Message="@error" />
     @if (saved) { <div class="text-success small mt-1">Saved.</div> }
 
+    <h2 class="h4 mt-5">Rent payments</h2>
+    var today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+    var receivedThisYear = lease.Payments.Where(p => p.Date.Year == today.Year).Sum(p => p.Amount);
+    var dueThisYear = ReportService.ScheduledRent(lease, new DateOnly(today.Year, 1, 1), today);
+    <p>
+        @today.Year so far: <strong>@receivedThisYear.ToString("C")</strong> received of @dueThisYear.ToString("C") due
+        @if (dueThisYear - receivedThisYear > 0) { <span class="text-danger">(@((dueThisYear - receivedThisYear).ToString("C")) behind)</span> }
+    </p>
+    @if (lease.Payments.Count > 0)
+    {
+        <table class="table table-sm align-middle" style="max-width: 48rem">
+            <thead><tr><th>Date</th><th class="text-end">Amount</th><th>Method</th><th>Notes</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in lease.Payments.OrderByDescending(p => p.Date))
+                {
+                    <tr>
+                        <td>@p.Date.ToString("d")</td>
+                        <td class="text-end">@p.Amount.ToString("C")</td>
+                        <td>@p.Method</td>
+                        <td class="small text-muted">@p.Notes</td>
+                        <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePaymentAsync(p.Id)">Delete</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    <EditForm Model="newPayment" OnValidSubmit="AddPaymentAsync" FormName="add-payment" class="row g-2 align-items-end" style="max-width: 48rem">
+        <div class="col-md-3"><label class="form-label">Date</label><InputDate @bind-Value="newPayment.Date" class="form-control" /></div>
+        <div class="col-md-2"><label class="form-label">Amount</label><InputNumber @bind-Value="newPayment.Amount" class="form-control" /></div>
+        <div class="col-md-2">
+            <label class="form-label">Method</label>
+            <InputSelect @bind-Value="newPayment.Method" class="form-select">
+                @foreach (var m in Enum.GetValues<PaymentMethod>()) { <option value="@m">@m</option> }
+            </InputSelect>
+        </div>
+        <div class="col-md-3"><label class="form-label">Notes</label><InputText @bind-Value="newPayment.Notes" class="form-control" /></div>
+        <div class="col-md-2"><button type="submit" class="btn btn-outline-primary w-100">Add payment</button></div>
+    </EditForm>
+    <FormError Message="@paymentError" />
+    <p class="small text-muted mt-1">Zelle payments can be brought in all at once from the <a href="import">Import</a> page.</p>
+
     <h2 class="h4 mt-5">Documents</h2>
     @if (lease.Documents.Count == 0)
     {
@@ -85,10 +126,13 @@ else
     private bool uploading;
     private string? error;
     private string? uploadError;
+    private RentPayment newPayment = new();
+    private string? paymentError;
 
     protected override async Task OnParametersSetAsync()
     {
         await LoadAsync();
+        ResetPayment();
         if (lease is not null)
         {
             form = new Lease
@@ -108,6 +152,7 @@ else
             .Include(l => l.Tenant)
             .Include(l => l.Unit).ThenInclude(u => u!.Property)
             .Include(l => l.Documents)
+            .Include(l => l.Payments)
             .FirstOrDefaultAsync(l => l.Id == Id);
         loaded = true;
     }
@@ -214,6 +259,39 @@ else
         await using var db = await DbFactory.CreateDbContextAsync();
         await db.LeaseDocuments.Where(d => d.Id == document.Id).ExecuteDeleteAsync();
         await Storage.DeleteAsync(document.StorageKey);
+        await LoadAsync();
+    }
+
+    private void ResetPayment() => newPayment = new RentPayment
+    {
+        Date = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime),
+        Amount = lease?.MonthlyRent ?? 0m,
+    };
+
+    private async Task AddPaymentAsync()
+    {
+        if (newPayment.Amount <= 0)
+        {
+            paymentError = "Amount must be greater than zero.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        newPayment.LeaseId = Id;
+        db.RentPayments.Add(newPayment);
+        await db.SaveChangesAsync();
+        paymentError = null;
+        await LoadAsync();
+        ResetPayment();
+    }
+
+    private async Task DeletePaymentAsync(int paymentId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // Keep the import record (so the bank row isn't re-imported) but unlink it from the payment.
+        await db.ImportedTransactions.Where(t => t.RentPaymentId == paymentId)
+            .ExecuteUpdateAsync(u => u.SetProperty(t => t.RentPaymentId, (int?)null).SetProperty(t => t.Kind, TransactionKind.Ignored));
+        await db.RentPayments.Where(p => p.Id == paymentId).ExecuteDeleteAsync();
         await LoadAsync();
     }
 

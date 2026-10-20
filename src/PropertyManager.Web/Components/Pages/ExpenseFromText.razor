@@ -1,0 +1,197 @@
+@page "/expenses/from-text"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject TimeProvider Clock
+
+<PageTitle>Add from text</PageTitle>
+
+<p><a href="expenses">← Expenses</a></p>
+<h1>Add expenses from a text message</h1>
+<p class="text-muted">Paste what a vendor texted you, e.g. <em>"hey it's $180 for the lawn this week and $40 for the hedges"</em>. Check the amounts, then save.</p>
+
+<textarea class="form-control mb-2" rows="4" @bind="message" @bind:event="oninput" placeholder="Paste the text message here"></textarea>
+<button class="btn btn-outline-primary" @onclick="Read" disabled="@string.IsNullOrWhiteSpace(message)">Read amounts</button>
+<FormError Message="@error" />
+
+@if (lines.Count > 0)
+{
+    <div class="row g-2 mt-3 align-items-end">
+        <div class="col-md-2"><label class="form-label">Date</label><input type="date" class="form-control" @bind="date" /></div>
+        <div class="col-md-2">
+            <label class="form-label">Vendor</label>
+            <select class="form-select" value="@(vendorId?.ToString() ?? "")" @onchange="OnVendorChanged">
+                <option value="">—</option>
+                @foreach (var v in vendors) { <option value="@v.Id">@v.Name</option> }
+                <option value="new">New vendor…</option>
+            </select>
+            @if (addingVendor)
+            {
+                <input class="form-control form-control-sm mt-1" @bind="newVendorName" placeholder="Vendor name, e.g. Wilbur" />
+            }
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Property</label>
+            <select class="form-select" @bind="propertyId">
+                <option value="">Select…</option>
+                @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
+            </select>
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">Unit</label>
+            <select class="form-select" @bind="unitId">
+                <option value="">All</option>
+                @foreach (var u in properties.FirstOrDefault(p => p.Id == propertyId)?.Units ?? []) { <option value="@u.Id">@u.Label</option> }
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Category</label>
+            <select class="form-select" @bind="category">
+                @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Paid with</label>
+            <select class="form-select" @bind="paidWith">
+                @foreach (var m in Enum.GetValues<PaymentMethod>()) { <option value="@m">@m</option> }
+            </select>
+        </div>
+    </div>
+
+    <table class="table align-middle mt-3" style="max-width: 48rem">
+        <thead><tr><th>Description</th><th class="text-end" style="width: 10rem">Amount</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var line in lines)
+            {
+                <tr>
+                    <td><input class="form-control" @bind="line.Description" /></td>
+                    <td><input type="number" step="0.01" class="form-control text-end" @bind="line.Amount" /></td>
+                    <td><button class="btn btn-sm btn-outline-danger" @onclick="() => lines.Remove(line)">Remove</button></td>
+                </tr>
+            }
+            <tr class="fw-semibold"><td class="text-end">Total</td><td class="text-end">@lines.Sum(l => l.Amount).ToString("C")</td><td></td></tr>
+        </tbody>
+    </table>
+    <button class="btn btn-link px-0" @onclick="() => lines.Add(new Line())">+ Add a line</button>
+    <div class="mt-2">
+        <button class="btn btn-primary" @onclick="SaveAsync">Save @lines.Count @(lines.Count == 1 ? "expense" : "expenses")</button>
+    </div>
+}
+
+@code {
+    private class Line
+    {
+        public string Description { get; set; } = "";
+        public decimal Amount { get; set; }
+    }
+
+    private List<Property> properties = [];
+    private List<Vendor> vendors = [];
+    private Dictionary<int, Expense> lastExpenseByVendor = [];
+    private string message = "";
+    private List<Line> lines = [];
+    private DateOnly date;
+    private int? vendorId;
+    private bool addingVendor;
+    private string newVendorName = "";
+    private int? propertyId;
+    private int? unitId;
+    private ExpenseCategory category = ExpenseCategory.CleaningAndMaintenance;
+    private PaymentMethod paidWith = PaymentMethod.Cash;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
+        vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+        lastExpenseByVendor = (await db.Expenses.AsNoTracking().Where(e => e.VendorId != null).ToListAsync())
+            .GroupBy(e => e.VendorId!.Value)
+            .ToDictionary(g => g.Key, g => g.MaxBy(e => e.Date)!);
+    }
+
+    private void Read()
+    {
+        var today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        var result = TextExpenseParser.Parse(message, today);
+        error = result.Lines.Count == 0 ? "No dollar amounts found. Add the lines yourself below." : null;
+        lines = result.Lines.Select(l => new Line { Description = l.Description, Amount = l.Amount }).ToList();
+        if (lines.Count == 0)
+        {
+            lines.Add(new Line());
+        }
+        date = result.Date ?? today;
+
+        // Pre-select a vendor whose name appears in the text.
+        if (vendorId is null && vendors.FirstOrDefault(v => message.Contains(v.Name.Split(' ')[0], StringComparison.OrdinalIgnoreCase)) is { } vendor)
+        {
+            SelectVendor(vendor.Id);
+        }
+    }
+
+    private void OnVendorChanged(ChangeEventArgs e)
+    {
+        var value = e.Value as string;
+        addingVendor = value == "new";
+        if (int.TryParse(value, out var id))
+        {
+            SelectVendor(id);
+        }
+        else
+        {
+            vendorId = null;
+        }
+    }
+
+    /// <summary>Selects a vendor and defaults the property and category to what was used last time.</summary>
+    private void SelectVendor(int id)
+    {
+        vendorId = id;
+        if (lastExpenseByVendor.TryGetValue(id, out var last))
+        {
+            propertyId = last.PropertyId;
+            unitId = last.UnitId;
+            category = last.Category;
+            paidWith = last.PaidWith ?? paidWith;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (propertyId is null)
+        {
+            error = "Choose a property.";
+            return;
+        }
+        if (lines.Any(l => l.Amount <= 0 || string.IsNullOrWhiteSpace(l.Description)))
+        {
+            error = "Every line needs a description and an amount.";
+            return;
+        }
+        if (addingVendor && string.IsNullOrWhiteSpace(newVendorName))
+        {
+            error = "Enter the new vendor's name.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        Vendor? newVendor = addingVendor ? new Vendor { Name = newVendorName.Trim() } : null;
+        foreach (var line in lines)
+        {
+            db.Expenses.Add(new Expense
+            {
+                PropertyId = propertyId.Value,
+                UnitId = unitId,
+                VendorId = newVendor is null ? vendorId : null,
+                Vendor = newVendor,
+                Date = date,
+                Category = category,
+                Amount = line.Amount,
+                Description = line.Description.Trim(),
+                PaidWith = paidWith,
+                Notes = "From text: " + message.Trim(),
+            });
+        }
+        await db.SaveChangesAsync();
+        Navigation.NavigateTo("expenses");
+    }
+}

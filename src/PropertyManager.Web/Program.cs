@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using PropertyManager.Core.Data;
+using PropertyManager.Core.Import;
 using PropertyManager.Core.Services;
 using PropertyManager.Core.Storage;
 using PropertyManager.Web.Components;
@@ -20,6 +21,7 @@ builder.Services.AddDbContextFactory<PropertyManagerDbContext>(options =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<DashboardService>();
+builder.Services.AddScoped<ImportService>();
 
 // Uploaded documents live on disk; swap this registration for an Azure Blob implementation when hosting.
 builder.Services.AddSingleton<IDocumentStorage>(new LocalDocumentStorage(

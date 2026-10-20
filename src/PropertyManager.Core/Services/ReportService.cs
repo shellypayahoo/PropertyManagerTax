@@ -10,18 +10,19 @@ public record PropertyProfitAndLoss(
     int PropertyId,
     string PropertyName,
     int Year,
-    decimal RentIncome,
+    decimal RentReceived,
+    decimal ScheduledRent,
     IReadOnlyList<CategoryTotal> Expenses)
 {
     public decimal TotalExpenses => Expenses.Sum(e => e.Amount);
-    public decimal NetIncome => RentIncome - TotalExpenses;
+    public decimal NetIncome => RentReceived - TotalExpenses;
 }
 
 public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory)
 {
     /// <summary>
     /// Builds a Schedule E–style profit and loss statement for each property in a tax year.
-    /// Rent income is the scheduled rent from leases, prorated by day for partial months.
+    /// Income is rent actually received; scheduled rent from leases (prorated by day) is included for comparison.
     /// </summary>
     public async Task<IReadOnlyList<PropertyProfitAndLoss>> GetAnnualProfitAndLossAsync(int year, CancellationToken ct = default)
     {
@@ -42,10 +43,17 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
             .Where(e => e.Date >= yearStart && e.Date <= yearEnd)
             .ToListAsync(ct);
 
+        var payments = await db.RentPayments
+            .AsNoTracking()
+            .Where(r => r.Date >= yearStart && r.Date <= yearEnd)
+            .Select(r => new { r.Amount, r.Lease!.Unit!.PropertyId })
+            .ToListAsync(ct);
+
         return properties.Select(p => new PropertyProfitAndLoss(
                 p.Id,
                 p.Name,
                 year,
+                payments.Where(r => r.PropertyId == p.Id).Sum(r => r.Amount),
                 p.Units.SelectMany(u => u.Leases).Sum(l => ScheduledRent(l, yearStart, yearEnd)),
                 expenses
                     .Where(e => e.PropertyId == p.Id)

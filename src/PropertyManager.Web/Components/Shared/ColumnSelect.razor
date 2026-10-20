@@ -1,0 +1,13 @@
+<select class="form-select" value="@Value" @onchange="e => ValueChanged.InvokeAsync(string.IsNullOrEmpty(e.Value as string) ? null : (string)e.Value!)">
+    <option value="">—</option>
+    @foreach (var h in Headers)
+    {
+        <option value="@h">@h</option>
+    }
+</select>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<string> Headers { get; set; } = [];
+}

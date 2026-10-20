@@ -20,4 +20,10 @@ public class Expense
     public ExpenseCategory Category { get; set; }
     public decimal Amount { get; set; }
     public string Description { get; set; } = "";
+
+    /// <summary>How the expense was paid; useful when it was paid in cash or from a personal account.</summary>
+    public PaymentMethod? PaidWith { get; set; }
+
+    /// <summary>Free-form notes, e.g. the vendor's text message the expense came from.</summary>
+    public string? Notes { get; set; }
 }

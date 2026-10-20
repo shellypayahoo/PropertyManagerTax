@@ -2,7 +2,7 @@
 
 Property management code that generates tax reports and keeps track of expenses and income.
 
-A Blazor (ASP.NET Core, .NET 10) app for managing rental properties: units, tenants, leases, expenses, maintenance requests, vendors, and an annual profit and loss report laid out by IRS Schedule E line.
+A Blazor (ASP.NET Core, .NET 10) app for managing rental properties: units, tenants, leases, rent payments, expenses, maintenance requests, vendors, bank imports, and an annual profit and loss report laid out by IRS Schedule E line.
 
 Data is stored in a local SQLite file (`src/PropertyManager.Web/propertymanager.db`) with EF Core. On first run the database is created and seeded with:
 
@@ -54,7 +54,24 @@ Open a lease from the **Leases** page to edit its terms and upload the signed le
 
 The database stores only each file's name, size, and upload time. The files themselves are saved under `src/PropertyManager.Web/App_Data/documents` (set `DocumentStorage:LocalPath` in `appsettings.json` to use another folder, such as one in iCloud Drive or OneDrive). File access goes through `IDocumentStorage`, so moving to Azure Blob Storage later means adding one class and changing one line in `Program.cs`.
 
+## Importing financial information
+
+**Bank and Zelle CSV files** (**Import** page): download transactions as CSV from your bank's website and upload them. Common layouts (Chase, Bank of America, Capital One, Wells Fargo, and others) are detected automatically; otherwise you pick the date, description, and amount columns once per account.
+
+Every row is reviewed before it is saved, and each is recorded as one of:
+
+- **Rent received**: deposits whose description contains a tenant's first and last name (as Zelle descriptions do) are matched to that tenant's lease.
+- **Expense**: assigned to a property (and optionally a unit) and a Schedule E category.
+- **Transfer**: money moved between your own accounts, such as Zelle rent swept into the business account. Skipped, so rent isn't counted twice.
+- **Ignore**: anything unrelated to the rentals.
+
+Use **Remember** on a row to save a rule (for example "PEPCO" → Utilities, 1354 Taylor St NW) that fills in future imports. Rows already imported into an account are skipped, so overlapping files are safe. Rows that look like an expense or payment you already entered by hand are suggested as ignored.
+
+**Vendor text messages** (**Expenses → Add from a text message**): paste a text such as "it's $180 for the lawn and $40 for the hedges" to create one expense per amount, with the date, vendor, property, category, and how it was paid (cash, Zelle, …). The original text is kept in the expense notes.
+
+**Cash or check rent**: add payments by hand on a lease's page.
+
 ## Notes
 
-- Rent income on the report is the *scheduled* rent from leases, prorated by day. It is not the rent actually collected; payment tracking isn't built yet.
+- The report's income is rent actually received (imported or entered on a lease). Scheduled rent from leases is shown beside it for comparison.
 - Back up `propertymanager.db` and `App_Data/documents`. Both are excluded from git.

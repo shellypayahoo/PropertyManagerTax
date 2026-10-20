@@ -1,0 +1,53 @@
+@page "/import/rules"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+
+<PageTitle>Import rules</PageTitle>
+
+<p><a href="import">← Import</a></p>
+<h1>Import rules</h1>
+<p class="text-muted">Rules fill in how imported transactions are recorded. Create them with the <em>Remember</em> button while reviewing an import.</p>
+
+@if (rules.Count == 0)
+{
+    <p>No rules yet.</p>
+}
+else
+{
+    <table class="table align-middle">
+        <thead><tr><th>Description contains</th><th>Record as</th><th>Property / tenant</th><th>Category</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var r in rules)
+            {
+                <tr>
+                    <td><code>@r.MatchText</code></td>
+                    <td>@r.Kind</td>
+                    <td>@(r.Tenant?.FullName ?? r.Property?.Name)@(r.Unit is null ? "" : $" – Unit {r.Unit.Label}")</td>
+                    <td>@r.Category?.DisplayName()</td>
+                    <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(r.Id)">Delete</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<CategorizationRule> rules = [];
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        rules = await db.CategorizationRules.AsNoTracking()
+            .Include(r => r.Property).Include(r => r.Unit).Include(r => r.Tenant)
+            .OrderBy(r => r.MatchText)
+            .ToListAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.CategorizationRules.Where(r => r.Id == id).ExecuteDeleteAsync();
+        await LoadAsync();
+    }
+}

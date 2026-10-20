@@ -58,7 +58,12 @@ public sealed class ReportServiceTests : IDisposable
             await DbSeeder.SeedAsync(db);
             var taylorA = await db.Units.SingleAsync(u => u.Property!.Name == "1354 Taylor St NW" && u.Label == "A");
             var tenant = new Tenant { FirstName = "Test", LastName = "Tenant" };
-            db.Leases.Add(new Lease { Unit = taylorA, Tenant = tenant, StartDate = new(2026, 1, 1), MonthlyRent = 4500m });
+            var lease = new Lease { Unit = taylorA, Tenant = tenant, StartDate = new(2026, 1, 1), MonthlyRent = 4500m };
+            db.Leases.Add(lease);
+            db.RentPayments.AddRange(
+                new RentPayment { Lease = lease, Date = new(2026, 1, 2), Amount = 4500m },
+                new RentPayment { Lease = lease, Date = new(2026, 2, 3), Amount = 4500m },
+                new RentPayment { Lease = lease, Date = new(2025, 12, 30), Amount = 4500m });
             db.Expenses.AddRange(
                 new Expense { PropertyId = taylorA.PropertyId, Date = new(2026, 2, 1), Category = ExpenseCategory.Repairs, Amount = 250m, Description = "Faucet" },
                 new Expense { PropertyId = taylorA.PropertyId, Date = new(2026, 5, 1), Category = ExpenseCategory.Repairs, Amount = 100.50m, Description = "Outlet" },
@@ -70,14 +75,15 @@ public sealed class ReportServiceTests : IDisposable
         var statements = await new ReportService(dbFactory).GetAnnualProfitAndLossAsync(2026);
 
         var taylor = statements.Single(s => s.PropertyName == "1354 Taylor St NW");
-        Assert.Equal(12 * 4500m, taylor.RentIncome);
+        Assert.Equal(2 * 4500m, taylor.RentReceived);
+        Assert.Equal(12 * 4500m, taylor.ScheduledRent);
         Assert.Equal(
             [new CategoryTotal(ExpenseCategory.Repairs, 350.50m), new CategoryTotal(ExpenseCategory.Taxes, 3000m)],
             taylor.Expenses);
-        Assert.Equal(54000m - 3350.50m, taylor.NetIncome);
+        Assert.Equal(9000m - 3350.50m, taylor.NetIncome);
 
         var first = statements.Single(s => s.PropertyName == "2228 1st St NW");
-        Assert.Equal(0m, first.RentIncome);
+        Assert.Equal(0m, first.RentReceived);
         Assert.Empty(first.Expenses);
     }
 
