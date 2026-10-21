@@ -120,7 +120,12 @@ else
     }
     <p class="small text-muted mt-1">See every unit for a month on the <a href="rent">Rent</a> page. Zelle payments can be brought in all at once from the <a href="import">Import</a> page.</p>
 
-    <h2 class="h4 mt-5">Documents</h2>
+    <h2 class="h4 mt-5" id="documents">Documents</h2>
+    @if (Uploaded > 0)
+    {
+        <div class="alert alert-success py-2">Uploaded @Uploaded @(Uploaded == 1 ? "file" : "files").</div>
+    }
+    <FormError Message="@UploadError" />
     @if (lease.Documents.Count == 0)
     {
         <p class="text-muted">No documents uploaded yet.</p>
@@ -146,36 +151,30 @@ else
         </table>
     }
 
-    <label class="form-label">Upload signed lease, addenda, or move-in inspection (PDF, Word, or image, up to @(MaxFileBytes / 1024 / 1024) MB each)</label>
-    <InputFile OnChange="UploadAsync" multiple accept="@string.Join(',', AllowedTypes.Keys)" class="form-control" disabled="@uploading" />
-    @if (uploading) { <div class="small text-muted mt-1">Uploading…</div> }
-    <FormError Message="@uploadError" />
+    <form method="post" action="leases/@lease.Id/documents" enctype="multipart/form-data" class="mt-3"
+          onsubmit="var b = this.querySelector('button'); b.disabled = true; b.textContent = 'Uploading…';">
+        <AntiforgeryToken />
+        <label class="form-label" for="lease-files">Upload signed lease, addenda, or move-in inspection (PDF, Word, or image, up to @(LeaseDocumentService.MaxFileBytes / 1024 / 1024) MB each)</label>
+        <div class="d-flex gap-2">
+            <input type="file" id="lease-files" name="files" multiple required class="form-control"
+                   accept="@string.Join(',', LeaseDocumentService.AllowedTypes.Keys)" />
+            <button type="submit" class="btn btn-primary text-nowrap">Upload</button>
+        </div>
+    </form>
 }
 
 @code {
-    private const long MaxFileBytes = 25 * 1024 * 1024;
-
-    // Content type is decided here from the extension, never taken from the browser.
-    private static readonly Dictionary<string, string> AllowedTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [".pdf"] = "application/pdf",
-        [".doc"] = "application/msword",
-        [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        [".jpg"] = "image/jpeg",
-        [".jpeg"] = "image/jpeg",
-        [".png"] = "image/png",
-        [".heic"] = "image/heic",
-    };
-
     [Parameter] public int Id { get; set; }
+
+    // Set by the upload endpoint when it redirects back here.
+    [SupplyParameterFromQuery] public int Uploaded { get; set; }
+    [SupplyParameterFromQuery] public string? UploadError { get; set; }
 
     private Lease? lease;
     private Lease form = new();
     private bool loaded;
     private bool saved;
-    private bool uploading;
     private string? error;
-    private string? uploadError;
     private int rentYear;
     private DateOnly? recordingMonth;
     private List<Tenant> allTenants = [];
@@ -279,58 +278,6 @@ else
         return overlap is null
             ? null
             : $"Those dates overlap the lease for {overlap.TenantNames} ({overlap.StartDate:d} – {overlap.EndDate?.ToString("d") ?? "month-to-month"}).";
-    }
-
-    private async Task UploadAsync(InputFileChangeEventArgs e)
-    {
-        uploading = true;
-        uploadError = null;
-        var problems = new List<string>();
-
-        foreach (var file in e.GetMultipleFiles(maximumFileCount: 20))
-        {
-            var extension = Path.GetExtension(file.Name);
-            if (!AllowedTypes.TryGetValue(extension, out var contentType))
-            {
-                problems.Add($"{file.Name}: file type not allowed.");
-                continue;
-            }
-            if (file.Size > MaxFileBytes)
-            {
-                problems.Add($"{file.Name}: larger than {MaxFileBytes / 1024 / 1024} MB.");
-                continue;
-            }
-
-            string key;
-            await using (var stream = file.OpenReadStream(MaxFileBytes))
-            {
-                key = await Storage.SaveAsync(stream, file.Name);
-            }
-
-            try
-            {
-                await using var db = await DbFactory.CreateDbContextAsync();
-                db.LeaseDocuments.Add(new LeaseDocument
-                {
-                    LeaseId = Id,
-                    FileName = Path.GetFileName(file.Name),
-                    ContentType = contentType,
-                    SizeBytes = file.Size,
-                    StorageKey = key,
-                    UploadedAt = Clock.GetUtcNow(),
-                });
-                await db.SaveChangesAsync();
-            }
-            catch
-            {
-                await Storage.DeleteAsync(key);
-                throw;
-            }
-        }
-
-        uploadError = problems.Count == 0 ? null : string.Join(" ", problems);
-        uploading = false;
-        await LoadAsync();
     }
 
     private async Task DeleteDocumentAsync(LeaseDocument document)

@@ -21,8 +21,18 @@ public class LocalDocumentStorage : IDocumentStorage
         }
 
         var key = $"{Guid.NewGuid():N}{extension}";
-        await using var file = new FileStream(GetPath(key), FileMode.CreateNew, FileAccess.Write);
-        await content.CopyToAsync(file, ct);
+        var path = GetPath(key);
+        try
+        {
+            await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
+            await content.CopyToAsync(file, ct);
+        }
+        catch
+        {
+            // Don't leave a half-written file behind when an upload is interrupted.
+            File.Delete(path);
+            throw;
+        }
         return key;
     }
 

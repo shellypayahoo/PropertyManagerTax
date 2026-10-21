@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Import;
@@ -22,6 +23,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<ImportService>();
+builder.Services.AddScoped<LeaseDocumentService>();
 
 // Uploaded documents live on disk; swap this registration for an Azure Blob implementation when hosting.
 builder.Services.AddSingleton<IDocumentStorage>(new LocalDocumentStorage(
@@ -48,6 +50,25 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+
+// Lease documents are uploaded with a regular browser form post rather than over the Blazor
+// connection, which is more reliable for large files and across browsers (notably Safari).
+app.MapPost("/leases/{id:int}/documents", async (int id, IFormFileCollection files, LeaseDocumentService documents, CancellationToken ct) =>
+{
+    var result = await documents.AddAsync(id, files.Select(f => (f.FileName, f.Length, (Func<Stream>)f.OpenReadStream)), ct);
+    var query = $"uploaded={result.Saved}";
+    if (files.Count == 0)
+    {
+        query += "&uploadError=" + Uri.EscapeDataString("Choose a file first.");
+    }
+    else if (result.Problems.Count > 0)
+    {
+        query += "&uploadError=" + Uri.EscapeDataString(string.Join(" ", result.Problems));
+    }
+    return Results.Redirect($"/leases/{id}?{query}#documents");
+})
+.WithMetadata(new RequestSizeLimitAttribute(LeaseDocumentService.MaxFileBytes * LeaseDocumentService.MaxFilesPerUpload))
+.WithMetadata(new RequestFormLimitsAttribute { MultipartBodyLengthLimit = LeaseDocumentService.MaxFileBytes * LeaseDocumentService.MaxFilesPerUpload });
 
 app.MapGet("/documents/{id:int}", async (int id, bool? download, IDbContextFactory<PropertyManagerDbContext> dbFactory,
     IDocumentStorage storage, HttpContext http, CancellationToken ct) =>
