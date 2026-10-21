@@ -53,6 +53,15 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Property<string>("DescriptionColumn")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("EscrowColumn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InterestColumn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsMortgage")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsRentalOnly")
                         .HasColumnType("INTEGER");
 
@@ -61,10 +70,18 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PrincipalColumn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PropertyId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
                         .IsUnique();
+
+                    b.HasIndex("PropertyId");
 
                     b.ToTable("BankAccounts");
                 });
@@ -516,6 +533,16 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasForeignKey("TenantsId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.BankAccount", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Property");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.CategorizationRule", b =>

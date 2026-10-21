@@ -23,6 +23,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<ImportService>();
+builder.Services.AddScoped<MortgageImportService>();
 builder.Services.AddScoped<LeaseDocumentService>();
 builder.Services.AddScoped<ExpenseSplitService>();
 

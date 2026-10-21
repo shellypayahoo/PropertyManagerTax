@@ -38,7 +38,8 @@ public record ClassifierContext(
     IReadOnlyList<Vendor> Vendors,
     IReadOnlyDictionary<int, Expense> LastExpenseByVendor,
     IReadOnlyList<Expense> ManualExpenses,
-    IReadOnlyList<RentPayment> ManualRentPayments);
+    IReadOnlyList<RentPayment> ManualRentPayments,
+    IReadOnlyList<ImportedTransaction>? MortgagePayments = null);
 
 /// <summary>Suggests how each imported bank row should be recorded. The user reviews and can change every suggestion.</summary>
 public static class TransactionClassifier
@@ -106,6 +107,15 @@ public static class TransactionClassifier
     private static void FlagPossibleDuplicate(ImportRow item, ClassifierContext context)
     {
         var row = item.Row;
+        if (item.Kind == TransactionKind.Expense
+            && context.MortgagePayments?.FirstOrDefault(m =>
+                m.Amount == row.Amount && Math.Abs(m.Date.DayNumber - row.Date.DayNumber) <= MortgageImportService.MatchWindowDays) is { } mortgage)
+        {
+            item.Kind = TransactionKind.Ignored;
+            item.Reason = $"Already recorded from the {mortgage.BankAccount?.Name} payment history ({mortgage.Date:d})";
+            return;
+        }
+
         if (item.Kind == TransactionKind.Expense)
         {
             var match = context.ManualExpenses.FirstOrDefault(e =>

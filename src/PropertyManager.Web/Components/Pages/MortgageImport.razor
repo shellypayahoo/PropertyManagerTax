@@ -1,0 +1,271 @@
+@page "/import/mortgage"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject MortgageImportService ImportService
+
+<PageTitle>Mortgage import</PageTitle>
+
+<p><a href="import">← Import</a></p>
+<h1>Import a mortgage payment history</h1>
+
+@switch (step)
+{
+    case Step.Upload:
+        <p class="text-muted" style="max-width: 48rem">
+            Download the payment history as a CSV from your mortgage company's website. Each payment is matched to the
+            mortgage payment you imported from your bank and split into interest (deductible), principal, and escrow
+            (not deductible), so nothing is counted twice. Property tax and insurance the lender paid from escrow are
+            added as Taxes and Insurance.
+        </p>
+        <div class="row g-3" style="max-width: 48rem">
+            <div class="col-md-6">
+                <label class="form-label">Loan</label>
+                <select class="form-select" @bind="loanId">
+                    @foreach (var l in loans) { <option value="@l.Id">@l.Name</option> }
+                    <option value="0">New loan…</option>
+                </select>
+            </div>
+            @if (loanId == 0)
+            {
+                <div class="col-md-6">
+                    <label class="form-label">Name</label>
+                    <input class="form-control" @bind="newLoanName" @bind:event="oninput" placeholder="e.g. Lakeview – 2228 1st St" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Property</label>
+                    <select class="form-select" @bind="newLoanPropertyId">
+                        <option value="0">Select…</option>
+                        @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
+                    </select>
+                </div>
+            }
+            <div class="col-12">
+                <label class="form-label">CSV file</label>
+                <InputFile OnChange="LoadFileAsync" accept=".csv,text/csv" class="form-control" />
+            </div>
+        </div>
+        <FormError Message="@error" />
+        break;
+
+    case Step.Map:
+        <p>Tell me which columns hold each part of the payment. This is saved for <strong>@loan.Name</strong>.</p>
+        <div class="row g-2" style="max-width: 60rem">
+            <div class="col-md-2"><label class="form-label">Date</label><ColumnSelect @bind-Value="loan.DateColumn" Headers="headers" /></div>
+            <div class="col-md-2"><label class="form-label">Description</label><ColumnSelect @bind-Value="loan.DescriptionColumn" Headers="headers" /></div>
+            <div class="col-md-2"><label class="form-label">Total</label><ColumnSelect @bind-Value="loan.AmountColumn" Headers="headers" /></div>
+            <div class="col-md-2"><label class="form-label">Principal</label><ColumnSelect @bind-Value="loan.PrincipalColumn" Headers="headers" /></div>
+            <div class="col-md-2"><label class="form-label">Interest</label><ColumnSelect @bind-Value="loan.InterestColumn" Headers="headers" /></div>
+            <div class="col-md-2"><label class="form-label">Escrow</label><ColumnSelect @bind-Value="loan.EscrowColumn" Headers="headers" /></div>
+        </div>
+        <p class="small text-muted mt-1">Date, principal, and interest are required. Leave Total empty if the file doesn't have one; it's then principal + interest + escrow.</p>
+        <button class="btn btn-primary" @onclick="ReviewAsync">Continue</button>
+        <button class="btn btn-link" @onclick="ResetAsync">Cancel</button>
+        <FormError Message="@error" />
+        break;
+
+    case Step.Review:
+        var pending = rows.Where(r => !r.AlreadyImported).ToList();
+        <p>
+            <strong>@pending.Count</strong> new rows for <strong>@loan.Name</strong> (@properties.FirstOrDefault(p => p.Id == loan.PropertyId)?.Name).
+            @if (rows.Count > pending.Count) { <span class="text-muted">@(rows.Count - pending.Count) already imported were skipped.</span> }
+        </p>
+        @if (readErrors.Count > 0)
+        {
+            <details class="mb-2 text-warning"><summary>@readErrors.Count lines had problems</summary><ul class="small">@foreach (var e in readErrors) { <li>@e</li> }</ul></details>
+        }
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr><th>Date</th><th>Description</th><th class="text-end">Total</th><th class="text-end">Interest</th><th class="text-end">Principal</th><th class="text-end">Escrow</th><th>What happens</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in pending)
+                {
+                    <tr>
+                        <td class="text-nowrap">@r.Row.Date.ToString("d")</td>
+                        <td>@r.Row.Description</td>
+                        <td class="text-end">@r.Row.Total.ToString("C")</td>
+                        <td class="text-end">@Money(r.Row.Interest)</td>
+                        <td class="text-end">@Money(r.Row.Principal)</td>
+                        <td class="text-end">@Money(r.Row.Escrow)</td>
+                        <td>
+                            <select class="form-select form-select-sm" @bind="r.Action">
+                                @if (r.Match is not null) { <option value="@MortgageAction.SplitBankExpense">Split bank payment</option> }
+                                @if (r.Row.Kind == MortgageRowKind.Payment) { <option value="@MortgageAction.AddExpenses">Add as new expenses</option> }
+                                @if (r.Row.Kind != MortgageRowKind.Payment) { <option value="@MortgageAction.AddPayout">Add as @(r.Row.Kind == MortgageRowKind.InsurancePayout ? "Insurance" : "Taxes")</option> }
+                                <option value="@MortgageAction.Ignore">Ignore</option>
+                            </select>
+                            <div class="small text-muted">@Explain(r)</div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (pending.Any(r => r.Action == MortgageAction.AddExpenses))
+        {
+            <div class="alert alert-warning small" style="max-width: 56rem">
+                Payments marked <strong>Add as new expenses</strong> had no matching bank payment. If you import that bank statement later,
+                the matching payment is suggested as <em>Ignore</em> so it isn't counted twice.
+            </div>
+        }
+        <button class="btn btn-primary" disabled="@saving" @onclick="CommitAsync">Import @pending.Count rows</button>
+        <button class="btn btn-link" @onclick="ResetAsync">Cancel</button>
+        <FormError Message="@error" />
+        break;
+
+    case Step.Done:
+        <div class="alert alert-success">
+            Imported from <strong>@loan.Name</strong>: @summary!.PaymentsSplit bank payments split, @summary.PaymentsAdded payments added,
+            @summary.Payouts escrow payouts added as Taxes/Insurance, @summary.Ignored ignored.
+        </div>
+        <a class="btn btn-primary" href="reports">View reports</a>
+        <a class="btn btn-outline-secondary" href="expenses">View expenses</a>
+        <button class="btn btn-link" @onclick="ResetAsync">Import another file</button>
+        break;
+}
+
+@code {
+    private enum Step { Upload, Map, Review, Done }
+    private const long MaxFileBytes = 10 * 1024 * 1024;
+
+    private Step step;
+    private List<BankAccount> loans = [];
+    private List<Property> properties = [];
+    private int loanId;
+    private string newLoanName = "";
+    private int newLoanPropertyId;
+    private BankAccount loan = new();
+    private string csvText = "";
+    private IReadOnlyList<string> headers = [];
+    private List<MortgageImportRow> rows = [];
+    private IReadOnlyList<string> readErrors = [];
+    private MortgageImportSummary? summary;
+    private string? error;
+    private bool saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        loans = await db.BankAccounts.AsNoTracking().Where(a => a.IsMortgage).OrderBy(a => a.Name).ToListAsync();
+        loanId = loans.FirstOrDefault()?.Id ?? 0;
+        properties = await db.Properties.AsNoTracking().OrderBy(p => p.Name).ToListAsync();
+    }
+
+    private async Task LoadFileAsync(InputFileChangeEventArgs e)
+    {
+        error = null;
+        if (loanId == 0)
+        {
+            if (string.IsNullOrWhiteSpace(newLoanName) || newLoanPropertyId == 0)
+            {
+                error = "Name the loan and choose its property, then choose the file again.";
+                return;
+            }
+            await using var db = await DbFactory.CreateDbContextAsync();
+            if (await db.BankAccounts.AnyAsync(a => a.Name == newLoanName.Trim()))
+            {
+                error = "An account with that name already exists.";
+                return;
+            }
+        }
+        if (e.File.Size > MaxFileBytes)
+        {
+            error = "That file is larger than 10 MB.";
+            return;
+        }
+
+        using (var reader = new StreamReader(e.File.OpenReadStream(MaxFileBytes)))
+        {
+            csvText = await reader.ReadToEndAsync();
+        }
+
+        loan = loanId == 0
+            ? new BankAccount { Name = newLoanName.Trim(), PropertyId = newLoanPropertyId, IsMortgage = true, IsRentalOnly = true }
+            : loans.Single(l => l.Id == loanId);
+
+        var (found, _) = BankCsvReader.FindHeader(CsvParser.Parse(csvText));
+        headers = found;
+        if (headers.Count == 0)
+        {
+            error = "That file doesn't look like a payment history (no dates found).";
+            return;
+        }
+
+        var savedLayoutFits = MortgageCsvReader.IsComplete(loan)
+            && new[] { loan.DateColumn, loan.DescriptionColumn, loan.AmountColumn, loan.PrincipalColumn, loan.InterestColumn, loan.EscrowColumn }
+                .All(c => c is null || headers.Contains(c, StringComparer.OrdinalIgnoreCase));
+        if (!savedLayoutFits)
+        {
+            var detected = MortgageCsvReader.DetectColumns(headers);
+            loan.DateColumn = detected.DateColumn;
+            loan.DescriptionColumn = detected.DescriptionColumn;
+            loan.AmountColumn = detected.AmountColumn;
+            loan.PrincipalColumn = detected.PrincipalColumn;
+            loan.InterestColumn = detected.InterestColumn;
+            loan.EscrowColumn = detected.EscrowColumn;
+        }
+
+        if (savedLayoutFits && loan.Id != 0)
+        {
+            await ReviewAsync();
+        }
+        else
+        {
+            step = Step.Map;
+        }
+    }
+
+    private async Task ReviewAsync()
+    {
+        error = null;
+        var result = MortgageCsvReader.Read(csvText, loan);
+        if (result.Rows.Count == 0)
+        {
+            error = result.Errors.FirstOrDefault() ?? "No payments found with those columns.";
+            step = Step.Map;
+            return;
+        }
+        readErrors = result.Errors;
+        rows = await ImportService.PrepareAsync(loan, result.Rows);
+        step = Step.Review;
+    }
+
+    private async Task CommitAsync()
+    {
+        saving = true;
+        error = null;
+        try
+        {
+            summary = await ImportService.CommitAsync(loan, rows);
+            step = Step.Done;
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task ResetAsync()
+    {
+        step = Step.Upload;
+        rows = [];
+        csvText = "";
+        error = null;
+        newLoanName = "";
+        newLoanPropertyId = 0;
+        await OnInitializedAsync();
+    }
+
+    private static string Money(decimal amount) => amount == 0m ? "" : amount.ToString("C");
+
+    private static string Explain(MortgageImportRow r) => r.Action switch
+    {
+        MortgageAction.SplitBankExpense =>
+            $"Splits the {r.Match!.Amount:C} bank payment on {r.Match.Date:d}" + (r.Unexplained != 0m ? $" ({r.Unexplained:C} fees/other as Other)" : ""),
+        MortgageAction.AddExpenses => "No matching bank payment found",
+        MortgageAction.AddPayout => "Paid from escrow; deductible",
+        _ => r.Row.Kind == MortgageRowKind.Other ? "Not a payment or escrow payout" : "",
+    };
+}

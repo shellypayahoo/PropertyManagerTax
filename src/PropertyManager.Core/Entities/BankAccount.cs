@@ -23,4 +23,18 @@ public class BankAccount
 
     public string? DebitColumn { get; set; }
     public string? CreditColumn { get; set; }
+
+    /// <summary>
+    /// True for a mortgage loan whose payment history is imported from the lender. For a loan, <see cref="AmountColumn"/>
+    /// is the payment total (optional) and the payment is broken down by the principal, interest, and escrow columns.
+    /// </summary>
+    public bool IsMortgage { get; set; }
+
+    /// <summary>For a mortgage: the property the loan is on.</summary>
+    public int? PropertyId { get; set; }
+    public Property? Property { get; set; }
+
+    public string? PrincipalColumn { get; set; }
+    public string? InterestColumn { get; set; }
+    public string? EscrowColumn { get; set; }
 }

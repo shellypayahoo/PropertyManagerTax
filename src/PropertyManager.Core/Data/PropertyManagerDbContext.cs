@@ -87,6 +87,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
         {
             e.Property(a => a.Name).HasMaxLength(100).IsRequired();
             e.HasIndex(a => a.Name).IsUnique();
+            e.HasOne(a => a.Property).WithMany().OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ImportedTransaction>(e =>

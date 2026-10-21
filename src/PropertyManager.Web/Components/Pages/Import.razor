@@ -46,7 +46,10 @@
             </div>
         </div>
         <FormError Message="@error" />
-        <p class="mt-4"><a href="import/rules">Manage saved rules</a></p>
+        <p class="mt-4">
+            <a href="import/mortgage">Import a mortgage payment history</a> (splits payments into interest, principal, and escrow) ·
+            <a href="import/rules">Manage saved rules</a>
+        </p>
         break;
 
     case Step.Map:
@@ -245,7 +248,7 @@
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        accounts = await db.BankAccounts.AsNoTracking().OrderBy(a => a.Name).ToListAsync();
+        accounts = await db.BankAccounts.AsNoTracking().Where(a => !a.IsMortgage).OrderBy(a => a.Name).ToListAsync();
         accountId = accounts.FirstOrDefault()?.Id ?? 0;
         properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
         leases = await db.Leases.AsNoTracking()

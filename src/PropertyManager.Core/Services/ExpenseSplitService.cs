@@ -27,12 +27,22 @@ public class ExpenseSplitService(IDbContextFactory<PropertyManagerDbContext> dbF
             throw new InvalidOperationException($"The parts add up to {nonEmpty.Sum(p => p.Amount):C} but the expense is {original.Amount:C}.");
         }
 
-        // The original keeps the first part (and its link to any imported bank row); the rest are copies.
-        original.Category = nonEmpty[0].Category;
-        original.Amount = nonEmpty[0].Amount;
-        foreach (var part in nonEmpty.Skip(1))
+        Split(db, original, nonEmpty);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Applies a split within an existing context (not saved). The original keeps the first part, and with it any
+    /// link to an imported bank row; the other parts are added as copies with their own category and amount.
+    /// </summary>
+    public static IReadOnlyList<Expense> Split(PropertyManagerDbContext db, Expense original, IReadOnlyList<ExpenseSplitPart> parts)
+    {
+        original.Category = parts[0].Category;
+        original.Amount = parts[0].Amount;
+        var added = new List<Expense> { original };
+        foreach (var part in parts.Skip(1))
         {
-            db.Expenses.Add(new Expense
+            var copy = new Expense
             {
                 PropertyId = original.PropertyId,
                 UnitId = original.UnitId,
@@ -44,8 +54,10 @@ public class ExpenseSplitService(IDbContextFactory<PropertyManagerDbContext> dbF
                 Notes = original.Notes,
                 Category = part.Category,
                 Amount = part.Amount,
-            });
+            };
+            db.Expenses.Add(copy);
+            added.Add(copy);
         }
-        await db.SaveChangesAsync(ct);
+        return added;
     }
 }

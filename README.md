@@ -89,6 +89,15 @@ Only the interest in a mortgage payment is deductible (line 12). Principal repay
 
 Click **Split** on an expense to divide it by category; **Mortgage payment** fills in interest, principal, and escrow deposit, and you enter the amounts from the statement. Alternatively, mark the monthly payments as **Transfer** and once a year add, for each property, one interest expense from Form 1098 plus the taxes and insurance paid from escrow.
 
+### Importing a lender's payment history
+
+If the mortgage company offers a CSV payment history, use **Import → Import a mortgage payment history**. Create the loan once (name and property); the date, principal, interest, escrow, and total columns are detected automatically or chosen once per loan.
+
+- Each payment is matched to the bank expense for the same amount within 10 days and that expense is **split** into interest, principal, and escrow deposit, so the payment isn't counted twice. Any amount not covered by those (such as a late fee) goes to Other.
+- A payment with no matching bank expense is added as new expenses; if that bank payment is imported later, it's suggested as **Ignore**.
+- Property tax and insurance the lender paid from escrow are added as **Taxes** and **Insurance** on the date paid.
+- Rows already imported for the loan are skipped on later imports.
+
 ## Tracking rent
 
 The **Rent** page lists every lease for a month with its rent, what's been paid, and a status (Paid, short, Not paid). **Mark paid** records the payment toward that month; change the amount for a partial payment. Each payment records both the date it was received and the month it's for, so October rent paid on November 2 still counts for October.

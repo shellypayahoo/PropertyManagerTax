@@ -19,6 +19,8 @@ public class ImportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
         var payments = await db.RentPayments.AsNoTracking().ToListAsync(ct);
 
         var importedExpenseIds = (await db.ImportedTransactions.Where(t => t.ExpenseId != null).Select(t => t.ExpenseId!.Value).ToListAsync(ct)).ToHashSet();
+        // Parts created from a lender's payment history aren't all linked to an import row; they're never hand-entered.
+        importedExpenseIds.UnionWith(expenses.Where(e => e.Category is ExpenseCategory.MortgagePrincipal or ExpenseCategory.EscrowDeposit).Select(e => e.Id));
         var importedPaymentIds = (await db.ImportedTransactions.Where(t => t.RentPaymentId != null).Select(t => t.RentPaymentId!.Value).ToListAsync(ct)).ToHashSet();
 
         var lastByVendor = expenses
@@ -26,13 +28,19 @@ public class ImportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
             .GroupBy(e => e.VendorId!.Value)
             .ToDictionary(g => g.Key, g => g.MaxBy(e => e.Date)!);
 
+        var mortgagePayments = await db.ImportedTransactions.AsNoTracking()
+            .Include(t => t.BankAccount)
+            .Where(t => t.BankAccount!.IsMortgage && t.Kind == TransactionKind.Expense)
+            .ToListAsync(ct);
+
         return new ClassifierContext(
             rules,
             leases,
             vendors,
             lastByVendor,
             expenses.Where(e => !importedExpenseIds.Contains(e.Id)).ToList(),
-            payments.Where(p => !importedPaymentIds.Contains(p.Id)).ToList());
+            payments.Where(p => !importedPaymentIds.Contains(p.Id)).ToList(),
+            mortgagePayments);
     }
 
     /// <summary>Builds review rows for parsed bank rows, marking rows already imported into this account.</summary>
