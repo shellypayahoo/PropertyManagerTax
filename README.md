@@ -56,6 +56,8 @@ A lease can have several tenants (roommates, a couple, a co-signer) who share on
 
 Open a lease from the **Leases** page to edit its terms and upload the signed lease, addenda, or inspection reports (PDF, Word, JPG, PNG, HEIC; up to 25 MB each).
 
+Files are read in the browser before they're sent. If a file can't be read, typically an online-only OneDrive or iCloud file that hasn't been downloaded to the Mac, the page says so instead of failing. In Finder, right-click the file and choose **Always Keep on This Device**, or download it from onedrive.com, then upload again.
+
 The database stores only each file's name, size, and upload time. The files themselves are saved under `src/PropertyManager.Web/App_Data/documents` (set `DocumentStorage:LocalPath` in `appsettings.json` to use another folder, such as one in iCloud Drive or OneDrive). File access goes through `IDocumentStorage`, so moving to Azure Blob Storage later means adding one class and changing one line in `Program.cs`.
 
 ## Importing financial information

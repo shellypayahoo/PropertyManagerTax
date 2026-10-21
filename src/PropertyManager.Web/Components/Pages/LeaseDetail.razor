@@ -163,8 +163,7 @@ else
         </table>
     }
 
-    <form method="post" action="leases/@lease.Id/documents" enctype="multipart/form-data" class="mt-3"
-          onsubmit="var b = this.querySelector('button'); b.disabled = true; b.textContent = 'Uploading…';">
+    <form method="post" action="leases/@lease.Id/documents" enctype="multipart/form-data" class="mt-3" data-file-upload>
         <AntiforgeryToken />
         <label class="form-label" for="lease-files">Upload signed lease, addenda, or move-in inspection (PDF, Word, or image, up to @(LeaseDocumentService.MaxFileBytes / 1024 / 1024) MB each)</label>
         <div class="d-flex gap-2">
@@ -172,6 +171,7 @@ else
                    accept="@string.Join(',', LeaseDocumentService.AllowedTypes.Keys)" />
             <button type="submit" class="btn btn-primary text-nowrap">Upload</button>
         </div>
+        <div class="alert alert-danger small mt-2" data-upload-message hidden></div>
     </form>
 }
 
