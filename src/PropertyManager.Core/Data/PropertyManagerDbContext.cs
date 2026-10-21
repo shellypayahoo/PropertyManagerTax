@@ -63,6 +63,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.HasOne(x => x.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.MaintenanceRequest).WithMany(m => m.Expenses).OnDelete(DeleteBehavior.SetNull);
             e.HasIndex(x => x.Date);
+            e.Ignore(x => x.IsShared);
         });
 
         modelBuilder.Entity<MaintenanceRequest>(e =>

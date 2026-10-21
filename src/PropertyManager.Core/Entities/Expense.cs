@@ -3,8 +3,14 @@ namespace PropertyManager.Core.Entities;
 public class Expense
 {
     public int Id { get; set; }
-    public int PropertyId { get; set; }
+    /// <summary>
+    /// The property the expense is for, or null for a cost shared by all properties (software, accounting, etc.).
+    /// Shared expenses are split across properties on the annual report.
+    /// </summary>
+    public int? PropertyId { get; set; }
     public Property? Property { get; set; }
+
+    public bool IsShared => PropertyId is null;
 
     /// <summary>Optional; leave null for property-wide costs such as taxes or insurance.</summary>
     public int? UnitId { get; set; }

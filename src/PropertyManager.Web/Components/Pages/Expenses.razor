@@ -21,7 +21,8 @@
     </div>
     <div class="col-auto">
         <select class="form-select" @bind="propertyFilter" @bind:after="LoadAsync">
-            <option value="0">All properties</option>
+            <option value="0">All expenses</option>
+            <option value="@SharedFilter">Shared by all properties</option>
             @foreach (var p in properties)
             {
                 <option value="@p.Id">@p.Name</option>
@@ -31,27 +32,116 @@
     <div class="col-auto ms-auto fs-5">Total: <strong>@expenses.Sum(e => e.Amount).ToString("C")</strong></div>
 </div>
 
+@if (selected.Count > 0)
+{
+    <div class="card mb-2">
+        <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+            <span class="small">@selected.Count selected. Change to:</span>
+            <select class="form-select form-select-sm w-auto" @bind="bulkProperty">
+                <option value="">Property…</option>
+                <option value="@SharedValue">All properties (shared)</option>
+                @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
+            </select>
+            <select class="form-select form-select-sm w-auto" @bind="bulkCategory">
+                <option value="">Category…</option>
+                @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
+            </select>
+            <button class="btn btn-sm btn-primary" disabled="@(bulkProperty == "" && bulkCategory == "")" @onclick="ApplyBulkAsync">Apply</button>
+            <button class="btn btn-sm btn-link" @onclick="() => selected.Clear()">Clear selection</button>
+        </div>
+    </div>
+}
+
 <table class="table table-sm align-middle">
     <thead>
-        <tr><th>Date</th><th>Property</th><th>Unit</th><th>Category</th><th>Description</th><th>Vendor</th><th>Paid with</th><th class="text-end">Amount</th><th></th></tr>
+        <tr>
+            <th><input type="checkbox" class="form-check-input" title="Select all"
+                       checked="@(expenses.Count > 0 && selected.Count == expenses.Count)" @onchange="e => SelectAll((bool)e.Value!)" /></th>
+            <th>Date</th><th>Property</th><th>Unit</th><th>Category</th><th>Description</th><th>Vendor</th><th>Paid with</th><th class="text-end">Amount</th><th></th>
+        </tr>
     </thead>
     <tbody>
         @foreach (var e in expenses)
         {
-            <tr>
-                <td>@e.Date.ToString("d")</td>
-                <td>@e.Property?.Name</td>
-                <td>@e.Unit?.Label</td>
-                <td>@e.Category.DisplayName()</td>
-                <td>
-                    @e.Description
-                    @if (!string.IsNullOrWhiteSpace(e.Notes)) { <div class="small text-muted text-truncate" style="max-width: 24rem" title="@e.Notes">@e.Notes</div> }
-                </td>
-                <td>@e.Vendor?.Name</td>
-                <td>@e.PaidWith</td>
-                <td class="text-end">@e.Amount.ToString("C")</td>
-                <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(e.Id)">Delete</button></td>
-            </tr>
+            if (editing?.Id == e.Id)
+            {
+                <tr class="table-light">
+                    <td></td>
+                    <td><input type="date" class="form-control form-control-sm" @bind="editing.Date" /></td>
+                    <td>
+                        <select class="form-select form-select-sm" value="@PropertyValue(editing.PropertyId)" @onchange="ev => SetProperty(editing, ev.Value as string)">
+                            <option value="@SharedValue">All properties (shared)</option>
+                            @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
+                        </select>
+                    </td>
+                    <td>
+                        @if (editing.PropertyId is not null)
+                        {
+                            <select class="form-select form-select-sm" @bind="editing.UnitId">
+                                <option value="">All</option>
+                                @foreach (var u in UnitsOf(editing.PropertyId)) { <option value="@u.Id">@u.Label</option> }
+                            </select>
+                        }
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm" @bind="editing.Category">
+                            @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
+                        </select>
+                    </td>
+                    <td><input class="form-control form-control-sm" @bind="editing.Description" /></td>
+                    <td>
+                        <select class="form-select form-select-sm" @bind="editing.VendorId">
+                            <option value="">—</option>
+                            @foreach (var v in vendors) { <option value="@v.Id">@v.Name</option> }
+                        </select>
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm" @bind="editing.PaidWith">
+                            <option value="">—</option>
+                            @foreach (var m in Enum.GetValues<PaymentMethod>()) { <option value="@m">@m</option> }
+                        </select>
+                    </td>
+                    <td><input type="number" step="0.01" class="form-control form-control-sm text-end" style="width: 7rem" @bind="editing.Amount" /></td>
+                    <td class="text-nowrap">
+                        <button class="btn btn-sm btn-success" @onclick="SaveEditAsync">Save</button>
+                        <button class="btn btn-sm btn-link" @onclick="() => editing = null">Cancel</button>
+                    </td>
+                </tr>
+                @if (editError is not null)
+                {
+                    <tr class="table-light"><td></td><td colspan="9"><FormError Message="@editError" /></td></tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td><input type="checkbox" class="form-check-input" checked="@selected.Contains(e.Id)" @onchange="ev => Toggle(e.Id, (bool)ev.Value!)" /></td>
+                    <td>@e.Date.ToString("d")</td>
+                    <td>
+                        @if (e.IsShared)
+                        {
+                            <span class="badge text-bg-info" title="Split across all properties on the annual report">All properties</span>
+                        }
+                        else
+                        {
+                            @e.Property?.Name
+                        }
+                    </td>
+                    <td>@e.Unit?.Label</td>
+                    <td>@e.Category.DisplayName()</td>
+                    <td>
+                        @e.Description
+                        @if (!string.IsNullOrWhiteSpace(e.Notes)) { <div class="small text-muted text-truncate" style="max-width: 24rem" title="@e.Notes">@e.Notes</div> }
+                    </td>
+                    <td>@e.Vendor?.Name</td>
+                    <td>@e.PaidWith</td>
+                    <td class="text-end">@e.Amount.ToString("C")</td>
+                    <td class="text-nowrap">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(e)">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(e.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
         }
     </tbody>
 </table>
@@ -61,19 +151,20 @@
     <div class="col-md-2"><label class="form-label">Date</label><InputDate @bind-Value="form.Date" class="form-control" /></div>
     <div class="col-md-2">
         <label class="form-label">Property</label>
-        <InputSelect @bind-Value="form.PropertyId" class="form-select">
-            <option value="0">Select…</option>
+        <select class="form-select" value="@(addPropertyChosen ? PropertyValue(form.PropertyId) : "")" @onchange="OnAddPropertyChanged">
+            <option value="">Select…</option>
+            <option value="@SharedValue">All properties (shared)</option>
             @foreach (var p in properties)
             {
                 <option value="@p.Id">@p.Name</option>
             }
-        </InputSelect>
+        </select>
     </div>
     <div class="col-md-1">
         <label class="form-label">Unit</label>
-        <InputSelect @bind-Value="form.UnitId" class="form-select">
+        <InputSelect @bind-Value="form.UnitId" class="form-select" disabled="@(form.PropertyId is null)">
             <option value="">All</option>
-            @foreach (var u in properties.FirstOrDefault(p => p.Id == form.PropertyId)?.Units ?? [])
+            @foreach (var u in UnitsOf(form.PropertyId))
             {
                 <option value="@u.Id">@u.Label</option>
             }
@@ -113,16 +204,31 @@
     <div class="col-md-1"><button type="submit" class="btn btn-primary w-100">Add</button></div>
 </EditForm>
 <FormError Message="@error" />
+<p class="small text-muted mt-1">
+    Use <strong>All properties (shared)</strong> for costs of the whole rental business, such as software, cloud hosting, or accounting.
+    The annual report splits them across properties by number of units.
+</p>
 
 @code {
+    /// <summary>Property dropdown value meaning "shared by all properties".</summary>
+    private const string SharedValue = "shared";
+    private const int SharedFilter = -1;
+
     private List<Expense> expenses = [];
     private List<Property> properties = [];
     private List<Vendor> vendors = [];
     private Expense form = new();
+    private bool addPropertyChosen;
     private int year;
     private int propertyFilter;
     private string? error;
     private DateOnly today;
+
+    private Expense? editing;
+    private string? editError;
+    private HashSet<int> selected = [];
+    private string bulkProperty = "";
+    private string bulkCategory = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -138,6 +244,24 @@
 
     private Expense NewForm() => new() { Date = today, Category = ExpenseCategory.Repairs };
 
+    private static string PropertyValue(int? propertyId) => propertyId?.ToString() ?? SharedValue;
+
+    private static void SetProperty(Expense expense, string? value)
+    {
+        expense.PropertyId = int.TryParse(value, out var id) ? id : null;
+        expense.UnitId = null;
+    }
+
+    private void OnAddPropertyChanged(ChangeEventArgs e)
+    {
+        var value = e.Value as string;
+        addPropertyChosen = !string.IsNullOrEmpty(value);
+        SetProperty(form, value);
+    }
+
+    private IEnumerable<Unit> UnitsOf(int? propertyId) =>
+        properties.FirstOrDefault(p => p.Id == propertyId)?.Units.OrderBy(u => u.Label) ?? Enumerable.Empty<Unit>();
+
     private async Task LoadAsync()
     {
         var start = new DateOnly(year, 1, 1);
@@ -147,31 +271,111 @@
         var query = db.Expenses.AsNoTracking()
             .Include(e => e.Property).Include(e => e.Unit).Include(e => e.Vendor)
             .Where(e => e.Date >= start && e.Date <= end);
-        if (propertyFilter != 0)
+        if (propertyFilter == SharedFilter)
+        {
+            query = query.Where(e => e.PropertyId == null);
+        }
+        else if (propertyFilter != 0)
         {
             query = query.Where(e => e.PropertyId == propertyFilter);
         }
         expenses = await query.OrderByDescending(e => e.Date).ThenByDescending(e => e.Id).ToListAsync();
+        selected.IntersectWith(expenses.Select(e => e.Id));
     }
 
     private async Task AddAsync()
     {
-        if (form.PropertyId == 0 || form.Amount <= 0 || string.IsNullOrWhiteSpace(form.Description))
+        if (!addPropertyChosen || form.Amount <= 0 || string.IsNullOrWhiteSpace(form.Description))
         {
-            error = "Property, description, and a positive amount are required.";
+            error = "Property (or All properties), description, and a positive amount are required.";
             return;
-        }
-        // Clear a unit left over from a previously selected property.
-        if (form.UnitId is { } unitId && properties.First(p => p.Id == form.PropertyId).Units.All(u => u.Id != unitId))
-        {
-            form.UnitId = null;
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
         db.Expenses.Add(form);
         await db.SaveChangesAsync();
         form = NewForm();
+        addPropertyChosen = false;
         error = null;
+        await LoadAsync();
+    }
+
+    private void StartEdit(Expense e)
+    {
+        editing = new Expense
+        {
+            Id = e.Id, Date = e.Date, PropertyId = e.PropertyId, UnitId = e.UnitId, Category = e.Category,
+            Description = e.Description, VendorId = e.VendorId, PaidWith = e.PaidWith, Amount = e.Amount,
+        };
+        editError = null;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        var e = editing!;
+        if (e.Amount == 0 || string.IsNullOrWhiteSpace(e.Description))
+        {
+            editError = "Description and amount are required.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Expenses.FindAsync(e.Id);
+        if (entity is not null)
+        {
+            entity.Date = e.Date;
+            entity.PropertyId = e.PropertyId;
+            entity.UnitId = e.PropertyId is null ? null : e.UnitId;
+            entity.Category = e.Category;
+            entity.Description = e.Description.Trim();
+            entity.VendorId = e.VendorId;
+            entity.PaidWith = e.PaidWith;
+            entity.Amount = e.Amount;
+            await db.SaveChangesAsync();
+        }
+        editing = null;
+        await LoadAsync();
+    }
+
+    private void Toggle(int id, bool isSelected)
+    {
+        if (isSelected)
+        {
+            selected.Add(id);
+        }
+        else
+        {
+            selected.Remove(id);
+        }
+    }
+
+    private void SelectAll(bool isSelected)
+    {
+        selected.Clear();
+        if (isSelected)
+        {
+            selected.UnionWith(expenses.Select(e => e.Id));
+        }
+    }
+
+    private async Task ApplyBulkAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var targets = await db.Expenses.Where(e => selected.Contains(e.Id)).ToListAsync();
+        foreach (var e in targets)
+        {
+            if (bulkProperty != "")
+            {
+                SetProperty(e, bulkProperty);
+            }
+            if (Enum.TryParse<ExpenseCategory>(bulkCategory, out var category))
+            {
+                e.Category = category;
+            }
+        }
+        await db.SaveChangesAsync();
+        selected.Clear();
+        bulkProperty = bulkCategory = "";
         await LoadAsync();
     }
 
@@ -182,6 +386,7 @@
         await db.ImportedTransactions.Where(t => t.ExpenseId == expenseId)
             .ExecuteUpdateAsync(u => u.SetProperty(t => t.ExpenseId, (int?)null).SetProperty(t => t.Kind, TransactionKind.Ignored));
         await db.Expenses.Where(e => e.Id == expenseId).ExecuteDeleteAsync();
+        selected.Remove(expenseId);
         await LoadAsync();
     }
 }

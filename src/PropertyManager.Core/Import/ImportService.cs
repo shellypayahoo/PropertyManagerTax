@@ -87,8 +87,8 @@ public class ImportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
             {
                 imported.Expense = new Expense
                 {
-                    PropertyId = item.PropertyId!.Value,
-                    UnitId = item.UnitId,
+                    PropertyId = item.Shared ? null : item.PropertyId,
+                    UnitId = item.Shared ? null : item.UnitId,
                     VendorId = item.VendorId,
                     Category = item.Category,
                     Date = item.Row.Date,

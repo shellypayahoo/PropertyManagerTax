@@ -21,7 +21,7 @@ else
                 <tr>
                     <td><code>@r.MatchText</code></td>
                     <td>@r.Kind</td>
-                    <td>@(r.Tenant?.FullName ?? r.Property?.Name)@(r.Unit is null ? "" : $" – Unit {r.Unit.Label}")</td>
+                    <td>@(r.Tenant?.FullName ?? r.Property?.Name ?? (r.Kind == TransactionKind.Expense ? "All properties (shared)" : ""))@(r.Unit is null ? "" : $" – Unit {r.Unit.Label}")</td>
                     <td>@r.Category?.DisplayName()</td>
                     <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(r.Id)">Delete</button></td>
                 </tr>

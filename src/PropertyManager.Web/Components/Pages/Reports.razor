@@ -72,6 +72,13 @@ else
             </tbody>
         </table>
     </div>
+    @if (statements.Any(s => s.SharedExpenses != 0))
+    {
+        <p class="small">
+            Includes @statements.Sum(s => s.SharedExpenses).ToString("C") of expenses shared by all properties, split by number of units:
+            @string.Join(", ", statements.Select(s => $"{s.PropertyName} {s.SharedExpenses:C}")).
+        </p>
+    }
     <p class="small text-muted">This is a bookkeeping summary, not tax advice. Check the figures with your tax preparer before filing.</p>
 }
 

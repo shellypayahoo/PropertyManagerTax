@@ -11,6 +11,10 @@ public class ImportRow(BankRow row)
 
     public TransactionKind Kind { get; set; } = TransactionKind.Ignored;
     public int? PropertyId { get; set; }
+
+    /// <summary>For expenses: shared by all properties rather than one (<see cref="PropertyId"/> is then ignored).</summary>
+    public bool Shared { get; set; }
+
     public int? UnitId { get; set; }
     public ExpenseCategory Category { get; set; } = ExpenseCategory.Other;
     public int? VendorId { get; set; }
@@ -21,7 +25,7 @@ public class ImportRow(BankRow row)
 
     public string? Problem => Kind switch
     {
-        TransactionKind.Expense when PropertyId is null => "Choose a property.",
+        TransactionKind.Expense when PropertyId is null && !Shared => "Choose a property.",
         TransactionKind.RentPayment when LeaseId is null => "Choose the tenant.",
         _ => null,
     };
@@ -43,6 +47,7 @@ public static class TransactionClassifier
     {
         var row = item.Row;
         item.PropertyId = item.UnitId = item.VendorId = item.LeaseId = null;
+        item.Shared = false;
         item.Category = ExpenseCategory.Other;
 
         var rule = context.Rules.Where(r => r.Matches(row.Description)).MaxBy(r => r.MatchText.Length);
@@ -50,6 +55,7 @@ public static class TransactionClassifier
         {
             item.Kind = rule.Kind;
             item.PropertyId = rule.PropertyId;
+            item.Shared = rule.Kind == TransactionKind.Expense && rule.PropertyId is null;
             item.UnitId = rule.UnitId;
             item.Category = rule.Category ?? ExpenseCategory.Other;
             item.VendorId = rule.VendorId;
@@ -76,6 +82,7 @@ public static class TransactionClassifier
             if (context.LastExpenseByVendor.TryGetValue(vendor.Id, out var last))
             {
                 item.PropertyId = last.PropertyId;
+                item.Shared = last.IsShared;
                 item.UnitId = last.UnitId;
                 item.Category = last.Category;
             }

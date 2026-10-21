@@ -31,16 +31,17 @@
         </div>
         <div class="col-md-2">
             <label class="form-label">Property</label>
-            <select class="form-select" @bind="propertyId">
+            <select class="form-select" @bind="property" @bind:after="() => unitId = null">
                 <option value="">Select…</option>
+                <option value="@SharedValue">All properties (shared)</option>
                 @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
             </select>
         </div>
         <div class="col-md-1">
             <label class="form-label">Unit</label>
-            <select class="form-select" @bind="unitId">
+            <select class="form-select" @bind="unitId" disabled="@(PropertyId is null)">
                 <option value="">All</option>
-                @foreach (var u in properties.FirstOrDefault(p => p.Id == propertyId)?.Units ?? []) { <option value="@u.Id">@u.Label</option> }
+                @foreach (var u in properties.FirstOrDefault(p => p.Id == PropertyId)?.Units ?? []) { <option value="@u.Id">@u.Label</option> }
             </select>
         </div>
         <div class="col-md-3">
@@ -93,7 +94,12 @@
     private int? vendorId;
     private bool addingVendor;
     private string newVendorName = "";
-    private int? propertyId;
+    /// <summary>Property dropdown value meaning "shared by all properties".</summary>
+    private const string SharedValue = "shared";
+
+    // "" = not chosen yet, SharedValue = all properties, otherwise a property id.
+    private string property = "";
+    private int? PropertyId => int.TryParse(property, out var id) ? id : null;
     private int? unitId;
     private ExpenseCategory category = ExpenseCategory.CleaningAndMaintenance;
     private PaymentMethod paidWith = PaymentMethod.Cash;
@@ -148,7 +154,7 @@
         vendorId = id;
         if (lastExpenseByVendor.TryGetValue(id, out var last))
         {
-            propertyId = last.PropertyId;
+            property = last.PropertyId?.ToString() ?? SharedValue;
             unitId = last.UnitId;
             category = last.Category;
             paidWith = last.PaidWith ?? paidWith;
@@ -157,9 +163,9 @@
 
     private async Task SaveAsync()
     {
-        if (propertyId is null)
+        if (property == "")
         {
-            error = "Choose a property.";
+            error = "Choose a property, or All properties.";
             return;
         }
         if (lines.Any(l => l.Amount <= 0 || string.IsNullOrWhiteSpace(l.Description)))
@@ -179,8 +185,8 @@
         {
             db.Expenses.Add(new Expense
             {
-                PropertyId = propertyId.Value,
-                UnitId = unitId,
+                PropertyId = PropertyId,
+                UnitId = PropertyId is null ? null : unitId,
                 VendorId = newVendor is null ? vendorId : null,
                 Vendor = newVendor,
                 Date = date,

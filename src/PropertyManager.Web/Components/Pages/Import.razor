@@ -95,8 +95,9 @@
                     <option value="">Type…</option>
                     @foreach (var k in Enum.GetValues<TransactionKind>()) { <option value="@k">@KindLabel(k)</option> }
                 </select>
-                <select class="form-select form-select-sm w-auto" @bind="bulkPropertyId">
+                <select class="form-select form-select-sm w-auto" @bind="bulkProperty">
                     <option value="">Property…</option>
+                    <option value="@SharedValue">All properties (shared)</option>
                     @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
                 </select>
                 <select class="form-select form-select-sm w-auto" @bind="bulkCategory">
@@ -135,14 +136,18 @@
                             @if (r.Kind == TransactionKind.Expense)
                             {
                                 <div class="d-flex gap-1">
-                                    <select class="form-select form-select-sm" @bind="r.PropertyId">
+                                    <select class="form-select form-select-sm" value="@PropertyValue(r)" @onchange="e => SetProperty(r, e.Value as string)">
                                         <option value="">Property…</option>
+                                        <option value="@SharedValue">All properties (shared)</option>
                                         @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
                                     </select>
-                                    <select class="form-select form-select-sm" style="max-width: 6rem" @bind="r.UnitId">
-                                        <option value="">All units</option>
-                                        @foreach (var u in properties.FirstOrDefault(p => p.Id == r.PropertyId)?.Units ?? []) { <option value="@u.Id">Unit @u.Label</option> }
-                                    </select>
+                                    @if (!r.Shared)
+                                    {
+                                        <select class="form-select form-select-sm" style="max-width: 6rem" @bind="r.UnitId">
+                                            <option value="">All units</option>
+                                            @foreach (var u in properties.FirstOrDefault(p => p.Id == r.PropertyId)?.Units ?? []) { <option value="@u.Id">Unit @u.Label</option> }
+                                        </select>
+                                    }
                                     <select class="form-select form-select-sm" @bind="r.Category">
                                         @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
                                     </select>
@@ -181,7 +186,7 @@
         <div class="d-flex gap-2 align-items-center sticky-bottom bg-body py-2 border-top">
             <button class="btn btn-primary" disabled="@(problems > 0 || saving)" @onclick="CommitAsync">Import @pending.Count transactions</button>
             <button class="btn btn-link" @onclick="Reset">Cancel</button>
-            @if (problems > 0) { <span class="text-danger small">@problems rows need a property or tenant. Use the "Needs attention" tab.</span> }
+            @if (problems > 0) { <span class="text-danger small">@problems rows need a property (or "All properties") or a tenant. Use the "Needs attention" tab.</span> }
             <FormError Message="@error" />
         </div>
         break;
@@ -227,7 +232,10 @@
     private bool saving;
 
     private string bulkKind = "";
-    private int? bulkPropertyId;
+    private string bulkProperty = "";
+
+    /// <summary>Property dropdown value meaning "shared by all properties".</summary>
+    private const string SharedValue = "shared";
     private string bulkCategory = "";
 
     private ImportRow? ruleRow;
@@ -348,10 +356,9 @@
             {
                 r.Kind = kind;
             }
-            if (bulkPropertyId is { } propertyId)
+            if (bulkProperty != "")
             {
-                r.PropertyId = propertyId;
-                r.UnitId = null;
+                SetProperty(r, bulkProperty);
             }
             if (Enum.TryParse<ExpenseCategory>(bulkCategory, out var category))
             {
@@ -359,8 +366,16 @@
             }
             r.Selected = false;
         }
-        bulkKind = bulkCategory = "";
-        bulkPropertyId = null;
+        bulkKind = bulkCategory = bulkProperty = "";
+    }
+
+    private static string PropertyValue(ImportRow r) => r.Shared ? SharedValue : r.PropertyId?.ToString() ?? "";
+
+    private static void SetProperty(ImportRow r, string? value)
+    {
+        r.Shared = value == SharedValue;
+        r.PropertyId = int.TryParse(value, out var id) ? id : null;
+        r.UnitId = null;
     }
 
     private void StartRule(ImportRow r)
@@ -388,8 +403,9 @@
         {
             MatchText = ruleText.Trim(),
             Kind = r.Kind,
-            PropertyId = r.Kind == TransactionKind.Expense ? r.PropertyId : null,
-            UnitId = r.Kind == TransactionKind.Expense ? r.UnitId : null,
+            // An expense rule with no property records matching rows as shared by all properties.
+            PropertyId = r.Kind == TransactionKind.Expense && !r.Shared ? r.PropertyId : null,
+            UnitId = r.Kind == TransactionKind.Expense && !r.Shared ? r.UnitId : null,
             Category = r.Kind == TransactionKind.Expense ? r.Category : null,
             VendorId = r.Kind == TransactionKind.Expense ? r.VendorId : null,
             TenantId = r.Kind == TransactionKind.RentPayment ? RuleTenantId(r) : null,

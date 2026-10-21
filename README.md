@@ -67,7 +67,7 @@ The database stores only each file's name, size, and upload time. The files them
 Every row is reviewed before it is saved, and each is recorded as one of:
 
 - **Rent received**: deposits whose description contains a tenant's first and last name (as Zelle descriptions do) are matched to that tenant's lease.
-- **Expense**: assigned to a property (and optionally a unit) and a Schedule E category.
+- **Expense**: assigned to a property (and optionally a unit), or to **All properties (shared)**, and a Schedule E category.
 - **Transfer**: money moved between your own accounts, such as Zelle rent swept into the business account. Skipped, so rent isn't counted twice.
 - **Ignore**: anything unrelated to the rentals.
 
@@ -76,6 +76,12 @@ Use **Remember** on a row to save a rule (for example "PEPCO" → Utilities, 135
 **Vendor text messages** (**Expenses → Add from a text message**): paste a text such as "it's $180 for the lawn and $40 for the hedges" to create one expense per amount, with the date, vendor, property, category, and how it was paid (cash, Zelle, …). The original text is kept in the expense notes.
 
 **Cash or check rent**: use **Mark paid** on the Rent page or a lease's page.
+
+## Shared expenses
+
+Costs of the whole rental business, such as software, cloud hosting, or accounting, can be recorded as **All properties (shared)** when importing, on the Expenses page, or from a text message. Schedule E needs expenses per property, so the annual report splits each shared expense across properties by number of units and notes how much was shared.
+
+On the Expenses page, **Edit** changes any expense, and checking several expenses lets you change their property or category at once.
 
 ## Tracking rent
 

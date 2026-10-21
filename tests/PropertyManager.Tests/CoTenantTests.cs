@@ -33,6 +33,7 @@ public sealed class CoTenantTests : IDisposable
                 INSERT INTO Tenants (Id, FirstName, LastName) VALUES (7, 'Jane', 'Sample');
                 INSERT INTO Leases (Id, UnitId, TenantId, StartDate, MonthlyRent, SecurityDeposit) VALUES (3, 1, 7, '2024-01-01', '4500', '0');
                 INSERT INTO RentPayments (Id, LeaseId, Date, Amount, Method) VALUES (1, 3, '2026-01-02', '4500', 'Zelle');
+                INSERT INTO Expenses (Id, PropertyId, UnitId, Date, Category, Amount, Description) VALUES (5, 1, 1, '2026-02-01', 'Repairs', '125.40', 'Faucet');
                 """);
         }
 
@@ -42,6 +43,8 @@ public sealed class CoTenantTests : IDisposable
             var lease = db.Leases.Include(l => l.Tenants).Include(l => l.Payments).Single();
             Assert.Equal("Jane Sample", Assert.Single(lease.Tenants).FullName);
             Assert.Equal(new DateOnly(2026, 1, 1), Assert.Single(lease.Payments).ForMonth);
+            var expense = db.Expenses.Single();
+            Assert.Equal((1, 1, 125.40m), (expense.PropertyId, expense.UnitId, expense.Amount));
         }
     }
 

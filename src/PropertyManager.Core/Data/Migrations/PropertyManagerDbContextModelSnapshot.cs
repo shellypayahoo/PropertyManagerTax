@@ -145,7 +145,7 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("PropertyId")
+                    b.Property<int?>("PropertyId")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("UnitId")
@@ -558,9 +558,7 @@ namespace PropertyManager.Core.Data.Migrations
 
                     b.HasOne("PropertyManager.Core.Entities.Property", "Property")
                         .WithMany("Expenses")
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("PropertyId");
 
                     b.HasOne("PropertyManager.Core.Entities.Unit", "Unit")
                         .WithMany()

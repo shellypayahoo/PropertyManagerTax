@@ -10,6 +10,7 @@ public class CategorizationRule
     public string MatchText { get; set; } = "";
     public TransactionKind Kind { get; set; }
 
+    /// <summary>For expenses: the property, or null to record the expense as shared by all properties.</summary>
     public int? PropertyId { get; set; }
     public Property? Property { get; set; }
     public int? UnitId { get; set; }
