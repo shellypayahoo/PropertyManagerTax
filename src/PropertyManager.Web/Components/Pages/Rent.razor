@@ -17,6 +17,23 @@
     }
 </div>
 
+@if (problems.Count > 0)
+{
+    <div class="alert alert-warning">
+        <strong>Check these payments</strong>, they may have been entered twice:
+        <ul class="mb-0">
+            @foreach (var p in problems)
+            {
+                <li>
+                    <button class="btn btn-link p-0 align-baseline" @onclick="() => GoToMonthAsync(p.Month)">@p.Month.ToString("MMMM yyyy")</button>:
+                    @p.Lease.TenantNames (@p.Lease.Unit?.DisplayName) · @p.Warning · @p.Paid.ToString("C0") paid of @p.Due.ToString("C0")
+                </li>
+            }
+        </ul>
+        <div class="small mt-1">Click <em>Edit</em> next to a payment to fix or delete it.</div>
+    </div>
+}
+
 @if (rows.Count == 0)
 {
     <p class="text-muted">No leases cover @month.ToString("MMMM yyyy"). Add tenants and their leases on the <a href="leases">Leases</a> page.</p>
@@ -75,6 +92,7 @@ else
     private DateOnly thisMonth;
     private DateOnly month;
     private List<RentMonth> rows = [];
+    private IReadOnlyList<RentMonth> problems = [];
     private int? recording;
 
     protected override async Task OnInitializedAsync()
@@ -87,6 +105,13 @@ else
     private async Task ChangeMonthAsync(int delta)
     {
         month = delta == 0 ? thisMonth : month.AddMonths(delta);
+        recording = null;
+        await LoadAsync();
+    }
+
+    private async Task GoToMonthAsync(DateOnly target)
+    {
+        month = target;
         recording = null;
         await LoadAsync();
     }
@@ -107,6 +132,13 @@ else
             .Include(l => l.Payments.Where(p => p.ForMonth == month))
             .Where(l => l.StartDate <= monthEnd && (l.EndDate == null || l.EndDate >= month))
             .ToListAsync();
+
+        var allLeases = await db.Leases.AsNoTracking()
+            .Include(l => l.Tenants)
+            .Include(l => l.Unit).ThenInclude(u => u!.Property)
+            .Include(l => l.Payments)
+            .ToListAsync();
+        problems = RentSchedule.FindProblems(allLeases, today);
 
         rows = leases
             .Select(l => RentSchedule.ForMonth(l, month, today))

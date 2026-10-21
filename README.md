@@ -79,6 +79,8 @@ Use **Remember** on a row to save a rule (for example "PEPCO" → Utilities, 135
 
 The **Rent** page lists every lease for a month with its rent, what's been paid, and a status (Paid, short, Not paid). **Mark paid** records the payment toward that month; change the amount for a partial payment. Each payment records both the date it was received and the month it's for, so October rent paid on November 2 still counts for October.
 
+To fix a payment, click **Edit** next to it to change the date, amount, method, or the month it counts for, or to delete it. Before a payment is saved, the app warns if it looks like a double entry (the month is already paid, or the same amount on the same date is already recorded). Months that look paid twice are flagged **Paid twice?** and listed at the top of the Rent page and the lease's page. Imports also skip Zelle rent for a month you already marked paid by hand.
+
 A lease's page shows the same thing month by month for a year. Rent isn't prorated: the full monthly rent is due for every month a lease covers.
 
 ## Notes

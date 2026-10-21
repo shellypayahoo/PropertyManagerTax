@@ -72,6 +72,18 @@ else
     </div>
     var today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
     var months = RentSchedule.ForYear(lease, rentYear, today);
+    var problems = RentSchedule.FindProblems([lease], today);
+    @if (problems.Count > 0)
+    {
+        <div class="alert alert-warning py-2" style="max-width: 56rem">
+            <strong>Check these payments</strong>, they may have been entered twice:
+            @foreach (var p in problems)
+            {
+                <button class="btn btn-sm btn-outline-dark ms-2 my-1" @onclick="() => rentYear = p.Month.Year">@p.Month.ToString("MMM yyyy"): @p.Warning</button>
+            }
+            <div class="small">Click <em>Edit</em> next to a payment to fix or delete it.</div>
+        </div>
+    }
     var behind = months.Where(m => m.Status is RentStatus.Unpaid or RentStatus.Partial).Sum(m => m.Balance);
     @if (months.Count == 0)
     {

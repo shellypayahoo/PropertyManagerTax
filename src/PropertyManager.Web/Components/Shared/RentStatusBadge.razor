@@ -1,8 +1,12 @@
+@if (Month.Warning is not null)
+{
+    <span class="badge text-bg-warning me-1" title="@Month.Warning">⚠ @(Month.Warning.Length > 20 ? "Check payments" : Month.Warning)</span>
+}
 @switch (Month.Status)
 {
     case RentStatus.Paid:
         <span class="badge text-bg-success">Paid</span>
-        @if (Month.Paid > Month.Due) { <span class="small text-muted ms-1">@((Month.Paid - Month.Due).ToString("C0")) extra</span> }
+        @if (Month.Paid > Month.Due && Month.Warning is null) { <span class="small text-muted ms-1">@((Month.Paid - Month.Due).ToString("C0")) extra</span> }
         break;
     case RentStatus.Partial:
         <span class="badge text-bg-warning">@Month.Balance.ToString("C0") short</span>

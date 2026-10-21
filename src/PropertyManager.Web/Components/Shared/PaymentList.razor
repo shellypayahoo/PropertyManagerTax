@@ -1,16 +1,117 @@
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
 @foreach (var p in Payments)
 {
-    <div class="small text-muted">
-        @p.Date.ToString("MMM d") · @p.Amount.ToString("C") · @p.Method@(string.IsNullOrWhiteSpace(p.Notes) ? "" : $" · {p.Notes}")
-        <button class="btn btn-link btn-sm p-0 ms-1 text-danger text-decoration-none" title="Delete this payment" @onclick="() => DeleteAsync(p.Id)">×</button>
-    </div>
+    if (editing?.Id == p.Id)
+    {
+        <div class="border rounded p-2 my-1 bg-body-tertiary">
+            <div class="d-flex flex-wrap gap-2 align-items-end">
+                <div>
+                    <label class="form-label small mb-0">Received on</label>
+                    <input type="date" class="form-control form-control-sm" @bind="editing.Date" @bind:after="ClearWarning" />
+                </div>
+                <div>
+                    <label class="form-label small mb-0">Rent for</label>
+                    <select class="form-select form-select-sm" @bind="editing.ForMonth" @bind:after="ClearWarning">
+                        @foreach (var m in MonthChoices(p.ForMonth))
+                        {
+                            <option value="@m">@m.ToString("MMMM yyyy")</option>
+                        }
+                    </select>
+                </div>
+                <div style="width: 8rem">
+                    <label class="form-label small mb-0">Amount</label>
+                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="editing.Amount" @bind:after="ClearWarning" />
+                </div>
+                <div>
+                    <label class="form-label small mb-0">How</label>
+                    <select class="form-select form-select-sm" @bind="editing.Method">
+                        @foreach (var m in Enum.GetValues<PaymentMethod>()) { <option value="@m">@m</option> }
+                    </select>
+                </div>
+                <div class="flex-grow-1" style="min-width: 8rem">
+                    <label class="form-label small mb-0">Notes</label>
+                    <input class="form-control form-control-sm" @bind="editing.Notes" />
+                </div>
+            </div>
+            <FormError Message="@error" />
+            @if (warning is not null)
+            {
+                <div class="alert alert-warning py-1 px-2 my-2 small">@warning</div>
+            }
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-sm btn-success" @onclick="() => SaveAsync(confirmed: warning is not null)">@(warning is null ? "Save" : "Save anyway")</button>
+                <button class="btn btn-sm btn-link" @onclick="() => editing = null">Cancel</button>
+                <button class="btn btn-sm btn-outline-danger ms-auto" @onclick="() => DeleteAsync(p.Id)">Delete payment</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="small text-muted">
+            @p.Date.ToString("MMM d") · @p.Amount.ToString("C") · @p.Method@(string.IsNullOrWhiteSpace(p.Notes) ? "" : $" · {p.Notes}")
+            <button class="btn btn-link btn-sm p-0 ms-1 align-baseline" title="Edit or delete this payment" @onclick="() => StartEdit(p)">Edit</button>
+        </div>
+    }
 }
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<RentPayment> Payments { get; set; } = [];
     [Parameter] public EventCallback OnChanged { get; set; }
 
-    [Inject] private IDbContextFactory<PropertyManagerDbContext> DbFactory { get; set; } = default!;
+    private RentPayment? editing;
+    private string? error;
+    private string? warning;
+
+    private void StartEdit(RentPayment p)
+    {
+        editing = new RentPayment
+        {
+            Id = p.Id, LeaseId = p.LeaseId, Date = p.Date, ForMonth = p.ForMonth, Amount = p.Amount, Method = p.Method, Notes = p.Notes,
+        };
+        error = warning = null;
+    }
+
+    private void ClearWarning() => warning = null;
+
+    private static IEnumerable<DateOnly> MonthChoices(DateOnly around) =>
+        Enumerable.Range(-12, 19).Select(i => around.AddMonths(i)).Reverse();
+
+    private async Task SaveAsync(bool confirmed)
+    {
+        var e = editing!;
+        if (e.Amount <= 0)
+        {
+            error = "Amount must be greater than zero.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (!confirmed)
+        {
+            var lease = await db.Leases.AsNoTracking().Include(l => l.Payments).SingleAsync(l => l.Id == e.LeaseId);
+            var original = lease.Payments.Single(p => p.Id == e.Id);
+            warning = RentSchedule.CheckNewPayment(lease, e.ForMonth, e.Date, e.Amount, DateOnly.FromDateTime(Clock.GetLocalNow().DateTime), editing: original);
+            if (warning is not null)
+            {
+                return;
+            }
+        }
+
+        var payment = await db.RentPayments.FindAsync(e.Id);
+        if (payment is not null)
+        {
+            payment.Date = e.Date;
+            payment.ForMonth = RentPayment.MonthOf(e.ForMonth);
+            payment.Amount = e.Amount;
+            payment.Method = e.Method;
+            payment.Notes = string.IsNullOrWhiteSpace(e.Notes) ? null : e.Notes.Trim();
+            await db.SaveChangesAsync();
+        }
+        editing = null;
+        await OnChanged.InvokeAsync();
+    }
 
     private async Task DeleteAsync(int paymentId)
     {
@@ -19,6 +120,7 @@
         await db.ImportedTransactions.Where(t => t.RentPaymentId == paymentId)
             .ExecuteUpdateAsync(u => u.SetProperty(t => t.RentPaymentId, (int?)null).SetProperty(t => t.Kind, TransactionKind.Ignored));
         await db.RentPayments.Where(p => p.Id == paymentId).ExecuteDeleteAsync();
+        editing = null;
         await OnChanged.InvokeAsync();
     }
 }

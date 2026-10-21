@@ -117,6 +117,17 @@ public static class TransactionClassifier
             {
                 item.Kind = TransactionKind.Ignored;
                 item.Reason = $"Possible duplicate of rent payment recorded on {match.Date:d}";
+                return;
+            }
+
+            // The month was already marked paid by hand, e.g. with "Mark paid" before importing.
+            var month = RentPayment.MonthOf(row.Date);
+            var lease = context.Leases.FirstOrDefault(l => l.Id == item.LeaseId);
+            var paidByHand = context.ManualRentPayments.Where(p => p.LeaseId == item.LeaseId && p.ForMonth == month).Sum(p => p.Amount);
+            if (lease is not null && paidByHand > 0m && paidByHand + row.Amount > lease.MonthlyRent)
+            {
+                item.Kind = TransactionKind.Ignored;
+                item.Reason = $"{month:MMMM} rent is already recorded ({paidByHand:C0}); this would pay it twice";
             }
         }
     }
