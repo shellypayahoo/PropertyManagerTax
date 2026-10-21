@@ -72,12 +72,13 @@ else
             </tbody>
         </table>
     </div>
-    @if (statements.Any(s => s.NotDeductible != 0))
+    @if (statements.Any(s => s.NotDeductible.Count > 0))
     {
         <p class="small">
-            Not included above: @statements.Sum(s => s.NotDeductible).ToString("C") of mortgage principal
-            (@string.Join(", ", statements.Where(s => s.NotDeductible != 0).Select(s => $"{s.PropertyName} {s.NotDeductible:C}"))).
-            Principal repays the loan and isn't deductible; the interest is on line 12.
+            Not included above (not deductible):
+            @string.Join("; ", statements.SelectMany(s => s.NotDeductible).GroupBy(n => n.Category).Select(g => $"{g.Key.DisplayName().Replace(" (not deductible)", "").ToLowerInvariant()} {g.Sum(n => n.Amount):C}")).
+            Principal repays the loan, and escrow deposits only become deductible when the lender pays your property taxes
+            and insurance out of escrow; record those payments as Taxes and Insurance.
         </p>
     }
     @if (statements.Any(s => s.SharedExpenses != 0))

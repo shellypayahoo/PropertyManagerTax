@@ -46,14 +46,13 @@ public sealed class MortgageSplitTests : IDisposable
         [
             new(ExpenseCategory.MortgageInterest, 1900m),
             new(ExpenseCategory.MortgagePrincipal, 700m),
-            new(ExpenseCategory.Taxes, 450m),
-            new(ExpenseCategory.Insurance, 150m),
+            new(ExpenseCategory.EscrowDeposit, 600m),
         ]);
 
         await using var db = dbFactory.CreateDbContext();
         var parts = await db.Expenses.OrderBy(e => e.Id).ToListAsync();
         Assert.Equal(
-            [(ExpenseCategory.MortgageInterest, 1900m), (ExpenseCategory.MortgagePrincipal, 700m), (ExpenseCategory.Taxes, 450m), (ExpenseCategory.Insurance, 150m)],
+            [(ExpenseCategory.MortgageInterest, 1900m), (ExpenseCategory.MortgagePrincipal, 700m), (ExpenseCategory.EscrowDeposit, 600m)],
             parts.Select(p => (p.Category, p.Amount)));
         Assert.Equal(id, parts[0].Id);
         Assert.All(parts, p => Assert.Equal((taylorId, new DateOnly(2026, 3, 1), "ROCKET MORTGAGE PMT", PaymentMethod.BankTransfer), (p.PropertyId!.Value, p.Date, p.Description, p.PaidWith!.Value)));
@@ -74,19 +73,26 @@ public sealed class MortgageSplitTests : IDisposable
     {
         var id = await AddMortgagePaymentAsync();
         await new ExpenseSplitService(dbFactory).SplitAsync(id,
-            [new(ExpenseCategory.MortgageInterest, 1900m), new(ExpenseCategory.MortgagePrincipal, 1300m)]);
+            [new(ExpenseCategory.MortgageInterest, 1900m), new(ExpenseCategory.MortgagePrincipal, 700m), new(ExpenseCategory.EscrowDeposit, 600m)]);
+        await using (var db = dbFactory.CreateDbContext())
+        {
+            // The lender later pays the property tax bill out of escrow.
+            db.Expenses.Add(new Expense { PropertyId = taylorId, Date = new(2026, 9, 15), Category = ExpenseCategory.Taxes, Amount = 2400m, Description = "Escrow disbursement: DC real property tax" });
+            await db.SaveChangesAsync();
+        }
 
         var taylor = (await new ReportService(dbFactory).GetAnnualProfitAndLossAsync(2026)).Single(s => s.PropertyId == taylorId);
 
-        Assert.Equal(new CategoryTotal(ExpenseCategory.MortgageInterest, 1900m), Assert.Single(taylor.Expenses));
-        Assert.Equal(1900m, taylor.TotalExpenses);
-        Assert.Equal(1300m, taylor.NotDeductible);
+        Assert.Equal([new CategoryTotal(ExpenseCategory.MortgageInterest, 1900m), new CategoryTotal(ExpenseCategory.Taxes, 2400m)], taylor.Expenses);
+        Assert.Equal(4300m, taylor.TotalExpenses);
+        Assert.Equal([new CategoryTotal(ExpenseCategory.MortgagePrincipal, 700m), new CategoryTotal(ExpenseCategory.EscrowDeposit, 600m)], taylor.NotDeductible);
     }
 
     [Fact]
-    public void PrincipalHasNoScheduleELine()
+    public void PrincipalAndEscrowDepositHaveNoScheduleELine()
     {
         Assert.Null(ExpenseCategory.MortgagePrincipal.ScheduleELine());
+        Assert.Null(ExpenseCategory.EscrowDeposit.ScheduleELine());
         Assert.Equal(12, ExpenseCategory.MortgageInterest.ScheduleELine());
     }
 

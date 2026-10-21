@@ -14,7 +14,7 @@ public record PropertyProfitAndLoss(
     decimal ScheduledRent,
     IReadOnlyList<CategoryTotal> Expenses,
     decimal SharedExpenses,
-    decimal NotDeductible)
+    IReadOnlyList<CategoryTotal> NotDeductible)
 {
     public decimal TotalExpenses => Expenses.Sum(e => e.Amount);
     public decimal NetIncome => RentReceived - TotalExpenses;
@@ -73,7 +73,12 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
                         .Select(g => new CategoryTotal(g.Key, g.Sum(e => e.Amount)))
                         .ToList(),
                     shared.Where(s => s.PropertyId == p.Id && s.Category.IsDeductible()).Sum(s => s.Amount),
-                    all.Where(e => !e.Category.IsDeductible()).Sum(e => e.Amount));
+                    all
+                        .Where(e => !e.Category.IsDeductible())
+                        .GroupBy(e => e.Category)
+                        .OrderBy(g => g.Key)
+                        .Select(g => new CategoryTotal(g.Key, g.Sum(e => e.Amount)))
+                        .ToList());
             })
             .ToList();
     }

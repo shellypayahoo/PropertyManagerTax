@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PropertyManager.Core.Data;
+using PropertyManager.Core.Entities;
 
 namespace PropertyManager.Core.Services;
 
@@ -37,8 +38,8 @@ public class DashboardService(IDbContextFactory<PropertyManagerDbContext> dbFact
             .ToListAsync(ct);
 
         var ytdExpenses = await db.Expenses.AsNoTracking()
-            .Where(e => e.Date >= yearStart && e.Date <= today && e.Category != Entities.ExpenseCategory.MortgagePrincipal)
-            .Select(e => e.Amount)
+            .Where(e => e.Date >= yearStart && e.Date <= today)
+            .Select(e => new { e.Amount, e.Category })
             .ToListAsync(ct);
 
         return new DashboardSummary(
@@ -48,7 +49,7 @@ public class DashboardService(IDbContextFactory<PropertyManagerDbContext> dbFact
             MonthlyLeaseRent: activeLeases.Sum(l => l.MonthlyRent),
             MonthlyMarketRent: units.Sum(u => u.MarketRent),
             OpenMaintenanceCount: openMaintenance.Count(s => s is not (Entities.MaintenanceStatus.Completed or Entities.MaintenanceStatus.Cancelled)),
-            ExpensesYearToDate: ytdExpenses.Sum(),
+            ExpensesYearToDate: ytdExpenses.Where(e => e.Category.IsDeductible()).Sum(e => e.Amount),
             LeasesPaidThisMonth: rentThisMonth.Count(r => r.Status == RentStatus.Paid),
             LeasesDueThisMonth: rentThisMonth.Count);
     }

@@ -24,6 +24,12 @@ public enum ExpenseCategory
 
     /// <summary>The part of a mortgage payment that repays the loan. Not a deductible expense.</summary>
     MortgagePrincipal = 100,
+
+    /// <summary>
+    /// The part of a mortgage payment set aside in escrow. Not deductible when paid in; the property taxes and
+    /// insurance the lender later pays out of escrow are deducted as Taxes and Insurance on the dates paid.
+    /// </summary>
+    EscrowDeposit = 101,
 }
 
 public static class ExpenseCategoryExtensions
@@ -36,6 +42,7 @@ public static class ExpenseCategoryExtensions
         ExpenseCategory.ManagementFees => "Management fees",
         ExpenseCategory.MortgageInterest => "Mortgage interest",
         ExpenseCategory.MortgagePrincipal => "Mortgage principal (not deductible)",
+        ExpenseCategory.EscrowDeposit => "Escrow deposit (not deductible)",
         ExpenseCategory.OtherInterest => "Other interest",
         ExpenseCategory.Depreciation => "Depreciation expense or depletion",
         _ => category.ToString(),

@@ -163,6 +163,13 @@
                                 </div>
                             }
                             <button class="btn btn-sm btn-link px-0" @onclick="() => splitParts.Add(new SplitPart { Category = ExpenseCategory.Other })">+ Add a part</button>
+                            @if (showEscrowHint)
+                            {
+                                <div class="small text-muted mt-1">
+                                    Escrow deposits aren't deductible. When the lender pays your property tax or insurance bill from escrow,
+                                    add that payment as a <strong>Taxes</strong> or <strong>Insurance</strong> expense (the escrow statement and Form 1098 list them).
+                                </div>
+                            }
                             <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
                                 <span class="@(remaining == 0 ? "text-success" : "text-danger")">
                                     @(remaining == 0 ? "Parts add up." : $"{(remaining > 0 ? "Left to assign" : "Over by")}: {Math.Abs(remaining):C}")
@@ -261,6 +268,7 @@
     }
 
     private int? splitting;
+    private bool showEscrowHint;
     private List<SplitPart> splitParts = [];
     private string? splitError;
 
@@ -383,6 +391,7 @@
         editing = null;
         splitting = e.Id;
         splitError = null;
+        showEscrowHint = false;
         splitParts =
         [
             new SplitPart { Category = e.Category, Amount = e.Amount },
@@ -390,14 +399,17 @@
         ];
     }
 
-    /// <summary>Interest, principal, and escrow for taxes and insurance, as on a mortgage statement.</summary>
-    private void UseMortgageParts(Expense e) => splitParts =
-    [
-        new SplitPart { Category = ExpenseCategory.MortgageInterest },
-        new SplitPart { Category = ExpenseCategory.MortgagePrincipal },
-        new SplitPart { Category = ExpenseCategory.Taxes },
-        new SplitPart { Category = ExpenseCategory.Insurance },
-    ];
+    /// <summary>Interest, principal, and escrow deposit, as on a mortgage statement.</summary>
+    private void UseMortgageParts(Expense e)
+    {
+        splitParts =
+        [
+            new SplitPart { Category = ExpenseCategory.MortgageInterest },
+            new SplitPart { Category = ExpenseCategory.MortgagePrincipal },
+            new SplitPart { Category = ExpenseCategory.EscrowDeposit },
+        ];
+        showEscrowHint = true;
+    }
 
     private async Task SaveSplitAsync(int expenseId)
     {

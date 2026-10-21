@@ -85,9 +85,9 @@ On the Expenses page, **Edit** changes any expense, and checking several expense
 
 ## Mortgage payments
 
-Only part of a mortgage payment is deductible: interest (line 12) and any escrow for property taxes (line 16) and insurance (line 9). Principal repays the loan, so it has its own **Mortgage principal (not deductible)** category, which is kept off the Schedule E totals and noted under the report.
+Only the interest in a mortgage payment is deductible (line 12). Principal repays the loan, and money paid into escrow isn't deductible until the lender pays your property taxes (line 16) or insurance (line 9) out of it. So there are two not-deductible categories, **Mortgage principal** and **Escrow deposit**, which are tracked but kept off the Schedule E totals and noted under the report. Record each property tax or insurance payment the lender makes from escrow as a **Taxes** or **Insurance** expense on the date paid; the escrow statement and Form 1098 list them.
 
-Click **Split** on an expense to divide it by category; **Mortgage payment** fills in interest, principal, taxes, and insurance, and you enter the amounts from the statement. Alternatively, mark the monthly payments as **Transfer** and once a year add one interest expense from Form 1098 plus the taxes and insurance from the escrow statement for each property.
+Click **Split** on an expense to divide it by category; **Mortgage payment** fills in interest, principal, and escrow deposit, and you enter the amounts from the statement. Alternatively, mark the monthly payments as **Transfer** and once a year add, for each property, one interest expense from Form 1098 plus the taxes and insurance paid from escrow.
 
 ## Tracking rent
 
