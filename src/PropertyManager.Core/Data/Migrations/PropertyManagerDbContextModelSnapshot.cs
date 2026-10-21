@@ -389,6 +389,9 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Property<DateOnly>("Date")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateOnly>("ForMonth")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("LeaseId")
                         .HasColumnType("INTEGER");
 
@@ -404,7 +407,7 @@ namespace PropertyManager.Core.Data.Migrations
 
                     b.HasIndex("Date");
 
-                    b.HasIndex("LeaseId");
+                    b.HasIndex("LeaseId", "ForMonth");
 
                     b.ToTable("RentPayments");
                 });

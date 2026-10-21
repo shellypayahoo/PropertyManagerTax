@@ -1,0 +1,23 @@
+@switch (Month.Status)
+{
+    case RentStatus.Paid:
+        <span class="badge text-bg-success">Paid</span>
+        @if (Month.Paid > Month.Due) { <span class="small text-muted ms-1">@((Month.Paid - Month.Due).ToString("C0")) extra</span> }
+        break;
+    case RentStatus.Partial:
+        <span class="badge text-bg-warning">@Month.Balance.ToString("C0") short</span>
+        break;
+    case RentStatus.Unpaid:
+        <span class="badge text-bg-danger">Not paid</span>
+        break;
+    case RentStatus.Upcoming:
+        <span class="badge text-bg-light">Upcoming</span>
+        break;
+    default:
+        <span class="small text-muted">No rent due</span>
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired] public RentMonth Month { get; set; } = default!;
+}

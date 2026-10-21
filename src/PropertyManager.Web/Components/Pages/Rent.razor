@@ -1,0 +1,116 @@
+@page "/rent"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+<PageTitle>Rent</PageTitle>
+
+<div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+    <h1 class="mb-0 me-2">Rent</h1>
+    <div class="btn-group" role="group" aria-label="Month">
+        <button class="btn btn-outline-secondary" @onclick="() => ChangeMonthAsync(-1)" aria-label="Previous month">‹</button>
+        <span class="btn btn-outline-secondary disabled text-body fw-semibold" style="min-width: 10rem">@month.ToString("MMMM yyyy")</span>
+        <button class="btn btn-outline-secondary" @onclick="() => ChangeMonthAsync(1)" aria-label="Next month">›</button>
+    </div>
+    @if (month != thisMonth)
+    {
+        <button class="btn btn-link" @onclick="() => ChangeMonthAsync(0)">This month</button>
+    }
+</div>
+
+@if (rows.Count == 0)
+{
+    <p class="text-muted">No leases cover @month.ToString("MMMM yyyy"). Add tenants and their leases on the <a href="leases">Leases</a> page.</p>
+}
+else
+{
+    <p>
+        <strong>@rows.Count(r => r.Status == RentStatus.Paid) of @rows.Count</strong> paid ·
+        @rows.Sum(r => Math.Min(r.Paid, r.Due)).ToString("C0") collected of @rows.Sum(r => r.Due).ToString("C0")
+    </p>
+
+    <table class="table align-middle">
+        <thead>
+            <tr><th>Unit</th><th>Tenants</th><th class="text-end">Rent</th><th class="text-end">Paid</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var r in rows)
+            {
+                <tr>
+                    <td class="text-nowrap">@r.Lease.Unit?.DisplayName</td>
+                    <td>
+                        <a href="leases/@r.Lease.Id">@r.Lease.TenantNames</a>
+                        <PaymentList Payments="r.Payments" OnChanged="LoadAsync" />
+                    </td>
+                    <td class="text-end">@r.Due.ToString("C0")</td>
+                    <td class="text-end">@(r.Paid == 0 ? "—" : r.Paid.ToString("C0"))</td>
+                    <td><RentStatusBadge Month="r" /></td>
+                    <td class="text-end">
+                        @if (recording != r.Lease.Id)
+                        {
+                            <button class="btn btn-sm @(r.Status == RentStatus.Paid ? "btn-outline-secondary" : "btn-success")" @onclick="() => recording = r.Lease.Id">
+                                @(r.Paid == 0 ? "Mark paid" : "Add payment")
+                            </button>
+                        }
+                    </td>
+                </tr>
+                @if (recording == r.Lease.Id)
+                {
+                    <tr class="table-light">
+                        <td colspan="6">
+                            <RecordPaymentForm LeaseId="r.Lease.Id" Month="month" Amount="Math.Max(r.Balance, 0m)"
+                                               OnSaved="SavedAsync" OnCancel="() => recording = null" />
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+    <p class="small text-muted">
+        "Mark paid" records the payment toward @month.ToString("MMMM"). Zelle payments can also be brought in all at once from the <a href="import">Import</a> page.
+    </p>
+}
+
+@code {
+    private DateOnly today;
+    private DateOnly thisMonth;
+    private DateOnly month;
+    private List<RentMonth> rows = [];
+    private int? recording;
+
+    protected override async Task OnInitializedAsync()
+    {
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        thisMonth = month = RentPayment.MonthOf(today);
+        await LoadAsync();
+    }
+
+    private async Task ChangeMonthAsync(int delta)
+    {
+        month = delta == 0 ? thisMonth : month.AddMonths(delta);
+        recording = null;
+        await LoadAsync();
+    }
+
+    private async Task SavedAsync()
+    {
+        recording = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var monthEnd = month.AddMonths(1).AddDays(-1);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var leases = await db.Leases.AsNoTracking()
+            .Include(l => l.Tenants)
+            .Include(l => l.Unit).ThenInclude(u => u!.Property)
+            .Include(l => l.Payments.Where(p => p.ForMonth == month))
+            .Where(l => l.StartDate <= monthEnd && (l.EndDate == null || l.EndDate >= month))
+            .ToListAsync();
+
+        rows = leases
+            .Select(l => RentSchedule.ForMonth(l, month, today))
+            .OrderBy(r => r.Lease.Unit!.Property!.Name).ThenBy(r => r.Lease.Unit!.Label)
+            .ToList();
+    }
+}

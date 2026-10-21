@@ -73,9 +73,15 @@ Use **Remember** on a row to save a rule (for example "PEPCO" → Utilities, 135
 
 **Vendor text messages** (**Expenses → Add from a text message**): paste a text such as "it's $180 for the lawn and $40 for the hedges" to create one expense per amount, with the date, vendor, property, category, and how it was paid (cash, Zelle, …). The original text is kept in the expense notes.
 
-**Cash or check rent**: add payments by hand on a lease's page.
+**Cash or check rent**: use **Mark paid** on the Rent page or a lease's page.
+
+## Tracking rent
+
+The **Rent** page lists every lease for a month with its rent, what's been paid, and a status (Paid, short, Not paid). **Mark paid** records the payment toward that month; change the amount for a partial payment. Each payment records both the date it was received and the month it's for, so October rent paid on November 2 still counts for October.
+
+A lease's page shows the same thing month by month for a year. Rent isn't prorated: the full monthly rent is due for every month a lease covers.
 
 ## Notes
 
-- The report's income is rent actually received (imported or entered on a lease). Scheduled rent from leases is shown beside it for comparison.
+- The report's income is rent actually received in the year (by date received). Scheduled rent from leases, in whole months, is shown beside it for comparison.
 - Back up `propertymanager.db` and `App_Data/documents`. Both are excluded from git.

@@ -79,6 +79,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.Property(p => p.Method).HasConversion<string>().HasMaxLength(20);
             e.HasOne(p => p.Lease).WithMany(l => l.Payments).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(p => p.Date);
+            e.HasIndex(p => new { p.LeaseId, p.ForMonth });
         });
 
         modelBuilder.Entity<BankAccount>(e =>

@@ -105,6 +105,7 @@ public class ImportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
                 {
                     LeaseId = item.LeaseId!.Value,
                     Date = item.Row.Date,
+                    ForMonth = RentPayment.MonthOf(item.Row.Date),
                     Amount = item.Row.Amount,
                     Method = item.Row.Description.Contains("zelle", StringComparison.OrdinalIgnoreCase) ? PaymentMethod.Zelle : PaymentMethod.BankTransfer,
                     Notes = item.Row.Description,

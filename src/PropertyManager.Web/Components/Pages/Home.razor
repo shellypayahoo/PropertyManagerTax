@@ -13,6 +13,7 @@ else
 {
     <div class="row g-3 mb-4">
         <StatCard Label="Properties" Value="@summary.PropertyCount.ToString()" />
+        <StatCard Label="Rent paid this month" Value="@($"{summary.LeasesPaidThisMonth} / {summary.LeasesDueThisMonth}")" Href="rent" />
         <StatCard Label="Units occupied" Value="@($"{summary.OccupiedUnitCount} / {summary.UnitCount}")" />
         <StatCard Label="Monthly rent under lease" Value="@summary.MonthlyLeaseRent.ToString("C0")"
                   Detail="@($"Market rent: {summary.MonthlyMarketRent:C0}")" />

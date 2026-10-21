@@ -22,7 +22,7 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
 {
     /// <summary>
     /// Builds a Schedule E–style profit and loss statement for each property in a tax year.
-    /// Income is rent actually received; scheduled rent from leases (prorated by day) is included for comparison.
+    /// Income is rent actually received; scheduled rent from leases is included for comparison.
     /// </summary>
     public async Task<IReadOnlyList<PropertyProfitAndLoss>> GetAnnualProfitAndLossAsync(int year, CancellationToken ct = default)
     {
@@ -64,33 +64,17 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
             .ToList();
     }
 
-    /// <summary>Rent scheduled under a lease between two dates (inclusive), prorated by day within each month.</summary>
+    /// <summary>Rent due under a lease for the months between two dates (inclusive). Each month the lease covers is due in full.</summary>
     public static decimal ScheduledRent(Lease lease, DateOnly from, DateOnly to)
     {
-        var start = lease.StartDate > from ? lease.StartDate : from;
-        var end = lease.EndDate is { } e && e < to ? e : to;
-        if (end < start)
+        var total = 0m;
+        for (var month = RentPayment.MonthOf(from); month <= to; month = month.AddMonths(1))
         {
-            return 0m;
+            if (RentSchedule.IsDue(lease, month))
+            {
+                total += lease.MonthlyRent;
+            }
         }
-
-        decimal total = 0m;
-        var month = new DateOnly(start.Year, start.Month, 1);
-        while (month <= end)
-        {
-            var daysInMonth = DateTime.DaysInMonth(month.Year, month.Month);
-            var monthEnd = month.AddDays(daysInMonth - 1);
-            var overlapStart = start > month ? start : month;
-            var overlapEnd = end < monthEnd ? end : monthEnd;
-            var days = overlapEnd.DayNumber - overlapStart.DayNumber + 1;
-
-            total += days == daysInMonth
-                ? lease.MonthlyRent
-                : Math.Round(lease.MonthlyRent * days / daysInMonth, 2, MidpointRounding.AwayFromZero);
-
-            month = month.AddMonths(1);
-        }
-
         return total;
     }
 }

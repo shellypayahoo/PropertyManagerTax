@@ -1,0 +1,71 @@
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+<div class="d-flex flex-wrap gap-2 align-items-end py-1">
+    <div>
+        <label class="form-label small mb-0">Received on</label>
+        <input type="date" class="form-control form-control-sm" @bind="date" />
+    </div>
+    <div style="width: 8rem">
+        <label class="form-label small mb-0">Amount</label>
+        <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="amount" />
+    </div>
+    <div>
+        <label class="form-label small mb-0">How</label>
+        <select class="form-select form-select-sm" @bind="method">
+            @foreach (var m in Enum.GetValues<PaymentMethod>()) { <option value="@m">@m</option> }
+        </select>
+    </div>
+    <div class="flex-grow-1" style="min-width: 8rem">
+        <label class="form-label small mb-0">Notes</label>
+        <input class="form-control form-control-sm" @bind="notes" placeholder="Optional" />
+    </div>
+    <button class="btn btn-sm btn-success" @onclick="SaveAsync">Save</button>
+    <button class="btn btn-sm btn-link" @onclick="OnCancel">Cancel</button>
+</div>
+<FormError Message="@error" />
+
+@code {
+    /// <summary>Records a rent payment toward <see cref="Month"/> on <see cref="LeaseId"/>.</summary>
+    [Parameter, EditorRequired] public int LeaseId { get; set; }
+    [Parameter, EditorRequired] public DateOnly Month { get; set; }
+    [Parameter] public decimal Amount { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private DateOnly date;
+    private decimal amount;
+    private PaymentMethod method = PaymentMethod.Zelle;
+    private string? notes;
+    private string? error;
+
+    protected override void OnInitialized()
+    {
+        var today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        // For a past month default to its 1st; otherwise today.
+        date = Month.AddMonths(1) <= today ? Month : today;
+        amount = Amount;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (amount <= 0)
+        {
+            error = "Amount must be greater than zero.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.RentPayments.Add(new RentPayment
+        {
+            LeaseId = LeaseId,
+            ForMonth = Month,
+            Date = date,
+            Amount = amount,
+            Method = method,
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
+        });
+        await db.SaveChangesAsync();
+        await OnSaved.InvokeAsync();
+    }
+}

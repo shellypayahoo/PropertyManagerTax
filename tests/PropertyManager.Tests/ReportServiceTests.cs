@@ -32,14 +32,14 @@ public sealed class ReportServiceTests : IDisposable
     }
 
     [Fact]
-    public void ScheduledRent_ProratesPartialFirstAndLastMonths()
+    public void ScheduledRent_PartialMonthsAreDueInFull()
     {
-        // Starts Mar 16 (16 of 31 days), ends Jun 15 (15 of 30 days).
+        // Starts Mar 16, ends Jun 15: March through June are each due in full.
         var lease = new Lease { StartDate = new(2026, 3, 16), EndDate = new(2026, 6, 15), MonthlyRent = 3100m };
 
         var rent = ReportService.ScheduledRent(lease, new(2026, 1, 1), new(2026, 12, 31));
 
-        Assert.Equal(1600m + 3100m + 3100m + 1550m, rent);
+        Assert.Equal(4 * 3100m, rent);
     }
 
     [Fact]
@@ -61,9 +61,9 @@ public sealed class ReportServiceTests : IDisposable
             var lease = new Lease { Unit = taylorA, Tenants = [tenant], StartDate = new(2026, 1, 1), MonthlyRent = 4500m };
             db.Leases.Add(lease);
             db.RentPayments.AddRange(
-                new RentPayment { Lease = lease, Date = new(2026, 1, 2), Amount = 4500m },
-                new RentPayment { Lease = lease, Date = new(2026, 2, 3), Amount = 4500m },
-                new RentPayment { Lease = lease, Date = new(2025, 12, 30), Amount = 4500m });
+                new RentPayment { Lease = lease, Date = new(2026, 1, 2), ForMonth = new(2026, 1, 1), Amount = 4500m },
+                new RentPayment { Lease = lease, Date = new(2026, 2, 3), ForMonth = new(2026, 2, 1), Amount = 4500m },
+                new RentPayment { Lease = lease, Date = new(2025, 12, 30), ForMonth = new(2025, 12, 1), Amount = 4500m });
             db.Expenses.AddRange(
                 new Expense { PropertyId = taylorA.PropertyId, Date = new(2026, 2, 1), Category = ExpenseCategory.Repairs, Amount = 250m, Description = "Faucet" },
                 new Expense { PropertyId = taylorA.PropertyId, Date = new(2026, 5, 1), Category = ExpenseCategory.Repairs, Amount = 100.50m, Description = "Outlet" },

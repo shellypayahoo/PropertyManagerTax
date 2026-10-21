@@ -61,46 +61,64 @@ else
     <FormError Message="@error" />
     @if (saved) { <div class="text-success small mt-1">Saved.</div> }
 
-    <h2 class="h4 mt-5">Rent payments</h2>
+    <div class="d-flex align-items-center gap-3 mt-5 mb-2">
+        <h2 class="h4 mb-0">Rent</h2>
+        <select class="form-select form-select-sm w-auto" @bind="rentYear">
+            @for (var y = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime).Year; y >= lease.StartDate.Year; y--)
+            {
+                <option value="@y">@y</option>
+            }
+        </select>
+    </div>
     var today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
-    var receivedThisYear = lease.Payments.Where(p => p.Date.Year == today.Year).Sum(p => p.Amount);
-    var dueThisYear = ReportService.ScheduledRent(lease, new DateOnly(today.Year, 1, 1), today);
-    <p>
-        @today.Year so far: <strong>@receivedThisYear.ToString("C")</strong> received of @dueThisYear.ToString("C") due
-        @if (dueThisYear - receivedThisYear > 0) { <span class="text-danger">(@((dueThisYear - receivedThisYear).ToString("C")) behind)</span> }
-    </p>
-    @if (lease.Payments.Count > 0)
+    var months = RentSchedule.ForYear(lease, rentYear, today);
+    var behind = months.Where(m => m.Status is RentStatus.Unpaid or RentStatus.Partial).Sum(m => m.Balance);
+    @if (months.Count == 0)
     {
-        <table class="table table-sm align-middle" style="max-width: 48rem">
-            <thead><tr><th>Date</th><th class="text-end">Amount</th><th>Method</th><th>Notes</th><th></th></tr></thead>
+        <p class="text-muted">No rent due in @rentYear.</p>
+    }
+    else
+    {
+        <p>
+            @months.Count(m => m.Status == RentStatus.Paid) of @months.Count(m => m.Status != RentStatus.NotDue) months paid
+            @if (behind > 0) { <span class="text-danger">· @behind.ToString("C0") unpaid</span> }
+        </p>
+        <table class="table align-middle" style="max-width: 56rem">
+            <thead><tr><th>Month</th><th class="text-end">Rent</th><th class="text-end">Paid</th><th>Status</th><th></th></tr></thead>
             <tbody>
-                @foreach (var p in lease.Payments.OrderByDescending(p => p.Date))
+                @foreach (var m in months)
                 {
                     <tr>
-                        <td>@p.Date.ToString("d")</td>
-                        <td class="text-end">@p.Amount.ToString("C")</td>
-                        <td>@p.Method</td>
-                        <td class="small text-muted">@p.Notes</td>
-                        <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePaymentAsync(p.Id)">Delete</button></td>
+                        <td>
+                            @m.Month.ToString("MMMM")
+                            <PaymentList Payments="m.Payments" OnChanged="LoadAsync" />
+                        </td>
+                        <td class="text-end">@(m.Due == 0 ? "—" : m.Due.ToString("C0"))</td>
+                        <td class="text-end">@(m.Paid == 0 ? "—" : m.Paid.ToString("C0"))</td>
+                        <td><RentStatusBadge Month="m" /></td>
+                        <td class="text-end">
+                            @if (recordingMonth != m.Month)
+                            {
+                                <button class="btn btn-sm @(m.Status == RentStatus.Paid ? "btn-outline-secondary" : "btn-success")" @onclick="() => recordingMonth = m.Month">
+                                    @(m.Paid == 0 ? "Mark paid" : "Add payment")
+                                </button>
+                            }
+                        </td>
                     </tr>
+                    @if (recordingMonth == m.Month)
+                    {
+                        <tr class="table-light">
+                            <td colspan="5">
+                                <RecordPaymentForm LeaseId="lease.Id" Month="m.Month" Amount="Math.Max(m.Balance, 0m)"
+                                                   OnSaved="PaymentSavedAsync" OnCancel="() => recordingMonth = null" />
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
     }
-    <EditForm Model="newPayment" OnValidSubmit="AddPaymentAsync" FormName="add-payment" class="row g-2 align-items-end" style="max-width: 48rem">
-        <div class="col-md-3"><label class="form-label">Date</label><InputDate @bind-Value="newPayment.Date" class="form-control" /></div>
-        <div class="col-md-2"><label class="form-label">Amount</label><InputNumber @bind-Value="newPayment.Amount" class="form-control" /></div>
-        <div class="col-md-2">
-            <label class="form-label">Method</label>
-            <InputSelect @bind-Value="newPayment.Method" class="form-select">
-                @foreach (var m in Enum.GetValues<PaymentMethod>()) { <option value="@m">@m</option> }
-            </InputSelect>
-        </div>
-        <div class="col-md-3"><label class="form-label">Notes</label><InputText @bind-Value="newPayment.Notes" class="form-control" /></div>
-        <div class="col-md-2"><button type="submit" class="btn btn-outline-primary w-100">Add payment</button></div>
-    </EditForm>
-    <FormError Message="@paymentError" />
-    <p class="small text-muted mt-1">Zelle payments can be brought in all at once from the <a href="import">Import</a> page.</p>
+    <p class="small text-muted mt-1">See every unit for a month on the <a href="rent">Rent</a> page. Zelle payments can be brought in all at once from the <a href="import">Import</a> page.</p>
 
     <h2 class="h4 mt-5">Documents</h2>
     @if (lease.Documents.Count == 0)
@@ -158,15 +176,15 @@ else
     private bool uploading;
     private string? error;
     private string? uploadError;
-    private RentPayment newPayment = new();
+    private int rentYear;
+    private DateOnly? recordingMonth;
     private List<Tenant> allTenants = [];
     private int tenantToAdd;
-    private string? paymentError;
 
     protected override async Task OnParametersSetAsync()
     {
+        rentYear = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime).Year;
         await LoadAsync();
-        ResetPayment();
         if (lease is not null)
         {
             form = new Lease
@@ -323,36 +341,9 @@ else
         await LoadAsync();
     }
 
-    private void ResetPayment() => newPayment = new RentPayment
+    private async Task PaymentSavedAsync()
     {
-        Date = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime),
-        Amount = lease?.MonthlyRent ?? 0m,
-    };
-
-    private async Task AddPaymentAsync()
-    {
-        if (newPayment.Amount <= 0)
-        {
-            paymentError = "Amount must be greater than zero.";
-            return;
-        }
-
-        await using var db = await DbFactory.CreateDbContextAsync();
-        newPayment.LeaseId = Id;
-        db.RentPayments.Add(newPayment);
-        await db.SaveChangesAsync();
-        paymentError = null;
-        await LoadAsync();
-        ResetPayment();
-    }
-
-    private async Task DeletePaymentAsync(int paymentId)
-    {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        // Keep the import record (so the bank row isn't re-imported) but unlink it from the payment.
-        await db.ImportedTransactions.Where(t => t.RentPaymentId == paymentId)
-            .ExecuteUpdateAsync(u => u.SetProperty(t => t.RentPaymentId, (int?)null).SetProperty(t => t.Kind, TransactionKind.Ignored));
-        await db.RentPayments.Where(p => p.Id == paymentId).ExecuteDeleteAsync();
+        recordingMonth = null;
         await LoadAsync();
     }
 

@@ -41,7 +41,7 @@ public sealed class CoTenantTests : IDisposable
             db.Database.Migrate();
             var lease = db.Leases.Include(l => l.Tenants).Include(l => l.Payments).Single();
             Assert.Equal("Jane Sample", Assert.Single(lease.Tenants).FullName);
-            Assert.Single(lease.Payments);
+            Assert.Equal(new DateOnly(2026, 1, 1), Assert.Single(lease.Payments).ForMonth);
         }
     }
 

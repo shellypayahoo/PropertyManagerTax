@@ -1,0 +1,24 @@
+@foreach (var p in Payments)
+{
+    <div class="small text-muted">
+        @p.Date.ToString("MMM d") · @p.Amount.ToString("C") · @p.Method@(string.IsNullOrWhiteSpace(p.Notes) ? "" : $" · {p.Notes}")
+        <button class="btn btn-link btn-sm p-0 ms-1 text-danger text-decoration-none" title="Delete this payment" @onclick="() => DeleteAsync(p.Id)">×</button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<RentPayment> Payments { get; set; } = [];
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    [Inject] private IDbContextFactory<PropertyManagerDbContext> DbFactory { get; set; } = default!;
+
+    private async Task DeleteAsync(int paymentId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // Keep the import record (so the bank row isn't re-imported) but unlink it from the payment.
+        await db.ImportedTransactions.Where(t => t.RentPaymentId == paymentId)
+            .ExecuteUpdateAsync(u => u.SetProperty(t => t.RentPaymentId, (int?)null).SetProperty(t => t.Kind, TransactionKind.Ignored));
+        await db.RentPayments.Where(p => p.Id == paymentId).ExecuteDeleteAsync();
+        await OnChanged.InvokeAsync();
+    }
+}

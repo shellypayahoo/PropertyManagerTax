@@ -10,7 +10,9 @@ public record DashboardSummary(
     decimal MonthlyLeaseRent,
     decimal MonthlyMarketRent,
     int OpenMaintenanceCount,
-    decimal ExpensesYearToDate);
+    decimal ExpensesYearToDate,
+    int LeasesPaidThisMonth,
+    int LeasesDueThisMonth);
 
 public class DashboardService(IDbContextFactory<PropertyManagerDbContext> dbFactory, TimeProvider clock)
 {
@@ -20,7 +22,14 @@ public class DashboardService(IDbContextFactory<PropertyManagerDbContext> dbFact
         var today = DateOnly.FromDateTime(clock.GetLocalNow().DateTime);
         var yearStart = new DateOnly(today.Year, 1, 1);
 
-        var units = await db.Units.AsNoTracking().Include(u => u.Leases).ToListAsync(ct);
+        var thisMonth = Entities.RentPayment.MonthOf(today);
+        var units = await db.Units.AsNoTracking()
+            .Include(u => u.Leases).ThenInclude(l => l.Payments.Where(p => p.ForMonth == thisMonth))
+            .ToListAsync(ct);
+        var rentThisMonth = units.SelectMany(u => u.Leases)
+            .Select(l => RentSchedule.ForMonth(l, thisMonth, today))
+            .Where(r => r.Status != RentStatus.NotDue)
+            .ToList();
         var activeLeases = units.Select(u => u.ActiveLease(today)).OfType<Entities.Lease>().ToList();
 
         var openMaintenance = await db.MaintenanceRequests.AsNoTracking()
@@ -39,6 +48,8 @@ public class DashboardService(IDbContextFactory<PropertyManagerDbContext> dbFact
             MonthlyLeaseRent: activeLeases.Sum(l => l.MonthlyRent),
             MonthlyMarketRent: units.Sum(u => u.MarketRent),
             OpenMaintenanceCount: openMaintenance.Count(s => s is not (Entities.MaintenanceStatus.Completed or Entities.MaintenanceStatus.Cancelled)),
-            ExpensesYearToDate: ytdExpenses.Sum());
+            ExpensesYearToDate: ytdExpenses.Sum(),
+            LeasesPaidThisMonth: rentThisMonth.Count(r => r.Status == RentStatus.Paid),
+            LeasesDueThisMonth: rentThisMonth.Count);
     }
 }
