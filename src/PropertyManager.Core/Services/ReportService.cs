@@ -13,7 +13,8 @@ public record PropertyProfitAndLoss(
     decimal RentReceived,
     decimal ScheduledRent,
     IReadOnlyList<CategoryTotal> Expenses,
-    decimal SharedExpenses)
+    decimal SharedExpenses,
+    decimal NotDeductible)
 {
     public decimal TotalExpenses => Expenses.Sum(e => e.Amount);
     public decimal NetIncome => RentReceived - TotalExpenses;
@@ -52,21 +53,28 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
 
         var shared = AllocateSharedExpenses(properties, expenses.Where(e => e.IsShared));
 
-        return properties.Select(p => new PropertyProfitAndLoss(
-                p.Id,
-                p.Name,
-                year,
-                payments.Where(r => r.PropertyId == p.Id).Sum(r => r.Amount),
-                p.Units.SelectMany(u => u.Leases).Sum(l => ScheduledRent(l, yearStart, yearEnd)),
-                expenses
+        return properties.Select(p =>
+            {
+                var all = expenses
                     .Where(e => e.PropertyId == p.Id)
                     .Select(e => (e.Category, e.Amount))
                     .Concat(shared.Where(s => s.PropertyId == p.Id).Select(s => (s.Category, s.Amount)))
-                    .GroupBy(e => e.Category)
-                    .OrderBy(g => g.Key)
-                    .Select(g => new CategoryTotal(g.Key, g.Sum(e => e.Amount)))
-                    .ToList(),
-                shared.Where(s => s.PropertyId == p.Id).Sum(s => s.Amount)))
+                    .ToList();
+                return new PropertyProfitAndLoss(
+                    p.Id,
+                    p.Name,
+                    year,
+                    payments.Where(r => r.PropertyId == p.Id).Sum(r => r.Amount),
+                    p.Units.SelectMany(u => u.Leases).Sum(l => ScheduledRent(l, yearStart, yearEnd)),
+                    all
+                        .Where(e => e.Category.IsDeductible())
+                        .GroupBy(e => e.Category)
+                        .OrderBy(g => g.Key)
+                        .Select(g => new CategoryTotal(g.Key, g.Sum(e => e.Amount)))
+                        .ToList(),
+                    shared.Where(s => s.PropertyId == p.Id && s.Category.IsDeductible()).Sum(s => s.Amount),
+                    all.Where(e => !e.Category.IsDeductible()).Sum(e => e.Amount));
+            })
             .ToList();
     }
 

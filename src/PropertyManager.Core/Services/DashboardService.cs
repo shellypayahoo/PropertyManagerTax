@@ -37,7 +37,7 @@ public class DashboardService(IDbContextFactory<PropertyManagerDbContext> dbFact
             .ToListAsync(ct);
 
         var ytdExpenses = await db.Expenses.AsNoTracking()
-            .Where(e => e.Date >= yearStart && e.Date <= today)
+            .Where(e => e.Date >= yearStart && e.Date <= today && e.Category != Entities.ExpenseCategory.MortgagePrincipal)
             .Select(e => e.Amount)
             .ToListAsync(ct);
 

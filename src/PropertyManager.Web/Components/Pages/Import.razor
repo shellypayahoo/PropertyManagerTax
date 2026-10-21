@@ -102,7 +102,7 @@
                 </select>
                 <select class="form-select form-select-sm w-auto" @bind="bulkCategory">
                     <option value="">Category…</option>
-                    @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
+                    <CategoryOptions />
                 </select>
                 <button class="btn btn-sm btn-outline-primary" @onclick="() => ApplyBulk(visible)">Apply</button>
             </div>
@@ -149,7 +149,7 @@
                                         </select>
                                     }
                                     <select class="form-select form-select-sm" @bind="r.Category">
-                                        @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
+                                        <CategoryOptions />
                                     </select>
                                 </div>
                             }

@@ -83,6 +83,12 @@ Costs of the whole rental business, such as software, cloud hosting, or accounti
 
 On the Expenses page, **Edit** changes any expense, and checking several expenses lets you change their property or category at once.
 
+## Mortgage payments
+
+Only part of a mortgage payment is deductible: interest (line 12) and any escrow for property taxes (line 16) and insurance (line 9). Principal repays the loan, so it has its own **Mortgage principal (not deductible)** category, which is kept off the Schedule E totals and noted under the report.
+
+Click **Split** on an expense to divide it by category; **Mortgage payment** fills in interest, principal, taxes, and insurance, and you enter the amounts from the statement. Alternatively, mark the monthly payments as **Transfer** and once a year add one interest expense from Form 1098 plus the taxes and insurance from the escrow statement for each property.
+
 ## Tracking rent
 
 The **Rent** page lists every lease for a month with its rent, what's been paid, and a status (Paid, short, Not paid). **Mark paid** records the payment toward that month; change the amount for a partial payment. Each payment records both the date it was received and the month it's for, so October rent paid on November 2 still counts for October.

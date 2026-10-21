@@ -72,6 +72,14 @@ else
             </tbody>
         </table>
     </div>
+    @if (statements.Any(s => s.NotDeductible != 0))
+    {
+        <p class="small">
+            Not included above: @statements.Sum(s => s.NotDeductible).ToString("C") of mortgage principal
+            (@string.Join(", ", statements.Where(s => s.NotDeductible != 0).Select(s => $"{s.PropertyName} {s.NotDeductible:C}"))).
+            Principal repays the loan and isn't deductible; the interest is on line 12.
+        </p>
+    }
     @if (statements.Any(s => s.SharedExpenses != 0))
     {
         <p class="small">

@@ -1,8 +1,8 @@
 namespace PropertyManager.Core.Entities;
 
 /// <summary>
-/// Expense categories matching IRS Schedule E (Form 1040), Part I, lines 5–19.
-/// The numeric value is the Schedule E line number.
+/// Expense categories matching IRS Schedule E (Form 1040), Part I, lines 5–19; the numeric value is the
+/// Schedule E line number. Values of 100 and up are tracked but not deductible, so they stay off the tax report.
 /// </summary>
 public enum ExpenseCategory
 {
@@ -21,6 +21,9 @@ public enum ExpenseCategory
     Utilities = 17,
     Depreciation = 18,
     Other = 19,
+
+    /// <summary>The part of a mortgage payment that repays the loan. Not a deductible expense.</summary>
+    MortgagePrincipal = 100,
 }
 
 public static class ExpenseCategoryExtensions
@@ -31,11 +34,15 @@ public static class ExpenseCategoryExtensions
         ExpenseCategory.CleaningAndMaintenance => "Cleaning and maintenance",
         ExpenseCategory.LegalAndProfessionalFees => "Legal and other professional fees",
         ExpenseCategory.ManagementFees => "Management fees",
-        ExpenseCategory.MortgageInterest => "Mortgage interest paid to banks, etc.",
+        ExpenseCategory.MortgageInterest => "Mortgage interest",
+        ExpenseCategory.MortgagePrincipal => "Mortgage principal (not deductible)",
         ExpenseCategory.OtherInterest => "Other interest",
         ExpenseCategory.Depreciation => "Depreciation expense or depletion",
         _ => category.ToString(),
     };
 
-    public static int ScheduleELine(this ExpenseCategory category) => (int)category;
+    /// <summary>The Schedule E line number, or null for a category that isn't deductible.</summary>
+    public static int? ScheduleELine(this ExpenseCategory category) => category.IsDeductible() ? (int)category : null;
+
+    public static bool IsDeductible(this ExpenseCategory category) => (int)category is >= 5 and <= 19;
 }

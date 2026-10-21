@@ -24,6 +24,7 @@ builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<LeaseDocumentService>();
+builder.Services.AddScoped<ExpenseSplitService>();
 
 // Uploaded documents live on disk; swap this registration for an Azure Blob implementation when hosting.
 builder.Services.AddSingleton<IDocumentStorage>(new LocalDocumentStorage(

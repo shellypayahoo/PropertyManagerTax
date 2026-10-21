@@ -1,6 +1,7 @@
 @page "/expenses"
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
+@inject ExpenseSplitService SplitService
 
 <PageTitle>Expenses</PageTitle>
 
@@ -44,7 +45,7 @@
             </select>
             <select class="form-select form-select-sm w-auto" @bind="bulkCategory">
                 <option value="">Category…</option>
-                @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
+                <CategoryOptions />
             </select>
             <button class="btn btn-sm btn-primary" disabled="@(bulkProperty == "" && bulkCategory == "")" @onclick="ApplyBulkAsync">Apply</button>
             <button class="btn btn-sm btn-link" @onclick="() => selected.Clear()">Clear selection</button>
@@ -85,7 +86,7 @@
                     </td>
                     <td>
                         <select class="form-select form-select-sm" @bind="editing.Category">
-                            @foreach (var c in Enum.GetValues<ExpenseCategory>()) { <option value="@c">@c.DisplayName()</option> }
+                            <CategoryOptions />
                         </select>
                     </td>
                     <td><input class="form-control form-control-sm" @bind="editing.Description" /></td>
@@ -138,9 +139,41 @@
                     <td class="text-end">@e.Amount.ToString("C")</td>
                     <td class="text-nowrap">
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(e)">Edit</button>
+                        <button class="btn btn-sm btn-outline-secondary" title="Split into several categories, e.g. a mortgage payment" @onclick="() => StartSplit(e)">Split</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(e.Id)">Delete</button>
                     </td>
                 </tr>
+                @if (splitting == e.Id)
+                {
+                    var remaining = e.Amount - splitParts.Sum(p => p.Amount);
+                    <tr class="table-light">
+                        <td></td>
+                        <td colspan="9">
+                            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                <strong>Split @e.Amount.ToString("C")</strong>
+                                <span class="small text-muted">Use the amounts from the statement.</span>
+                                <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="() => UseMortgageParts(e)">Mortgage payment</button>
+                            </div>
+                            @foreach (var part in splitParts)
+                            {
+                                <div class="d-flex gap-2 mb-1" style="max-width: 36rem">
+                                    <select class="form-select form-select-sm" @bind="part.Category"><CategoryOptions /></select>
+                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" style="width: 9rem" @bind="part.Amount" @bind:event="oninput" />
+                                    <button class="btn btn-sm btn-link text-danger" disabled="@(splitParts.Count <= 2)" @onclick="() => splitParts.Remove(part)">Remove</button>
+                                </div>
+                            }
+                            <button class="btn btn-sm btn-link px-0" @onclick="() => splitParts.Add(new SplitPart { Category = ExpenseCategory.Other })">+ Add a part</button>
+                            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                                <span class="@(remaining == 0 ? "text-success" : "text-danger")">
+                                    @(remaining == 0 ? "Parts add up." : $"{(remaining > 0 ? "Left to assign" : "Over by")}: {Math.Abs(remaining):C}")
+                                </span>
+                                <button class="btn btn-sm btn-success" disabled="@(remaining != 0)" @onclick="() => SaveSplitAsync(e.Id)">Save split</button>
+                                <button class="btn btn-sm btn-link" @onclick="() => splitting = null">Cancel</button>
+                            </div>
+                            <FormError Message="@splitError" />
+                        </td>
+                    </tr>
+                }
             }
         }
     </tbody>
@@ -173,10 +206,7 @@
     <div class="col-md-2">
         <label class="form-label">Category</label>
         <InputSelect @bind-Value="form.Category" class="form-select">
-            @foreach (var c in Enum.GetValues<ExpenseCategory>())
-            {
-                <option value="@c">@c.DisplayName()</option>
-            }
+            <CategoryOptions />
         </InputSelect>
     </div>
     <div class="col-md-2"><label class="form-label">Description</label><InputText @bind-Value="form.Description" class="form-control" /></div>
@@ -223,6 +253,16 @@
     private int propertyFilter;
     private string? error;
     private DateOnly today;
+
+    private class SplitPart
+    {
+        public ExpenseCategory Category { get; set; }
+        public decimal Amount { get; set; }
+    }
+
+    private int? splitting;
+    private List<SplitPart> splitParts = [];
+    private string? splitError;
 
     private Expense? editing;
     private string? editError;
@@ -302,6 +342,7 @@
 
     private void StartEdit(Expense e)
     {
+        splitting = null;
         editing = new Expense
         {
             Id = e.Id, Date = e.Date, PropertyId = e.PropertyId, UnitId = e.UnitId, Category = e.Category,
@@ -335,6 +376,41 @@
         }
         editing = null;
         await LoadAsync();
+    }
+
+    private void StartSplit(Expense e)
+    {
+        editing = null;
+        splitting = e.Id;
+        splitError = null;
+        splitParts =
+        [
+            new SplitPart { Category = e.Category, Amount = e.Amount },
+            new SplitPart { Category = ExpenseCategory.Other },
+        ];
+    }
+
+    /// <summary>Interest, principal, and escrow for taxes and insurance, as on a mortgage statement.</summary>
+    private void UseMortgageParts(Expense e) => splitParts =
+    [
+        new SplitPart { Category = ExpenseCategory.MortgageInterest },
+        new SplitPart { Category = ExpenseCategory.MortgagePrincipal },
+        new SplitPart { Category = ExpenseCategory.Taxes },
+        new SplitPart { Category = ExpenseCategory.Insurance },
+    ];
+
+    private async Task SaveSplitAsync(int expenseId)
+    {
+        try
+        {
+            await SplitService.SplitAsync(expenseId, splitParts.Select(p => new ExpenseSplitPart(p.Category, p.Amount)).ToList());
+            splitting = null;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            splitError = ex.Message;
+        }
     }
 
     private void Toggle(int id, bool isSelected)

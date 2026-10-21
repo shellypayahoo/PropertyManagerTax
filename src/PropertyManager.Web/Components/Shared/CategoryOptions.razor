@@ -1,0 +1,13 @@
+@* <option> elements for an expense category <select>, grouped by whether the category is deductible. *@
+<optgroup label="Schedule E expenses">
+    @foreach (var c in Enum.GetValues<ExpenseCategory>().Where(c => c.IsDeductible()))
+    {
+        <option value="@c">@c.DisplayName()</option>
+    }
+</optgroup>
+<optgroup label="Not deductible">
+    @foreach (var c in Enum.GetValues<ExpenseCategory>().Where(c => !c.IsDeductible()))
+    {
+        <option value="@c">@c.DisplayName()</option>
+    }
+</optgroup>
