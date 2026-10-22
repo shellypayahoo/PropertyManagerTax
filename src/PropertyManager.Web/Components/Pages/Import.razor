@@ -90,7 +90,7 @@
             {
                 var count = pending.Count(r => FilterMatches(f, r));
                 <li class="nav-item">
-                    <button class="nav-link @(filter == f ? "active" : "")" @onclick="() => filter = f">@label <span class="badge text-bg-light">@count</span></button>
+                    <button class="nav-link @(filter == f ? "active" : "")" @onclick="() => SelectFilter(f)">@label <span class="badge text-bg-light">@count</span></button>
                 </li>
             }
         </ul>
@@ -344,11 +344,21 @@
         readErrors = result.Errors;
         context = await ImportService.LoadContextAsync();
         rows = await ImportService.PrepareAsync(account, result.Rows, context);
-        filter = rows.Any(r => !r.AlreadyImported && r.Problem is not null) ? Filter.NeedsAttention : Filter.All;
+        SelectFilter(rows.Any(r => !r.AlreadyImported && r.Problem is not null) ? Filter.NeedsAttention : Filter.All);
         step = Step.Review;
     }
 
-    private bool Matches(ImportRow r) => FilterMatches(filter, r);
+    // The rows a tab showed when it was opened. Editing a row (e.g. choosing its property on "Needs attention")
+    // must not make it vanish before the rest of it (unit, category) can be filled in.
+    private HashSet<ImportRow> shown = [];
+
+    private void SelectFilter(Filter f)
+    {
+        filter = f;
+        shown = rows.Where(r => !r.AlreadyImported && FilterMatches(f, r)).ToHashSet();
+    }
+
+    private bool Matches(ImportRow r) => shown.Contains(r);
 
     private static bool FilterMatches(Filter f, ImportRow r) => f switch
     {
