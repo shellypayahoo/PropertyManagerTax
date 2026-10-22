@@ -8,6 +8,7 @@
 <p class="text-muted">
     Expenses are grouped by IRS Schedule E line. Rents received are the payments recorded on each lease, entered
     by hand or imported from your bank. Scheduled rent is what the leases call for, shown for comparison.
+    Click a line name or an amount to see the items behind it.
 </p>
 
 <div class="mb-3" style="max-width: 10rem">
@@ -38,10 +39,18 @@ else
             <tbody>
                 <tr class="fw-semibold">
                     <td>3</td>
-                    <td>Rents received</td>
-                    @foreach (var s in statements) { <td class="text-end">@s.RentReceived.ToString("C")</td> }
+                    <td><button class="btn btn-link p-0 fw-semibold text-start" title="Show the payments" @onclick="() => OpenAsync(null, null)">Rents received</button></td>
+                    @foreach (var s in statements)
+                    {
+                        <td class="text-end"><button class="btn btn-link p-0 fw-semibold" @onclick="() => OpenAsync(null, s.PropertyId)">@s.RentReceived.ToString("C")</button></td>
+                    }
                     <td class="text-end">@statements.Sum(s => s.RentReceived).ToString("C")</td>
                 </tr>
+                @if (open is { Category: null } rentKey)
+                {
+                    <ReportDetailPanel Title="@DetailTitle(rentKey)" Detail="detail" ForOneProperty="rentKey.PropertyId is not null" PartyHeader="How paid"
+                                       ColumnCount="statements.Count + 3" OnClose="() => open = null" />
+                }
                 <tr class="text-muted small">
                     <td></td>
                     <td>Scheduled rent (for comparison)</td>
@@ -52,10 +61,23 @@ else
                 {
                     <tr>
                         <td>@category.ScheduleELine()</td>
-                        <td>@category.DisplayName()</td>
-                        @foreach (var s in statements) { <td class="text-end">@Amount(s, category)</td> }
+                        <td><button class="btn btn-link p-0 text-start" title="Show the expenses" @onclick="() => OpenAsync(category, null)">@category.DisplayName()</button></td>
+                        @foreach (var s in statements)
+                        {
+                            <td class="text-end">
+                                @if (Amount(s, category) != "")
+                                {
+                                    <button class="btn btn-link p-0" @onclick="() => OpenAsync(category, s.PropertyId)">@Amount(s, category)</button>
+                                }
+                            </td>
+                        }
                         <td class="text-end">@statements.Sum(s => s.Expenses.Where(e => e.Category == category).Sum(e => e.Amount)).ToString("C")</td>
                     </tr>
+                    @if (open is { } key && key.Category == category)
+                    {
+                        <ReportDetailPanel Title="@DetailTitle(key)" Detail="detail" ForOneProperty="key.PropertyId is not null"
+                                           ColumnCount="statements.Count + 3" OnClose="() => open = null" />
+                    }
                 }
                 <tr class="fw-semibold border-top">
                     <td>20</td>
@@ -106,7 +128,34 @@ else
         await LoadAsync();
     }
 
-    private async Task LoadAsync() => statements = await ReportService.GetAnnualProfitAndLossAsync(year);
+    private async Task LoadAsync()
+    {
+        statements = await ReportService.GetAnnualProfitAndLossAsync(year);
+        open = null;
+    }
+
+    // The report cell whose details are shown: a category (null = rent received) and a property (null = all).
+    private record DetailKey(ExpenseCategory? Category, int? PropertyId);
+
+    private DetailKey? open;
+    private ReportDetail? detail;
+
+    private async Task OpenAsync(ExpenseCategory? category, int? propertyId)
+    {
+        var key = new DetailKey(category, propertyId);
+        if (open == key)
+        {
+            open = null;
+            return;
+        }
+        open = key;
+        detail = null;
+        detail = await ReportService.GetDetailAsync(year, category, propertyId);
+    }
+
+    private string DetailTitle(DetailKey key) =>
+        $"{(key.Category is { } c ? c.DisplayName() : "Rents received")} – " +
+        $"{(key.PropertyId is { } id ? statements!.First(s => s.PropertyId == id).PropertyName : "all properties")}, {year}";
 
     private static string Amount(PropertyProfitAndLoss s, ExpenseCategory c) =>
         s.Expenses.FirstOrDefault(e => e.Category == c)?.Amount.ToString("C") ?? "";

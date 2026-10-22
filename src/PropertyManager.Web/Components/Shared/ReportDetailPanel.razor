@@ -1,0 +1,66 @@
+<tr class="table-light">
+    <td colspan="@ColumnCount">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <strong>@Title</strong>
+            <button class="btn btn-sm btn-link ms-auto" @onclick="OnClose">Close</button>
+        </div>
+        @if (Detail is null)
+        {
+            <em class="small">Loading…</em>
+        }
+        else if (Detail.Lines.Count == 0)
+        {
+            <p class="small text-muted mb-1">Nothing recorded.</p>
+        }
+        else
+        {
+            var own = Detail.Lines.Where(l => !l.Shared || !ForOneProperty).ToList();
+            var shared = ForOneProperty ? Detail.Lines.Where(l => l.Shared).ToList() : [];
+            <table class="table table-sm mb-1 bg-transparent">
+                <thead><tr class="small"><th>Date</th><th>Where</th><th>Description</th><th>@PartyHeader</th><th class="text-end">Amount</th></tr></thead>
+                <tbody class="small">
+                    @foreach (var l in own)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@l.Date.ToString("d")</td>
+                            <td class="text-nowrap">@l.Where</td>
+                            <td>@l.Description</td>
+                            <td>@l.Party</td>
+                            <td class="text-end">@l.Amount.ToString("C")</td>
+                        </tr>
+                    }
+                    @if (shared.Count > 0)
+                    {
+                        <tr>
+                            <td colspan="4">This property's share of the expenses below, which are shared by all properties (split by number of units)</td>
+                            <td class="text-end">@Detail.SharedShare.ToString("C")</td>
+                        </tr>
+                        @foreach (var l in shared)
+                        {
+                            <tr class="text-muted">
+                                <td class="text-nowrap ps-3">@l.Date.ToString("d")</td>
+                                <td class="text-nowrap">@l.Where</td>
+                                <td>@l.Description</td>
+                                <td>@l.Party</td>
+                                <td class="text-end">(@l.Amount.ToString("C") total)</td>
+                            </tr>
+                        }
+                    }
+                    <tr class="fw-semibold">
+                        <td colspan="4">Total (@own.Count @(own.Count == 1 ? "item" : "items")@(shared.Count > 0 ? $" + share of {shared.Count} shared" : ""))</td>
+                        <td class="text-end">@Detail.Total.ToString("C")</td>
+                    </tr>
+                </tbody>
+            </table>
+        }
+    </td>
+</tr>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public ReportDetail? Detail { get; set; }
+    [Parameter] public bool ForOneProperty { get; set; }
+    [Parameter] public string PartyHeader { get; set; } = "Vendor";
+    [Parameter] public int ColumnCount { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+}

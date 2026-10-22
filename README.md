@@ -116,5 +116,6 @@ A lease's page shows the same thing month by month for a year. Rent isn't prorat
 
 ## Notes
 
+- On the report, click a line name (e.g. Cleaning and maintenance, or Rents received) to list every item behind it, or click one property's amount to see just that property's items, including its share of shared expenses. Each list ends with a total that matches the report.
 - The report's income is rent actually received in the year (by date received). Scheduled rent from leases, in whole months, is shown beside it for comparison.
 - Back up `propertymanager.db` and `App_Data/documents`. Both are excluded from git.

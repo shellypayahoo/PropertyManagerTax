@@ -20,6 +20,16 @@ public record PropertyProfitAndLoss(
     public decimal NetIncome => RentReceived - TotalExpenses;
 }
 
+/// <summary>One item behind a number on the annual report.</summary>
+public record ReportDetailLine(DateOnly Date, string Where, string Description, string? Party, decimal Amount, bool Shared);
+
+/// <summary>
+/// The items behind one report cell. For a single property, <see cref="SharedShare"/> is that property's portion of
+/// expenses shared by all properties; the shared items themselves are listed (with <see cref="ReportDetailLine.Shared"/>)
+/// at their full amounts for reference. <see cref="Total"/> equals the number on the report.
+/// </summary>
+public record ReportDetail(IReadOnlyList<ReportDetailLine> Lines, decimal SharedShare, decimal Total);
+
 public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory)
 {
     /// <summary>
@@ -81,6 +91,64 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
                         .ToList());
             })
             .ToList();
+    }
+
+    /// <summary>The expenses in a category (or, when <paramref name="category"/> is null, the rent received) behind a report cell.</summary>
+    public async Task<ReportDetail> GetDetailAsync(int year, ExpenseCategory? category, int? propertyId, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var yearStart = new DateOnly(year, 1, 1);
+        var yearEnd = new DateOnly(year, 12, 31);
+
+        if (category is null)
+        {
+            var payments = (await db.RentPayments.AsNoTracking()
+                    .Include(r => r.Lease!).ThenInclude(l => l.Tenants)
+                    .Include(r => r.Lease!).ThenInclude(l => l.Unit!).ThenInclude(u => u.Property)
+                    .Where(r => r.Date >= yearStart && r.Date <= yearEnd)
+                    .ToListAsync(ct))
+                .Where(r => propertyId is null || r.Lease!.Unit!.PropertyId == propertyId)
+                .OrderBy(r => r.Date)
+                .Select(r => new ReportDetailLine(
+                    r.Date,
+                    r.Lease!.Unit!.DisplayName,
+                    $"{r.Lease.TenantNames} – rent for {r.ForMonth:MMMM yyyy}",
+                    r.Method.ToString(),
+                    r.Amount,
+                    false))
+                .ToList();
+            return new ReportDetail(payments, 0m, payments.Sum(p => p.Amount));
+        }
+
+        var expenses = await db.Expenses.AsNoTracking()
+            .Include(e => e.Property).Include(e => e.Unit).Include(e => e.Vendor)
+            .Where(e => e.Date >= yearStart && e.Date <= yearEnd && e.Category == category)
+            .ToListAsync(ct);
+
+        static ReportDetailLine Line(Expense e) => new(
+            e.Date,
+            e.IsShared ? "All properties" : e.Unit is null ? e.Property!.Name : $"{e.Property!.Name} – Unit {e.Unit.Label}",
+            e.Description,
+            e.Vendor?.Name,
+            e.Amount,
+            e.IsShared);
+
+        if (propertyId is null)
+        {
+            var all = expenses.OrderBy(e => e.Date).Select(Line).ToList();
+            return new ReportDetail(all, 0m, all.Sum(l => l.Amount));
+        }
+
+        var properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync(ct);
+        var share = AllocateSharedExpenses(properties, expenses.Where(e => e.IsShared))
+            .Where(a => a.PropertyId == propertyId)
+            .Sum(a => a.Amount);
+        var lines = expenses
+            .Where(e => e.PropertyId == propertyId || e.IsShared)
+            .OrderBy(e => e.IsShared).ThenBy(e => e.Date)
+            .Select(Line)
+            .ToList();
+        return new ReportDetail(lines, share, lines.Where(l => !l.Shared).Sum(l => l.Amount) + share);
     }
 
     /// <summary>
