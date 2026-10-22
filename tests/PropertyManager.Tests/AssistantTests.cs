@@ -180,6 +180,48 @@ public sealed class AssistantTests : IDisposable
         Assert.NotNull(client.GetService<FunctionInvokingChatClient>());
     }
 
+    [Theory]
+    [InlineData("https://myres.openai.azure.com/openai/v1/")]
+    [InlineData("https://myres.openai.azure.com")]
+    [InlineData("https://myres.openai.azure.com/openai/responses?api-version=2025-04-01-preview")]
+    [InlineData("https://myres.openai.azure.com/openai/deployments/gpt-5-mini/chat/completions?api-version=2025-01-01-preview")]
+    public void FoundryEndpoint_AcceptsAnyUrlFromThePortal(string endpoint) =>
+        Assert.Equal("https://myres.openai.azure.com/openai/v1/", ChatClientFactory.FoundryEndpoint(endpoint).ToString());
+
+    [Fact]
+    public void FoundryEndpoint_KeepsTheAiServicesHost() =>
+        Assert.Equal("https://myres.services.ai.azure.com/openai/v1/",
+            ChatClientFactory.FoundryEndpoint("https://myres.services.ai.azure.com/api/projects/rentals").ToString());
+
+    [Fact]
+    public async Task AzureFoundry_PostsToTheV1ChatCompletionsUrl()
+    {
+        var handler = new RecordingHandler();
+        var client = new OpenAI.Chat.ChatClient("gpt-5-mini", new System.ClientModel.ApiKeyCredential("k"), new OpenAI.OpenAIClientOptions
+        {
+            Endpoint = ChatClientFactory.FoundryEndpoint("https://myres.services.ai.azure.com/api/projects/rentals"),
+            Transport = new System.ClientModel.Primitives.HttpClientPipelineTransport(new HttpClient(handler)),
+        });
+
+        await Assert.ThrowsAnyAsync<Exception>(() => client.CompleteChatAsync("hi"));
+
+        Assert.Equal("https://myres.services.ai.azure.com/openai/v1/chat/completions", handler.Url?.ToString());
+        Assert.Contains("\"model\":\"gpt-5-mini\"", handler.Body);
+    }
+
+    private sealed class RecordingHandler : HttpMessageHandler
+    {
+        public Uri? Url { get; private set; }
+        public string Body { get; private set; } = "";
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Url = request.RequestUri;
+            Body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound) { Content = new StringContent("{}") };
+        }
+    }
+
     [Fact]
     public async Task Ask_UnconfiguredModel_Throws()
     {
