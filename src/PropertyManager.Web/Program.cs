@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PropertyManager.Core.Assistant;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Import;
 using PropertyManager.Core.Services;
@@ -29,6 +30,11 @@ builder.Services.AddScoped<ExpenseSplitService>();
 builder.Services.AddScoped<RecurringExpenseService>();
 builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageImportService>();
 builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageSearch>();
+
+// AI models for the Ask page. API keys belong in user secrets or environment variables (see README), not appsettings.json.
+builder.Services.Configure<AssistantOptions>(builder.Configuration.GetSection(AssistantOptions.Section));
+builder.Services.AddScoped<AssistantTools>();
+builder.Services.AddScoped<AssistantService>();
 
 // Uploaded documents live on disk; swap this registration for an Azure Blob implementation when hosting.
 builder.Services.AddSingleton<IDocumentStorage>(new LocalDocumentStorage(

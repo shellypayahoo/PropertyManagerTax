@@ -1,0 +1,140 @@
+@page "/ask"
+@using PropertyManager.Core.Assistant
+@inject AssistantService Assistant
+
+<PageTitle>Ask</PageTitle>
+
+<h1>Ask</h1>
+<p class="text-muted" style="max-width: 52rem">
+    Ask questions about your texts with tenants and vendors, rent, expenses, leases, and maintenance, such as
+    "When did the Taylor basement tenant first mention the leak?" or "What did I pay the HVAC company this year?"
+    The assistant looks things up and says which texts or records its answer comes from. It can't change anything.
+</p>
+
+@if (Assistant.Providers.Count == 0)
+{
+    <div class="alert alert-warning">No AI models are set up. See the Ask section of the README.</div>
+}
+else
+{
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+        <label class="form-label mb-0" for="provider">Model</label>
+        <select id="provider" class="form-select form-select-sm w-auto" @bind="providerName" disabled="@busy">
+            @foreach (var p in Assistant.Providers)
+            {
+                <option value="@p.Name">@p.Name: @p.Model@(p.IsConfigured ? "" : " (not set up)")</option>
+            }
+        </select>
+        @if (turns.Count > 0)
+        {
+            <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="NewConversation">New conversation</button>
+        }
+    </div>
+    @if (Selected is { } selected)
+    {
+        <div class="small text-muted mb-3">
+            @if (selected.IsConfigured)
+            {
+                <span>@selected.DataNotice</span>
+            }
+            else
+            {
+                <span class="text-warning-emphasis">This model is missing its endpoint, resource, or API key. See the Ask section of the README.</span>
+            }
+        </div>
+    }
+
+    <div style="max-width: 52rem">
+        @foreach (var turn in turns)
+        {
+            <div class="mb-3">
+                <div class="fw-semibold">@turn.Question</div>
+                @if (turn.Reply is { } reply)
+                {
+                    <div class="card mt-1 @(reply.Declined ? "border-warning" : "")">
+                        <div class="card-body py-2" style="white-space: pre-wrap">@reply.Text</div>
+                        <div class="card-footer py-1 small text-muted">
+                            @reply.Provider
+                            @if (reply.Lookups.Count > 0)
+                            {
+                                <details class="d-inline ms-2">
+                                    <summary class="d-inline">@reply.Lookups.Count lookup(s)</summary>
+                                    <ul class="mb-0">
+                                        @foreach (var l in reply.Lookups)
+                                        {
+                                            <li><code>@l.Tool</code> @l.Arguments</li>
+                                        }
+                                    </ul>
+                                </details>
+                            }
+                        </div>
+                    </div>
+                }
+                else if (turn.Error is not null)
+                {
+                    <div class="alert alert-warning mt-1 py-2">@turn.Error</div>
+                }
+                else
+                {
+                    <div class="text-muted mt-1">Looking things up…</div>
+                }
+            </div>
+        }
+
+        <form @onsubmit="AskAsync" class="d-flex gap-2">
+            <textarea class="form-control" rows="2" placeholder="Ask a question" @bind="question" @bind:event="oninput" disabled="@busy"></textarea>
+            <button type="submit" class="btn btn-primary align-self-start" disabled="@(busy || string.IsNullOrWhiteSpace(question) || Selected?.IsConfigured != true)">Ask</button>
+        </form>
+    </div>
+}
+
+@code {
+    private sealed class Turn(string question)
+    {
+        public string Question { get; } = question;
+        public AssistantReply? Reply { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private AssistantConversation conversation = new();
+    private readonly List<Turn> turns = [];
+    private string? providerName;
+    private string question = "";
+    private bool busy;
+
+    private AssistantProviderOptions? Selected => Assistant.Providers.FirstOrDefault(p => p.Name == providerName);
+
+    protected override void OnInitialized() =>
+        providerName = (Assistant.Providers.FirstOrDefault(p => p.IsConfigured) ?? Assistant.Providers.FirstOrDefault())?.Name;
+
+    private void NewConversation()
+    {
+        conversation = new();
+        turns.Clear();
+    }
+
+    private async Task AskAsync()
+    {
+        if (busy || string.IsNullOrWhiteSpace(question) || providerName is null)
+        {
+            return;
+        }
+        var turn = new Turn(question.Trim());
+        turns.Add(turn);
+        question = "";
+        busy = true;
+        try
+        {
+            turn.Reply = await Assistant.AskAsync(conversation, providerName, turn.Question);
+        }
+        catch (Exception ex)
+        {
+            turn.Error = $"Couldn't get an answer from {providerName}: {ex.Message}"
+                + (Selected?.Type == AssistantProviderType.Ollama && ex is HttpRequestException ? ". Is Ollama running? Open the Ollama app, or run 'ollama serve'." : "");
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

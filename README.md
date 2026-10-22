@@ -44,7 +44,7 @@ dotnet ef migrations add <Name> --project src/PropertyManager.Core --startup-pro
 
 ## Layout
 
-- `src/PropertyManager.Core`: entities, `PropertyManagerDbContext`, migrations, seed data, and report services
+- `src/PropertyManager.Core`: entities, `PropertyManagerDbContext`, migrations, seed data, report services, imports, and the Ask assistant (`Assistant/`)
 - `src/PropertyManager.Web`: Blazor Server UI (`Components/Pages`)
 - `tests/PropertyManager.Tests`: xUnit tests for rent proration, the P&L report, and seeding
 
@@ -123,6 +123,48 @@ The **Messages** page brings in text conversations from the Mac's Messages app (
 3. **Import messages for ticked contacts** copies those conversations into the app. Run it again any time to pick up new texts; messages already imported are skipped. Unticking someone removes their messages from the app.
 
 The app reads a copy of `~/Library/Messages/chat.db` (and the Contacts databases under `~/Library/Application Support/AddressBook`); it never changes Messages or Contacts. macOS protects these folders, so give **Full Disk Access** to Terminal (or whatever you start the app from) in System Settings → Privacy & Security. Tapback reactions and group-chat events are skipped; attachments are noted but not copied. Paths can be overridden with `Messages:DatabasePath` and `Messages:AddressBookFolder` in `appsettings.json`.
+
+## Ask (AI assistant)
+
+The **Ask** page answers questions about your imported texts and the app's records, for example "When did the Taylor basement tenant first mention the leak?", "Has everyone paid March rent?", or "What did I pay Ace Plumbing this year?". The assistant looks things up with read-only tools (text message search, conversations, contacts, properties/leases/tenants, rent status, expenses, maintenance requests, and the annual profit and loss), cites the dates and senders of texts it relies on, and lists the lookups it made under each answer. It can't change any data.
+
+Pick the model from the dropdown; you can switch mid-conversation. Under the dropdown the page says where the looked-up texts and records are sent. Only what's needed to answer each question is sent, not the whole database.
+
+| Name | Model | Where data goes |
+| --- | --- | --- |
+| `Claude` | Claude through the Anthropic API (`claude-opus-5-5`) | Anthropic |
+| `AzureFoundry` | Any model deployed in your Azure AI Foundry (or Azure OpenAI) resource, e.g. a GPT deployment | Your Azure resource |
+| `ClaudeOnFoundry` | Claude deployed in your Azure AI Foundry resource | Your Azure resource |
+| `Ollama` | A local model in [Ollama](https://ollama.com) (`llama3.1`) | Stays on the Mac |
+
+The non-secret settings are in `appsettings.json` under `Assistant:Providers`. **API keys go in user secrets, never in `appsettings.json`**, so they stay out of git. From the repository root on the Mac:
+
+```sh
+cd src/PropertyManager.Web
+
+# Claude (key from console.anthropic.com)
+dotnet user-secrets set "Assistant:Providers:Claude:ApiKey" "<your Anthropic API key>"
+
+# A model deployed in Azure AI Foundry. In the Foundry portal, open the deployment: use its
+# deployment name, the resource's endpoint ending in /openai/v1/, and the key.
+dotnet user-secrets set "Assistant:Providers:AzureFoundry:Model" "<deployment name>"
+dotnet user-secrets set "Assistant:Providers:AzureFoundry:Endpoint" "https://<resource>.openai.azure.com/openai/v1/"
+dotnet user-secrets set "Assistant:Providers:AzureFoundry:ApiKey" "<key>"
+
+# Claude deployed in Azure AI Foundry (resource name is the <resource> part of its URL)
+dotnet user-secrets set "Assistant:Providers:ClaudeOnFoundry:Resource" "<resource>"
+dotnet user-secrets set "Assistant:Providers:ClaudeOnFoundry:ApiKey" "<key>"
+```
+
+To add another deployment, set any new name with a `Type` (`Anthropic`, `AzureFoundry`, `AnthropicFoundry`, or `Ollama`), `Model`, and the same settings, e.g. `Assistant:Providers:Foundry-mini:Type`. User secrets are stored in `~/.microsoft/usersecrets` and are read when the app runs with `dotnet run` (the Development environment). Environment variables also work, e.g. `Assistant__Providers__Claude__ApiKey`, or `ANTHROPIC_API_KEY` for `Claude`.
+
+For Ollama, install it, run `ollama pull llama3.1` (or another model that supports tool calling; change `Model` to match), and keep the Ollama app running.
+
+Notes:
+
+- Each question is billed by the provider you choose. Questions that read many texts cost more.
+- If Claude declines to answer a request, it's automatically retried once on Claude Opus 4.8, and that conversation stays on Opus 4.8. If both decline, the page says so.
+- A conversation is kept only while the page is open; **New conversation** starts over.
 
 ## Notes
 
