@@ -39,7 +39,10 @@ else
             }
             else
             {
-                <span class="text-warning-emphasis">This model is missing its endpoint, resource, or API key. See the Ask section of the README.</span>
+                <span class="text-warning-emphasis">
+                    Not set up yet. Missing: @string.Join(", ", selected.MissingSettings.Select(m => $"Assistant:Providers:{selected.Name}:{m}")).
+                    Set @(selected.MissingSettings.Count == 1 ? "it" : "them") with <code>dotnet user-secrets set</code> (see the README's Ask section), then restart the app.
+                </span>
             }
         </div>
     }

@@ -34,14 +34,20 @@ public class AssistantProviderOptions
     public string? ApiKey { get; set; }
 
     /// <summary>Whether enough settings are filled in to try this provider.</summary>
-    public bool IsConfigured => Type switch
+    public bool IsConfigured => MissingSettings.Count == 0;
+
+    /// <summary>The settings still empty or holding a placeholder like "&lt;deployment-name&gt;".</summary>
+    public IReadOnlyList<string> MissingSettings => Type switch
     {
-        AssistantProviderType.Anthropic => !string.IsNullOrWhiteSpace(ApiKey) || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")),
-        AssistantProviderType.AnthropicFoundry => IsFilled(Resource) && IsFilled(ApiKey),
-        AssistantProviderType.AzureFoundry => IsFilled(Endpoint) && IsFilled(ApiKey) && IsFilled(Model),
-        AssistantProviderType.Ollama => IsFilled(Model),
-        _ => false,
+        AssistantProviderType.Anthropic => IsFilled(ApiKey) || IsFilled(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")) ? [] : [nameof(ApiKey)],
+        AssistantProviderType.AnthropicFoundry => Missing((nameof(Resource), Resource), (nameof(ApiKey), ApiKey)),
+        AssistantProviderType.AzureFoundry => Missing((nameof(Model), Model), (nameof(Endpoint), Endpoint), (nameof(ApiKey), ApiKey)),
+        AssistantProviderType.Ollama => Missing((nameof(Model), Model)),
+        _ => ["Type"],
     };
+
+    private static List<string> Missing(params (string Name, string? Value)[] settings) =>
+        settings.Where(s => !IsFilled(s.Value)).Select(s => s.Name).ToList();
 
     /// <summary>Who receives the texts and records looked up to answer a question.</summary>
     public string DataNotice => Type switch

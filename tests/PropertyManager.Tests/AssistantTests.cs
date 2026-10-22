@@ -155,7 +155,9 @@ public sealed class AssistantTests : IDisposable
     [Fact]
     public void Providers_NeedTheirSettingsFilledIn()
     {
-        Assert.False(new AssistantProviderOptions { Type = AssistantProviderType.AzureFoundry, Model = "<deployment-name>", Endpoint = "https://x/openai/v1/", ApiKey = "k" }.IsConfigured);
+        var placeholder = new AssistantProviderOptions { Type = AssistantProviderType.AzureFoundry, Model = "<deployment-name>", Endpoint = "https://x/openai/v1/", ApiKey = "k" };
+        Assert.False(placeholder.IsConfigured);
+        Assert.Equal(["Model"], placeholder.MissingSettings);
         Assert.True(new AssistantProviderOptions { Type = AssistantProviderType.AzureFoundry, Model = "gpt", Endpoint = "https://x/openai/v1/", ApiKey = "k" }.IsConfigured);
         Assert.False(new AssistantProviderOptions { Type = AssistantProviderType.AnthropicFoundry, Resource = "<your-resource>", ApiKey = "k" }.IsConfigured);
         Assert.True(new AssistantProviderOptions { Type = AssistantProviderType.Ollama, Model = "llama3.1" }.IsConfigured);
