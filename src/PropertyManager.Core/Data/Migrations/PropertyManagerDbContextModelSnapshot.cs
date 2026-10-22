@@ -134,6 +134,154 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("CategorizationRules");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.EmailAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EmailMessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmailMessageId");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.ToTable("EmailAttachments");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.EmailFolder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DeltaLink")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GraphId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastSyncedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GraphId")
+                        .IsUnique();
+
+                    b.ToTable("EmailFolders");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.EmailMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Cc")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConversationId")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EmailFolderId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FromAddress")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FromName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FullText")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GraphId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsFromMe")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("SentAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TenantId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("To")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("VendorId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmailFolderId");
+
+                    b.HasIndex("FromAddress");
+
+                    b.HasIndex("GraphId")
+                        .IsUnique();
+
+                    b.HasIndex("SentAt");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("VendorId");
+
+                    b.ToTable("EmailMessages");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.Expense", b =>
                 {
                     b.Property<int>("Id")
@@ -789,6 +937,42 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Vendor");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.EmailAttachment", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.EmailMessage", "EmailMessage")
+                        .WithMany("Attachments")
+                        .HasForeignKey("EmailMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("EmailMessage");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.EmailMessage", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.EmailFolder", "EmailFolder")
+                        .WithMany("Messages")
+                        .HasForeignKey("EmailFolderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PropertyManager.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("EmailFolder");
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("Vendor");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.Expense", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.MaintenanceRequest", "MaintenanceRequest")
@@ -991,6 +1175,16 @@ namespace PropertyManager.Core.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.EmailFolder", b =>
+                {
+                    b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.EmailMessage", b =>
+                {
+                    b.Navigation("Attachments");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Lease", b =>

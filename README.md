@@ -126,9 +126,36 @@ The **Messages** page brings in text conversations from the Mac's Messages app (
 
 The app reads a copy of `~/Library/Messages/chat.db` (and the Contacts databases under `~/Library/Application Support/AddressBook`); it never changes Messages or Contacts. macOS protects these folders, so give **Full Disk Access** to Terminal (or whatever you start the app from) in System Settings → Privacy & Security. Tapback reactions and group-chat events are skipped; attachments are noted but not copied. Paths can be overridden with `Messages:DatabasePath` and `Messages:AddressBookFolder` in `appsettings.json`.
 
+## Email
+
+The **Email** page copies emails from the Hotmail / Outlook.com folders you choose (for example a "Tenants" folder) into the app, so the **Ask** page can search them alongside texts and records. Access is read-only (Microsoft Graph `Mail.Read`); nothing in the mailbox is changed.
+
+- Emails are linked to a tenant or vendor by the email address on their Tenants/Vendors page.
+- Each email's text is stored twice: the newly written part (quoted earlier replies removed), which is what search uses, and the full body.
+- PDF and Word attachments are saved and their text is read so they can be searched like lease documents. Pictures are saved and can be opened from the email; the assistant sees only their names. Inline images (logos, signatures) and other file types are skipped.
+- **Get new emails** fetches only what changed since the last sync: new emails, edits, and emails deleted or moved out of the folder. Unticking a folder removes its emails from the app.
+
+### One-time setup: app registration
+
+Microsoft requires an app registration for any app that reads mail. It's free:
+
+1. Sign in to the [Azure portal](https://portal.azure.com) with an account in your own (personal) directory, not a work directory, and open **Microsoft Entra ID → App registrations → New registration**.
+2. Name: `Property Manager`. Supported account types: **Personal Microsoft accounts only** (or "accounts in any organizational directory and personal Microsoft accounts"). Leave the redirect URI empty. Click **Register**.
+3. On the app's **Authentication** page, turn on **Allow public client flows** and save.
+4. On **API permissions**, add **Microsoft Graph → Delegated permissions → Mail.Read**. (No admin consent is needed for a personal account.)
+5. Copy the **Application (client) ID** from the **Overview** page and, from the repository root:
+
+   ```sh
+   dotnet user-secrets set "Email:ClientId" "<Application (client) ID>" --project src/PropertyManager.Web
+   ```
+
+6. Restart the app, open **Email**, click **Sign in to Microsoft**, and enter the code shown at microsoft.com/devicelogin with your Hotmail account. Then **Choose folders**, tick the tenant folder, **Save**, and **Get new emails**.
+
+The sign-in is remembered in the macOS Keychain (macOS may ask to allow access the first time), so you don't sign in on every start; **Sign out** removes it. The app never sees your password. If you send email from more than one address, list the others with `Email:MyAddresses` so they count as sent by you.
+
 ## Ask (AI assistant)
 
-The **Ask** page answers questions about your imported texts and the app's records, for example "When did the Taylor basement tenant first mention the leak?", "Has everyone paid March rent?", "What did I pay Ace Plumbing this year?", or "What does the Taylor basement lease say about pets?". The assistant looks things up with read-only tools (text message search, conversations, contacts, uploaded lease documents, properties/leases/tenants, rent status, expenses, maintenance requests, and the annual profit and loss), cites the dates and senders of texts it relies on, and lists the lookups it made under each answer. It can't change any data.
+The **Ask** page answers questions about your imported texts and the app's records, for example "When did the Taylor basement tenant first mention the leak?", "Has everyone paid March rent?", "What did I pay Ace Plumbing this year?", or "What does the Taylor basement lease say about pets?". The assistant looks things up with read-only tools (text message and email search, conversations, contacts, uploaded lease documents and email attachments, properties/leases/tenants, rent status, expenses, maintenance requests, and the annual profit and loss), cites the dates and senders of texts it relies on, and lists the lookups it made under each answer. It can't change any data.
 
 Pick the model from the dropdown; you can switch mid-conversation. Under the dropdown the page says where the looked-up texts and records are sent. Only what's needed to answer each question is sent, not the whole database.
 
@@ -166,11 +193,11 @@ Notes:
 
 - Each question is billed by the provider you choose. Questions that read many texts cost more.
 - If Claude declines to answer a request, it's automatically retried once on Claude Opus 4.8, and that conversation stays on Opus 4.8. If both decline, the page says so.
-- Rent, expenses, leases, tenants, maintenance, and documents are looked up when you ask, so new entries and uploads show up right away. New texts need **Import messages for ticked contacts** on the Messages page first.
+- Rent, expenses, leases, tenants, maintenance, and documents are looked up when you ask, so new entries and uploads show up right away. New texts need **Import messages for ticked contacts** on the Messages page first, and new emails need **Get new emails** on the Email page.
 - A conversation is kept only while the page is open; **New conversation** starts over.
 
 ## Notes
 
 - On the report, click a line name (e.g. Cleaning and maintenance, or Rents received) to list every item behind it, or click one property's amount to see just that property's items, including its share of shared expenses. Each list ends with a total that matches the report.
 - The report's income is rent actually received in the year (by date received). Scheduled rent from leases, in whole months, is shown beside it for comparison.
-- Back up `propertymanager.db` and `App_Data/documents`. Both are excluded from git.
+- Back up `propertymanager.db` and `App_Data/documents` (which also holds email attachments). Both are excluded from git.

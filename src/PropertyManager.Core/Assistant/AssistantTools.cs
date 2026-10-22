@@ -31,6 +31,8 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         AIFunctionFactory.Create(SearchExpensesAsync, "search_expenses"),
         AIFunctionFactory.Create(ListMaintenanceRequestsAsync, "list_maintenance_requests"),
         AIFunctionFactory.Create(GetProfitAndLossAsync, "get_profit_and_loss"),
+        AIFunctionFactory.Create(SearchEmailsAsync, "search_emails"),
+        AIFunctionFactory.Create(ReadEmailAsync, "read_email"),
         AIFunctionFactory.Create(ListDocumentsAsync, "list_documents"),
         AIFunctionFactory.Create(SearchDocumentsAsync, "search_documents"),
         AIFunctionFactory.Create(ReadDocumentAsync, "read_document"),
@@ -251,29 +253,110 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         return text.ToString();
     }
 
-    [Description("Lists documents uploaded to leases (signed leases, addenda, inspection reports): id, file name, lease (unit and tenants), upload date, and whether its text can be read. Photos and scanned PDFs have no readable text.")]
+    [Description("Searches imported emails with tenants and vendors (subject and newly written text; quoted earlier replies are left out). Every word must appear (case-insensitive), so use one or two distinctive words and try synonyms if nothing is found. Returns the newest matches in date order with date, sender, recipients, subject, text, and attachment names.")]
+    public async Task<string> SearchEmailsAsync(
+        [Description("Words to look for. Leave empty to list emails by contact or date only.")] string? query = null,
+        [Description("Optional: a tenant's or vendor's name, a person's name, or an email address, to search only emails with them.")] string? contact = null,
+        [Description("Optional start date, yyyy-MM-dd.")] string? fromDate = null,
+        [Description("Optional end date, yyyy-MM-dd (inclusive).")] string? toDate = null,
+        [Description("Maximum emails to return (default 20, up to 50).")] int limit = 20,
+        CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var emails = db.EmailMessages.AsNoTracking().Include(m => m.Attachments).AsQueryable();
+        if (!string.IsNullOrWhiteSpace(contact))
+        {
+            var tenantIds = (await db.Tenants.AsNoTracking().ToListAsync(ct)).Where(t => Contains(t.FullName, contact)).Select(t => (int?)t.Id).ToList();
+            var vendorIds = (await db.Vendors.AsNoTracking().ToListAsync(ct)).Where(v => Contains(v.Name, contact)).Select(v => (int?)v.Id).ToList();
+            var pattern = $"%{contact.Trim().Replace("%", "").Replace("_", "")}%";
+            emails = emails.Where(m => tenantIds.Contains(m.TenantId) || vendorIds.Contains(m.VendorId)
+                || EF.Functions.Like(m.FromAddress, pattern) || EF.Functions.Like(m.FromName ?? "", pattern)
+                || EF.Functions.Like(m.To, pattern) || EF.Functions.Like(m.Cc, pattern));
+        }
+        if (StartOf(fromDate) is { } from)
+        {
+            emails = emails.Where(m => m.SentAt >= from);
+        }
+        if (EndOf(toDate) is { } to)
+        {
+            emails = emails.Where(m => m.SentAt <= to);
+        }
+        foreach (var word in (query ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pattern = $"%{word.Replace("%", "").Replace("_", "")}%";
+            emails = emails.Where(m => EF.Functions.Like(m.Subject, pattern) || EF.Functions.Like(m.Text, pattern));
+        }
+
+        var found = await emails.OrderByDescending(m => m.SentAt).Take(Math.Clamp(limit, 1, 50)).ToListAsync(ct);
+        if (found.Count == 0)
+        {
+            return await db.EmailMessages.AnyAsync(ct) ? "No emails found." : "No emails have been imported yet (Email page).";
+        }
+        found.Reverse();
+        var text = new StringBuilder($"{found.Count} email(s):\n");
+        foreach (var m in found)
+        {
+            var body = m.Text.Length > 1500 ? m.Text[..1500] + $" … (truncated; read_email {m.Id} for all of it)" : m.Text;
+            text.AppendLine($"Email #{m.Id} [{m.SentAt.ToLocalTime().ToString("yyyy-MM-dd ddd h:mm tt", Us)}] From {(m.IsFromMe ? "Me" : m.FromDisplay)} to {m.To}{(m.Cc.Length > 0 ? ", cc " + m.Cc : "")}");
+            text.AppendLine($"  Subject: {m.Subject}");
+            text.AppendLine($"  {body.ReplaceLineEndings("\n  ")}");
+            if (m.Attachments.Count > 0)
+            {
+                text.AppendLine($"  Attachments: {string.Join(", ", m.Attachments.Select(a => $"{a.FileName} (document E{a.Id})"))}");
+            }
+        }
+        return text.ToString();
+    }
+
+    [Description("Reads one email in full, including the quoted earlier replies below it, with its attachments.")]
+    public async Task<string> ReadEmailAsync(
+        [Description("The email id from search_emails.")] int emailId,
+        CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var m = await db.EmailMessages.AsNoTracking().Include(e => e.Attachments).FirstOrDefaultAsync(e => e.Id == emailId, ct);
+        if (m is null)
+        {
+            return $"There's no email #{emailId}.";
+        }
+        var body = m.FullText.Length > DocumentChunk ? m.FullText[..DocumentChunk] + "\n(truncated)" : m.FullText;
+        var attachments = m.Attachments.Count == 0 ? "none"
+            : string.Join(", ", m.Attachments.Select(a => $"{a.FileName} (document E{a.Id}{(a.HasText ? "" : ", no readable text")})"));
+        return $"""
+            Email #{m.Id}
+            Date: {m.SentAt.ToLocalTime().ToString("yyyy-MM-dd ddd h:mm tt", Us)}
+            From: {(m.IsFromMe ? "Me (" + m.FromAddress + ")" : m.FromDisplay)}
+            To: {m.To}{(m.Cc.Length > 0 ? "\nCc: " + m.Cc : "")}
+            Subject: {m.Subject}
+            Attachments: {attachments}
+
+            {body}
+            """;
+    }
+
+    [Description("Lists documents: files uploaded to leases (signed leases, addenda, inspection reports) and files attached to imported emails. Shows id, file name, where it's from, date, and whether its text can be read. Photos and scanned PDFs have no readable text.")]
     public async Task<string> ListDocumentsAsync(CancellationToken ct = default)
     {
         var documents = await LoadDocumentsAsync(ct);
         if (documents.Count == 0)
         {
-            return "No documents have been uploaded (open a lease on the Leases page to upload).";
+            return "No documents have been uploaded (open a lease on the Leases page to upload) or imported with emails.";
         }
         var text = new StringBuilder();
         foreach (var d in documents)
         {
-            var readable = d.HasText
-                ? $"{d.Text!.Length:N0} characters{(Pages(d.Text) is > 0 and var pages ? $", {pages} page(s)" : "")}"
-                : "no readable text (photo or scanned document)";
-            text.AppendLine($"- Document #{d.Id}: {d.FileName} | {LeaseLabel(d.Lease)} | uploaded {d.UploadedAt.ToLocalTime():yyyy-MM-dd} | {readable}");
+            var readable = !string.IsNullOrWhiteSpace(d.Text)
+                ? $"{d.Text.Length:N0} characters{(Pages(d.Text) is > 0 and var pages ? $", {pages} page(s)" : "")}"
+                : d.ContentType.StartsWith("image/") ? "picture, no readable text" : "no readable text (scanned or unreadable)";
+            text.AppendLine($"- Document {d.Id}: {d.FileName} | {d.Source} | {d.Date.ToLocalTime():yyyy-MM-dd} | {readable}");
         }
         return text.ToString();
     }
 
-    [Description("Searches the text of uploaded lease documents. Every word must appear somewhere in a document (case-insensitive). Returns matching documents with short excerpts around the words, each with its page and character position; use read_document to read more.")]
+    [Description("Searches the text of documents: files uploaded to leases and PDF/Word files attached to emails. Every word must appear somewhere in a document (case-insensitive). Returns matching documents with short excerpts around the words, each with its page and character position; use read_document to read more.")]
     public async Task<string> SearchDocumentsAsync(
         [Description("Words to look for, e.g. \"pets\" or \"late fee\".")] string query,
-        [Description("Optional: only documents for this tenant's leases, or this unit or property (e.g. \"Taylor\").")] string? lease = null,
+        [Description("Optional: only documents whose lease or email matches this tenant, sender, unit, or property (e.g. \"Taylor\").")] string? lease = null,
         CancellationToken ct = default)
     {
         var words = (query ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -282,7 +365,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
             return "Give one or more words to search for.";
         }
         var documents = (await LoadDocumentsAsync(ct))
-            .Where(d => d.HasText && (lease is null || Contains(LeaseLabel(d.Lease), lease)))
+            .Where(d => !string.IsNullOrWhiteSpace(d.Text) && (lease is null || Contains(d.Source, lease)))
             .Where(d => words.All(w => Contains(d.Text, w)))
             .ToList();
         if (documents.Count == 0)
@@ -293,7 +376,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         var result = new StringBuilder($"{documents.Count} document(s):\n");
         foreach (var d in documents.Take(10))
         {
-            result.AppendLine($"Document #{d.Id}: {d.FileName} ({LeaseLabel(d.Lease)})");
+            result.AppendLine($"Document {d.Id}: {d.FileName} ({d.Source})");
             foreach (var (hit, excerpt) in Excerpts(d.Text!, words))
             {
                 result.AppendLine($"  [{PageAt(d.Text!, hit)}character {hit}] ...{excerpt}...");
@@ -302,39 +385,60 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         return result.ToString();
     }
 
-    [Description("Reads the text of one uploaded document, 30,000 characters at a time. PDF pages are marked [Page N].")]
+    [Description("Reads the text of one document, 30,000 characters at a time. PDF pages are marked [Page N].")]
     public async Task<string> ReadDocumentAsync(
-        [Description("The document id from list_documents or search_documents.")] int documentId,
+        [Description("The document id from list_documents, search_documents, or an email's attachments, e.g. \"L3\" or \"E12\".")] string documentId,
         [Description("Character position to start reading from (default 0, the beginning).")] int fromCharacter = 0,
         CancellationToken ct = default)
     {
-        var d = (await LoadDocumentsAsync(ct)).FirstOrDefault(x => x.Id == documentId);
+        var id = documentId.Trim().TrimStart('#').ToUpperInvariant();
+        var d = (await LoadDocumentsAsync(ct)).FirstOrDefault(x => x.Id == id || x.Id == "L" + id);
         if (d is null)
         {
-            return $"There's no document #{documentId}.";
+            return $"There's no document {documentId}.";
         }
-        if (!d.HasText)
+        if (string.IsNullOrWhiteSpace(d.Text))
         {
-            return $"{d.FileName} has no readable text (photo or scanned document); the owner can open it from the lease's page.";
+            return $"{d.FileName} has no readable text (picture or scanned document); the owner can open it in the app.";
         }
-        var start = Math.Clamp(fromCharacter, 0, d.Text!.Length);
+        var start = Math.Clamp(fromCharacter, 0, d.Text.Length);
         var end = Math.Min(start + DocumentChunk, d.Text.Length);
         var more = end < d.Text.Length ? $"\n(continues; call read_document with fromCharacter={end} for more)" : "\n(end of document)";
-        return $"Document #{d.Id}: {d.FileName} ({LeaseLabel(d.Lease)}), characters {start}-{end} of {d.Text.Length}:\n{d.Text[start..end]}{more}";
+        return $"Document {d.Id}: {d.FileName} ({d.Source}), characters {start}-{end} of {d.Text.Length}:\n{d.Text[start..end]}{more}";
     }
 
-    private async Task<List<LeaseDocument>> LoadDocumentsAsync(CancellationToken ct)
+    /// <summary>A lease document ("L" + id) or email attachment ("E" + id), described for the assistant.</summary>
+    private record DocumentInfo(string Id, string FileName, string Source, DateTimeOffset Date, string ContentType, string? Text);
+
+    private async Task<List<DocumentInfo>> LoadDocumentsAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var documents = await db.LeaseDocuments.AsNoTracking()
+        var leaseDocuments = await db.LeaseDocuments.AsNoTracking()
             .Include(d => d.Lease).ThenInclude(l => l!.Tenants)
             .Include(d => d.Lease).ThenInclude(l => l!.Unit).ThenInclude(u => u!.Property)
             .ToListAsync(ct);
-        return documents.OrderBy(d => d.Lease?.Unit?.DisplayName).ThenBy(d => d.UploadedAt.UtcTicks).ToList();
+        var attachments = await db.EmailAttachments.AsNoTracking()
+            .Include(a => a.EmailMessage).ThenInclude(m => m!.Tenant)
+            .Include(a => a.EmailMessage).ThenInclude(m => m!.Vendor)
+            .ToListAsync(ct);
+
+        return leaseDocuments
+            .OrderBy(d => d.Lease?.Unit?.DisplayName).ThenBy(d => d.UploadedAt.UtcTicks)
+            .Select(d => new DocumentInfo("L" + d.Id, d.FileName, LeaseLabel(d.Lease), d.UploadedAt, d.ContentType, d.Text))
+            .Concat(attachments
+                .OrderBy(a => a.EmailMessage!.SentAt.UtcTicks)
+                .Select(a => new DocumentInfo("E" + a.Id, a.FileName, EmailLabel(a.EmailMessage!), a.EmailMessage!.SentAt, a.ContentType, a.Text)))
+            .ToList();
+    }
+
+    private static string EmailLabel(EmailMessage m)
+    {
+        var who = m.Tenant?.FullName ?? m.Vendor?.Name ?? (m.IsFromMe ? m.To : m.FromDisplay);
+        return $"attached to email #{m.Id} \"{m.Subject}\" {(m.IsFromMe ? "from Me to" : "from")} {who}, {m.SentAt.ToLocalTime():yyyy-MM-dd}";
     }
 
     private static string LeaseLabel(Lease? lease) =>
-        lease is null ? "no lease" : $"{lease.Unit?.DisplayName}, lease #{lease.Id} with {lease.TenantNames}, {lease.StartDate:yyyy-MM-dd} to {(lease.EndDate is { } e ? e.ToString("yyyy-MM-dd") : "month-to-month")}";
+        lease is null ? "no lease" : $"lease file, {lease.Unit?.DisplayName}, lease #{lease.Id} with {lease.TenantNames}, {lease.StartDate:yyyy-MM-dd} to {(lease.EndDate is { } e ? e.ToString("yyyy-MM-dd") : "month-to-month")}";
 
     private static int Pages(string text) => text.Split("[Page ").Length - 1;
 

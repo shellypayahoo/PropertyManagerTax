@@ -1,0 +1,264 @@
+@page "/email"
+@using PropertyManager.Core.Email
+@implements IDisposable
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject EmailSignIn SignIn
+@inject IMailSource Mail
+@inject EmailSyncService Sync
+
+<PageTitle>Email</PageTitle>
+
+<h1>Email</h1>
+<p class="text-muted" style="max-width: 52rem">
+    Emails with tenants and vendors, copied from the Hotmail / Outlook.com folders you choose (read-only; nothing in
+    your mailbox is changed). PDF and Word attachments are read so the <a href="ask">Ask</a> page can search them;
+    pictures are kept so you can open them here.
+</p>
+
+@if (!SignIn.IsConfigured)
+{
+    <div class="alert alert-info" style="max-width: 52rem">
+        Email isn't set up yet. It needs a free app registration in the Azure portal (about five minutes); the steps are
+        in the <strong>Email</strong> section of the README. Then set its client id and restart the app:
+        <pre class="mb-0 mt-2"><code>dotnet user-secrets set "Email:ClientId" "&lt;Application (client) ID&gt;" --project src/PropertyManager.Web</code></pre>
+    </div>
+}
+else if (signedInAs is null)
+{
+    @if (deviceCode is { } signInCode)
+    {
+        <div class="alert alert-primary" style="max-width: 52rem">
+            Go to <a href="@signInCode.Url" target="_blank" rel="noopener">@signInCode.Url</a> and enter the code
+            <strong class="font-monospace fs-5 mx-1">@signInCode.Code</strong>, then sign in with your Hotmail account and accept the
+            read-mail permission. This page continues by itself once you're done.
+        </div>
+    }
+    else
+    {
+        <button class="btn btn-primary mb-3" disabled="@busy" @onclick="SignInAsync">Sign in to Microsoft</button>
+    }
+}
+else
+{
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <span>Signed in as <strong>@signedInAs</strong></span>
+        <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="SignOutAsync">Sign out</button>
+    </div>
+
+    <h2 class="h5">Folders</h2>
+    @if (choosing)
+    {
+        <div class="border rounded p-2 mb-2" style="max-width: 40rem; max-height: 50vh; overflow-y: auto">
+            @foreach (var f in mailFolders)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="f-@f.Id.GetHashCode()" checked="@picked.Contains(f.Id)"
+                           @onchange="e => { if ((bool)e.Value!) picked.Add(f.Id); else picked.Remove(f.Id); }" />
+                    <label class="form-check-label" for="f-@f.Id.GetHashCode()">@f.Path <span class="text-muted small">(@f.TotalCount)</span></label>
+                </div>
+            }
+        </div>
+        <div class="d-flex gap-2 mb-3">
+            <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="SaveFoldersAsync">Save</button>
+            <button class="btn btn-outline-secondary btn-sm" disabled="@busy" @onclick="() => choosing = false">Cancel</button>
+            @if (folders.Any(f => !picked.Contains(f.GraphId)))
+            {
+                <span class="small text-warning-emphasis align-self-center">Emails from unticked folders will be removed from the app.</span>
+            }
+        </div>
+    }
+    else
+    {
+        @if (folders.Count == 0)
+        {
+            <p class="text-muted">No folders chosen yet.</p>
+        }
+        else
+        {
+            <ul>
+                @foreach (var f in folders)
+                {
+                    <li>@f.Path <span class="text-muted small">(@f.Messages.Count emails@(f.LastSyncedAt is { } at ? $", last synced {at.ToLocalTime():g}" : ", not synced yet"))</span></li>
+                }
+            </ul>
+        }
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button class="btn btn-outline-primary" disabled="@busy" @onclick="ChooseFoldersAsync">Choose folders</button>
+            <button class="btn btn-primary" disabled="@(busy || folders.Count == 0)" @onclick="SyncAsync">Get new emails</button>
+        </div>
+    }
+}
+
+@if (busy) { <p class="text-muted">Working… (the first sync of a large folder can take a few minutes)</p> }
+@if (status is not null) { <div class="alert alert-success py-2" style="max-width: 52rem">@status</div> }
+@if (error is not null) { <div class="alert alert-warning py-2" style="max-width: 52rem">@error</div> }
+@foreach (var p in problems)
+{
+    <div class="small text-warning-emphasis">@p</div>
+}
+
+@if (emailCount > 0)
+{
+    <h2 class="h5 mt-4">Emails (@emailCount)</h2>
+    <input class="form-control form-control-sm mb-2" style="max-width: 24rem" placeholder="Search subject and text" @bind="search" @bind:after="LoadEmailsAsync" />
+    <table class="table table-sm align-middle">
+        <thead><tr><th>Date</th><th>From / to</th><th>Subject</th><th>Is</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var m in emails)
+            {
+                <tr class="@(open == m.Id ? "table-active" : "")" style="cursor: pointer" @onclick="() => open = open == m.Id ? null : m.Id">
+                    <td class="text-nowrap">@m.SentAt.ToLocalTime().ToString("MMM d, yyyy")</td>
+                    <td>@(m.IsFromMe ? "To " + m.To : m.FromDisplay)</td>
+                    <td>@m.Subject</td>
+                    <td>@(m.Tenant?.FullName ?? m.Vendor?.Name)</td>
+                    <td>@(m.Attachments.Count > 0 ? $"📎 {m.Attachments.Count}" : "")</td>
+                </tr>
+                @if (open == m.Id)
+                {
+                    <tr>
+                        <td colspan="5">
+                            <div class="small text-muted mb-1">
+                                From @m.FromDisplay · To @m.To@(m.Cc.Length > 0 ? " · Cc " + m.Cc : "") · @m.SentAt.ToLocalTime().ToString("f")
+                            </div>
+                            <div style="white-space: pre-wrap">@(showFull ? m.FullText : m.Text)</div>
+                            @if (m.FullText.Length > m.Text.Length + 10)
+                            {
+                                <button class="btn btn-link btn-sm p-0" @onclick="() => showFull = !showFull" @onclick:stopPropagation>@(showFull ? "Hide earlier conversation" : "Show earlier conversation")</button>
+                            }
+                            @foreach (var a in m.Attachments)
+                            {
+                                <div>
+                                    <a href="email-attachments/@a.Id" target="_blank" @onclick:stopPropagation>@a.FileName</a>
+                                    <span class="small text-muted">@(a.HasText ? "" : a.ContentType.StartsWith("image/") ? "(picture)" : "(no readable text)")</span>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+    @if (emails.Count == Shown) { <p class="small text-muted">Showing the newest @Shown; search to narrow down.</p> }
+}
+
+@code {
+    private const int Shown = 100;
+    private string? signedInAs;
+    private (string Url, string Code)? deviceCode;
+    private List<EmailFolder> folders = [];
+    private IReadOnlyList<MailFolderInfo> mailFolders = [];
+    private readonly HashSet<string> picked = [];
+    private bool choosing;
+    private List<EmailMessage> emails = [];
+    private int emailCount;
+    private int? open;
+    private bool showFull;
+    private string search = "";
+    private bool busy;
+    private string? status;
+    private string? error;
+    private IReadOnlyList<string> problems = [];
+    private readonly CancellationTokenSource leaving = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            signedInAs = await SignIn.GetSignedInAddressAsync();
+        }
+        catch (Exception ex)
+        {
+            error = $"Couldn't check the email sign-in: {ex.Message}";
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        folders = await db.EmailFolders.AsNoTracking().Include(f => f.Messages).OrderBy(f => f.Path).ToListAsync();
+        emailCount = await db.EmailMessages.CountAsync();
+        await LoadEmailsAsync();
+    }
+
+    private async Task LoadEmailsAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.EmailMessages.AsNoTracking().Include(m => m.Attachments).Include(m => m.Tenant).Include(m => m.Vendor).AsQueryable();
+        foreach (var word in search.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pattern = $"%{word.Replace("%", "").Replace("_", "")}%";
+            query = query.Where(m => EF.Functions.Like(m.Subject, pattern) || EF.Functions.Like(m.Text, pattern) || EF.Functions.Like(m.FromName ?? "", pattern) || EF.Functions.Like(m.FromAddress, pattern));
+        }
+        emails = await query.OrderByDescending(m => m.SentAt).Take(Shown).ToListAsync();
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        busy = true;
+        status = error = null;
+        problems = [];
+        try
+        {
+            await action();
+        }
+        catch (OperationCanceledException) when (leaving.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+            deviceCode = null;
+        }
+    }
+
+    private Task SignInAsync() => RunAsync(async () =>
+    {
+        signedInAs = await SignIn.SignInAsync(async (url, code) =>
+        {
+            deviceCode = (url, code);
+            await InvokeAsync(StateHasChanged);
+        }, leaving.Token);
+    });
+
+    private Task SignOutAsync() => RunAsync(async () =>
+    {
+        await SignIn.SignOutAsync();
+        signedInAs = null;
+        status = "Signed out. Emails already copied stay in the app.";
+    });
+
+    private Task ChooseFoldersAsync() => RunAsync(async () =>
+    {
+        mailFolders = await Mail.GetFoldersAsync(leaving.Token);
+        picked.Clear();
+        picked.UnionWith(folders.Select(f => f.GraphId));
+        choosing = true;
+    });
+
+    private Task SaveFoldersAsync() => RunAsync(async () =>
+    {
+        await Sync.SetFoldersAsync(mailFolders.Where(f => picked.Contains(f.Id)), leaving.Token);
+        choosing = false;
+        await LoadAsync();
+        status = "Folders saved. Click Get new emails to copy their emails.";
+    });
+
+    private Task SyncAsync() => RunAsync(async () =>
+    {
+        var summary = await Sync.SyncAsync(leaving.Token);
+        await LoadAsync();
+        status = $"{summary.Added} new email(s), {summary.Updated} updated, {summary.Removed} removed, {summary.Attachments} attachment(s) saved.";
+        problems = summary.Problems;
+    });
+
+    public void Dispose()
+    {
+        leaving.Cancel();
+        leaving.Dispose();
+    }
+}

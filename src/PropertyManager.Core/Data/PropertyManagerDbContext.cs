@@ -23,6 +23,9 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<RecurringExpenseRun> RecurringExpenseRuns => Set<RecurringExpenseRun>();
     public DbSet<TextMessage> TextMessages => Set<TextMessage>();
     public DbSet<MessageContact> MessageContacts => Set<MessageContact>();
+    public DbSet<EmailFolder> EmailFolders => Set<EmailFolder>();
+    public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
+    public DbSet<EmailAttachment> EmailAttachments => Set<EmailAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -143,6 +146,42 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.HasIndex(m => m.VendorId);
             e.HasOne(m => m.Tenant).WithMany().OnDelete(DeleteBehavior.SetNull);
             e.HasOne(m => m.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<EmailFolder>(e =>
+        {
+            e.Property(f => f.GraphId).HasMaxLength(500).IsRequired();
+            e.HasIndex(f => f.GraphId).IsUnique();
+            e.Property(f => f.Path).HasMaxLength(500).IsRequired();
+            e.Property(f => f.LastSyncedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+        });
+
+        modelBuilder.Entity<EmailMessage>(e =>
+        {
+            e.Property(m => m.GraphId).HasMaxLength(500).IsRequired();
+            e.HasIndex(m => m.GraphId).IsUnique();
+            e.Property(m => m.ConversationId).HasMaxLength(500);
+            e.Property(m => m.Subject).HasMaxLength(1000);
+            e.Property(m => m.FromAddress).HasMaxLength(320);
+            e.HasIndex(m => m.FromAddress);
+            e.Property(m => m.FromName).HasMaxLength(200);
+            // Stored as a number so SQLite can sort and compare email times.
+            e.Property(m => m.SentAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            e.HasIndex(m => m.SentAt);
+            e.Ignore(m => m.FromDisplay);
+            e.HasOne(m => m.EmailFolder).WithMany(f => f.Messages).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(m => m.Tenant).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(m => m.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<EmailAttachment>(e =>
+        {
+            e.Property(a => a.FileName).HasMaxLength(255).IsRequired();
+            e.Property(a => a.ContentType).HasMaxLength(100).IsRequired();
+            e.Property(a => a.StorageKey).HasMaxLength(100).IsRequired();
+            e.HasIndex(a => a.StorageKey).IsUnique();
+            e.Ignore(a => a.HasText);
+            e.HasOne(a => a.EmailMessage).WithMany(m => m.Attachments).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<MessageContact>(e =>

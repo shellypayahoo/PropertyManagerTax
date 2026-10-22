@@ -143,7 +143,7 @@ public sealed class DocumentTextTests : IDisposable
         var list = await tools.ListDocumentsAsync();
         var found = await tools.SearchDocumentsAsync("DOG consent", lease: "taylor");
         var id = (await dbFactory.CreateDbContext().LeaseDocuments.FirstAsync(d => d.FileName == "Signed lease.pdf")).Id;
-        var read = await tools.ReadDocumentAsync(id);
+        var read = await tools.ReadDocumentAsync("L" + id);
 
         Assert.Contains("Signed lease.pdf", list);
         Assert.Contains("2 page(s)", list);
@@ -152,6 +152,7 @@ public sealed class DocumentTextTests : IDisposable
         Assert.Contains("Jane Sample", list);
         Assert.Contains("1 document(s)", found);
         Assert.Contains("[Page 2, character", found);
+        Assert.Contains("Document L", found);
         Assert.Contains("one dog with written consent", found);
         Assert.Equal("No documents contain all of those words.", await tools.SearchDocumentsAsync("cat"));
         Assert.Contains("RESIDENTIAL LEASE", read);

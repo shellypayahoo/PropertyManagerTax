@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PropertyManager.Core.Assistant;
 using PropertyManager.Core.Data;
+using PropertyManager.Core.Email;
 using PropertyManager.Core.Import;
 using PropertyManager.Core.Services;
 using PropertyManager.Core.Storage;
@@ -35,6 +36,13 @@ builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageSearch>();
 builder.Services.Configure<AssistantOptions>(builder.Configuration.GetSection(AssistantOptions.Section));
 builder.Services.AddScoped<AssistantTools>();
 builder.Services.AddScoped<AssistantService>();
+
+// Tenant emails from a Hotmail/Outlook.com folder, read-only through Microsoft Graph.
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.Section));
+builder.Services.AddSingleton<EmailSignIn>();
+builder.Services.AddSingleton<IMailTokenProvider>(sp => sp.GetRequiredService<EmailSignIn>());
+builder.Services.AddHttpClient<IMailSource, GraphMailSource>();
+builder.Services.AddScoped<EmailSyncService>();
 
 // Uploaded documents live on disk; swap this registration for an Azure Blob implementation when hosting.
 builder.Services.AddSingleton<IDocumentStorage>(new LocalDocumentStorage(
@@ -99,6 +107,22 @@ app.MapGet("/documents/{id:int}", async (int id, bool? download, IDbContextFacto
     return download == true
         ? Results.File(stream, document!.ContentType, document.FileName)
         : Results.File(stream, document!.ContentType);
+});
+app.MapGet("/email-attachments/{id:int}", async (int id, bool? download, IDbContextFactory<PropertyManagerDbContext> dbFactory,
+    IDocumentStorage storage, HttpContext http, CancellationToken ct) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync(ct);
+    var attachment = await db.EmailAttachments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+    var stream = attachment is null ? null : await storage.OpenReadAsync(attachment.StorageKey, ct);
+    if (stream is null)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.XContentTypeOptions = "nosniff";
+    return download == true
+        ? Results.File(stream, attachment!.ContentType, attachment.FileName)
+        : Results.File(stream, attachment!.ContentType);
 });
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
