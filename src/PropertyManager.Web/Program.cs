@@ -49,6 +49,8 @@ await using (var scope = app.Services.CreateAsyncScope())
     await db.Database.MigrateAsync();
     await DbSeeder.SeedAsync(db);
     await scope.ServiceProvider.GetRequiredService<RecurringExpenseService>().GenerateDueAsync();
+    // Documents uploaded before text reading existed are read once, so the Ask page can search them.
+    await scope.ServiceProvider.GetRequiredService<LeaseDocumentService>().ReadMissingTextAsync();
 }
 
 if (!app.Environment.IsDevelopment())

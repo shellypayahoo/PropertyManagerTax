@@ -295,6 +295,12 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Text")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("TextExtracted")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTimeOffset>("UploadedAt")
                         .HasColumnType("TEXT");
 

@@ -150,7 +150,17 @@ else
                 @foreach (var d in lease.Documents.OrderByDescending(d => d.UploadedAt))
                 {
                     <tr>
-                        <td><a href="documents/@d.Id" target="_blank">@d.FileName</a></td>
+                        <td>
+                            <a href="documents/@d.Id" target="_blank">@d.FileName</a>
+                            @if (!d.HasText)
+                            {
+                                <div class="small text-muted">
+                                    @(d.FileName.EndsWith(".doc", StringComparison.OrdinalIgnoreCase)
+                                        ? "The Ask page can't read old Word (.doc) files. Save it as .docx or PDF and upload that instead."
+                                        : "No readable text (photo or scanned), so the Ask page can't search it.")
+                                </div>
+                            }
+                        </td>
                         <td class="text-end">@FormatSize(d.SizeBytes)</td>
                         <td>@d.UploadedAt.ToLocalTime().ToString("g")</td>
                         <td class="text-nowrap text-end">

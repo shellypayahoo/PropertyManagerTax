@@ -58,7 +58,9 @@ Open a lease from the **Leases** page to edit its terms and upload the signed le
 
 Files are read in the browser before they're sent. If a file can't be read, typically an online-only OneDrive or iCloud file that hasn't been downloaded to the Mac, the page says so instead of failing. In Finder, right-click the file and choose **Always Keep on This Device**, or download it from onedrive.com, then upload again.
 
-The database stores only each file's name, size, and upload time. The files themselves are saved under `src/PropertyManager.Web/App_Data/documents` (set `DocumentStorage:LocalPath` in `appsettings.json` to use another folder, such as one in iCloud Drive or OneDrive). File access goes through `IDocumentStorage`, so moving to Azure Blob Storage later means adding one class and changing one line in `Program.cs`.
+The text of PDF and Word (.docx) files is read when they're uploaded, so the **Ask** page can search and quote them (files uploaded earlier are read the next time the app starts). Photos, scanned PDFs without a text layer, and old .doc files have no readable text; the lease page marks them.
+
+Besides that text, the database stores each file's name, size, and upload time. The files themselves are saved under `src/PropertyManager.Web/App_Data/documents` (set `DocumentStorage:LocalPath` in `appsettings.json` to use another folder, such as one in iCloud Drive or OneDrive). File access goes through `IDocumentStorage`, so moving to Azure Blob Storage later means adding one class and changing one line in `Program.cs`.
 
 ## Importing financial information
 
@@ -126,7 +128,7 @@ The app reads a copy of `~/Library/Messages/chat.db` (and the Contacts databases
 
 ## Ask (AI assistant)
 
-The **Ask** page answers questions about your imported texts and the app's records, for example "When did the Taylor basement tenant first mention the leak?", "Has everyone paid March rent?", or "What did I pay Ace Plumbing this year?". The assistant looks things up with read-only tools (text message search, conversations, contacts, properties/leases/tenants, rent status, expenses, maintenance requests, and the annual profit and loss), cites the dates and senders of texts it relies on, and lists the lookups it made under each answer. It can't change any data.
+The **Ask** page answers questions about your imported texts and the app's records, for example "When did the Taylor basement tenant first mention the leak?", "Has everyone paid March rent?", "What did I pay Ace Plumbing this year?", or "What does the Taylor basement lease say about pets?". The assistant looks things up with read-only tools (text message search, conversations, contacts, uploaded lease documents, properties/leases/tenants, rent status, expenses, maintenance requests, and the annual profit and loss), cites the dates and senders of texts it relies on, and lists the lookups it made under each answer. It can't change any data.
 
 Pick the model from the dropdown; you can switch mid-conversation. Under the dropdown the page says where the looked-up texts and records are sent. Only what's needed to answer each question is sent, not the whole database.
 
@@ -164,6 +166,7 @@ Notes:
 
 - Each question is billed by the provider you choose. Questions that read many texts cost more.
 - If Claude declines to answer a request, it's automatically retried once on Claude Opus 4.8, and that conversation stays on Opus 4.8. If both decline, the page says so.
+- Rent, expenses, leases, tenants, maintenance, and documents are looked up when you ask, so new entries and uploads show up right away. New texts need **Import messages for ticked contacts** on the Messages page first.
 - A conversation is kept only while the page is open; **New conversation** starts over.
 
 ## Notes

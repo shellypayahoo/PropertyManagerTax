@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PropertyManager.Core.Data;
+using PropertyManager.Core.Documents;
 using PropertyManager.Core.Entities;
 using PropertyManager.Core.Storage;
 
@@ -63,7 +64,7 @@ public class LeaseDocumentService(IDbContextFactory<PropertyManagerDbContext> db
                     key = await storage.SaveAsync(stream, name, ct);
                 }
 
-                db.LeaseDocuments.Add(new LeaseDocument
+                var document = new LeaseDocument
                 {
                     LeaseId = leaseId,
                     FileName = name.Length > 255 ? name[^255..] : name,
@@ -71,7 +72,9 @@ public class LeaseDocumentService(IDbContextFactory<PropertyManagerDbContext> db
                     SizeBytes = size,
                     StorageKey = key,
                     UploadedAt = clock.GetUtcNow(),
-                });
+                };
+                await ReadTextAsync(document, ct);
+                db.LeaseDocuments.Add(document);
                 await db.SaveChangesAsync(ct);
                 saved++;
             }
@@ -87,5 +90,46 @@ public class LeaseDocumentService(IDbContextFactory<PropertyManagerDbContext> db
         }
 
         return new DocumentUploadResult(saved, problems);
+    }
+
+    /// <summary>Reads the text of documents uploaded before text reading existed. Returns how many were read.</summary>
+    public async Task<int> ReadMissingTextAsync(CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var documents = await db.LeaseDocuments.Where(d => !d.TextExtracted).ToListAsync(ct);
+        foreach (var document in documents)
+        {
+            await ReadTextAsync(document, ct);
+        }
+        await db.SaveChangesAsync(ct);
+        return documents.Count;
+    }
+
+    /// <summary>Fills in <see cref="LeaseDocument.Text"/> from the stored file. A file that can't be read just gets no text.</summary>
+    private async Task ReadTextAsync(LeaseDocument document, CancellationToken ct)
+    {
+        document.TextExtracted = true;
+        if (!DocumentTextExtractor.CanRead(document.FileName))
+        {
+            return;
+        }
+        try
+        {
+            await using var stream = await storage.OpenReadAsync(document.StorageKey, ct);
+            if (stream is null)
+            {
+                return;
+            }
+            // PdfPig and ZipArchive need a seekable stream.
+            using var copy = new MemoryStream();
+            await stream.CopyToAsync(copy, ct);
+            copy.Position = 0;
+            document.Text = DocumentTextExtractor.Extract(copy, document.FileName);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Damaged, password-protected, or unusual files are kept; they just can't be searched.
+            document.Text = null;
+        }
     }
 }

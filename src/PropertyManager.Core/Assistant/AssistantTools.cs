@@ -31,7 +31,12 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         AIFunctionFactory.Create(SearchExpensesAsync, "search_expenses"),
         AIFunctionFactory.Create(ListMaintenanceRequestsAsync, "list_maintenance_requests"),
         AIFunctionFactory.Create(GetProfitAndLossAsync, "get_profit_and_loss"),
+        AIFunctionFactory.Create(ListDocumentsAsync, "list_documents"),
+        AIFunctionFactory.Create(SearchDocumentsAsync, "search_documents"),
+        AIFunctionFactory.Create(ReadDocumentAsync, "read_document"),
     ];
+
+    private const int DocumentChunk = 30_000;
 
     [Description("Searches imported text messages with tenants and vendors. Every word of the query must appear in a message (case-insensitive), so use one or two distinctive words, and try synonyms if nothing is found. Returns the newest matches in date order, each with date, time, sender, and text.")]
     public async Task<string> SearchTextMessagesAsync(
@@ -244,6 +249,135 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
             }
         }
         return text.ToString();
+    }
+
+    [Description("Lists documents uploaded to leases (signed leases, addenda, inspection reports): id, file name, lease (unit and tenants), upload date, and whether its text can be read. Photos and scanned PDFs have no readable text.")]
+    public async Task<string> ListDocumentsAsync(CancellationToken ct = default)
+    {
+        var documents = await LoadDocumentsAsync(ct);
+        if (documents.Count == 0)
+        {
+            return "No documents have been uploaded (open a lease on the Leases page to upload).";
+        }
+        var text = new StringBuilder();
+        foreach (var d in documents)
+        {
+            var readable = d.HasText
+                ? $"{d.Text!.Length:N0} characters{(Pages(d.Text) is > 0 and var pages ? $", {pages} page(s)" : "")}"
+                : "no readable text (photo or scanned document)";
+            text.AppendLine($"- Document #{d.Id}: {d.FileName} | {LeaseLabel(d.Lease)} | uploaded {d.UploadedAt.ToLocalTime():yyyy-MM-dd} | {readable}");
+        }
+        return text.ToString();
+    }
+
+    [Description("Searches the text of uploaded lease documents. Every word must appear somewhere in a document (case-insensitive). Returns matching documents with short excerpts around the words, each with its page and character position; use read_document to read more.")]
+    public async Task<string> SearchDocumentsAsync(
+        [Description("Words to look for, e.g. \"pets\" or \"late fee\".")] string query,
+        [Description("Optional: only documents for this tenant's leases, or this unit or property (e.g. \"Taylor\").")] string? lease = null,
+        CancellationToken ct = default)
+    {
+        var words = (query ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+        {
+            return "Give one or more words to search for.";
+        }
+        var documents = (await LoadDocumentsAsync(ct))
+            .Where(d => d.HasText && (lease is null || Contains(LeaseLabel(d.Lease), lease)))
+            .Where(d => words.All(w => Contains(d.Text, w)))
+            .ToList();
+        if (documents.Count == 0)
+        {
+            return "No documents contain all of those words.";
+        }
+
+        var result = new StringBuilder($"{documents.Count} document(s):\n");
+        foreach (var d in documents.Take(10))
+        {
+            result.AppendLine($"Document #{d.Id}: {d.FileName} ({LeaseLabel(d.Lease)})");
+            foreach (var (hit, excerpt) in Excerpts(d.Text!, words))
+            {
+                result.AppendLine($"  [{PageAt(d.Text!, hit)}character {hit}] ...{excerpt}...");
+            }
+        }
+        return result.ToString();
+    }
+
+    [Description("Reads the text of one uploaded document, 30,000 characters at a time. PDF pages are marked [Page N].")]
+    public async Task<string> ReadDocumentAsync(
+        [Description("The document id from list_documents or search_documents.")] int documentId,
+        [Description("Character position to start reading from (default 0, the beginning).")] int fromCharacter = 0,
+        CancellationToken ct = default)
+    {
+        var d = (await LoadDocumentsAsync(ct)).FirstOrDefault(x => x.Id == documentId);
+        if (d is null)
+        {
+            return $"There's no document #{documentId}.";
+        }
+        if (!d.HasText)
+        {
+            return $"{d.FileName} has no readable text (photo or scanned document); the owner can open it from the lease's page.";
+        }
+        var start = Math.Clamp(fromCharacter, 0, d.Text!.Length);
+        var end = Math.Min(start + DocumentChunk, d.Text.Length);
+        var more = end < d.Text.Length ? $"\n(continues; call read_document with fromCharacter={end} for more)" : "\n(end of document)";
+        return $"Document #{d.Id}: {d.FileName} ({LeaseLabel(d.Lease)}), characters {start}-{end} of {d.Text.Length}:\n{d.Text[start..end]}{more}";
+    }
+
+    private async Task<List<LeaseDocument>> LoadDocumentsAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var documents = await db.LeaseDocuments.AsNoTracking()
+            .Include(d => d.Lease).ThenInclude(l => l!.Tenants)
+            .Include(d => d.Lease).ThenInclude(l => l!.Unit).ThenInclude(u => u!.Property)
+            .ToListAsync(ct);
+        return documents.OrderBy(d => d.Lease?.Unit?.DisplayName).ThenBy(d => d.UploadedAt.UtcTicks).ToList();
+    }
+
+    private static string LeaseLabel(Lease? lease) =>
+        lease is null ? "no lease" : $"{lease.Unit?.DisplayName}, lease #{lease.Id} with {lease.TenantNames}, {lease.StartDate:yyyy-MM-dd} to {(lease.EndDate is { } e ? e.ToString("yyyy-MM-dd") : "month-to-month")}";
+
+    private static int Pages(string text) => text.Split("[Page ").Length - 1;
+
+    private static string PageAt(string text, int index)
+    {
+        var marker = text.LastIndexOf("[Page ", Math.Min(index, text.Length - 1), StringComparison.Ordinal);
+        if (marker < 0)
+        {
+            return "";
+        }
+        var close = text.IndexOf(']', marker);
+        return close < 0 ? "" : text[(marker + 1)..close] + ", ";
+    }
+
+    /// <summary>
+    /// Up to 8 excerpts around the first occurrences of each word, merged where they overlap, each with the position
+    /// of its first match.
+    /// </summary>
+    private static List<(int Hit, string Text)> Excerpts(string text, IReadOnlyList<string> words)
+    {
+        const int around = 200;
+        var hits = new List<int>();
+        foreach (var word in words)
+        {
+            for (int i = text.IndexOf(word, StringComparison.OrdinalIgnoreCase), n = 0; i >= 0 && n < 4; i = text.IndexOf(word, i + word.Length, StringComparison.OrdinalIgnoreCase), n++)
+            {
+                hits.Add(i);
+            }
+        }
+        var ranges = new List<(int Hit, int Start, int End)>();
+        foreach (var hit in hits.Order())
+        {
+            var (start, end) = (Math.Max(0, hit - around), Math.Min(text.Length, hit + around));
+            if (ranges.Count > 0 && start <= ranges[^1].End)
+            {
+                ranges[^1] = ranges[^1] with { End = Math.Max(ranges[^1].End, end) };
+            }
+            else
+            {
+                ranges.Add((hit, start, end));
+            }
+        }
+        return ranges.Take(8).Select(r => (r.Hit, string.Join(' ', text[r.Start..r.End].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)))).ToList();
     }
 
     /// <summary>Contact handles matching a name, phone, or email; null when no contact was given.</summary>
