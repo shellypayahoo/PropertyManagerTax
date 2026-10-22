@@ -53,6 +53,9 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Property<string>("DescriptionColumn")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DirectionColumn")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("EscrowColumn")
                         .HasColumnType("TEXT");
 

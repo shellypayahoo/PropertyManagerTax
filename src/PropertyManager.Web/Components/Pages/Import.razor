@@ -60,8 +60,12 @@
             <div class="col-md-2"><label class="form-label">Amount</label><ColumnSelect @bind-Value="account.AmountColumn" Headers="headers" /></div>
             <div class="col-md-2"><label class="form-label">or Debit</label><ColumnSelect @bind-Value="account.DebitColumn" Headers="headers" /></div>
             <div class="col-md-2"><label class="form-label">and Credit</label><ColumnSelect @bind-Value="account.CreditColumn" Headers="headers" /></div>
+            <div class="col-md-3"><label class="form-label">Debit/Credit indicator</label><ColumnSelect @bind-Value="account.DirectionColumn" Headers="headers" /></div>
         </div>
-        <p class="small text-muted mt-1">Use <em>Amount</em> if the bank has a single column where money out is negative, or <em>Debit</em> and <em>Credit</em> if it has two columns.</p>
+        <p class="small text-muted mt-1">
+            Use <em>Amount</em> if the bank has a single column where money out is negative, or <em>Debit</em> and <em>Credit</em> if it has two columns.
+            If every amount is positive and another column says "Debit" or "Credit", choose that column as the <em>Debit/Credit indicator</em>.
+        </p>
         <button class="btn btn-primary" @onclick="ReviewAsync">Continue</button>
         <button class="btn btn-link" @onclick="Reset">Cancel</button>
         <FormError Message="@error" />
@@ -295,7 +299,7 @@
         }
 
         var savedLayoutFits = BankCsvReader.IsComplete(account)
-            && new[] { account.DateColumn, account.DescriptionColumn, account.AmountColumn, account.DebitColumn, account.CreditColumn }
+            && new[] { account.DateColumn, account.DescriptionColumn, account.AmountColumn, account.DebitColumn, account.CreditColumn, account.DirectionColumn }
                 .All(c => c is null || headers.Contains(c, StringComparer.OrdinalIgnoreCase));
         if (!savedLayoutFits)
         {
@@ -305,6 +309,7 @@
             account.AmountColumn = detected.AmountColumn;
             account.DebitColumn = detected.DebitColumn;
             account.CreditColumn = detected.CreditColumn;
+            account.DirectionColumn = detected.DirectionColumn;
         }
 
         if (savedLayoutFits && account.Id != 0)
@@ -323,6 +328,10 @@
         if (account.AmountColumn is not null)
         {
             account.DebitColumn = account.CreditColumn = null;
+        }
+        else
+        {
+            account.DirectionColumn = null;
         }
         var result = BankCsvReader.Read(csvText, account);
         if (result.Rows.Count == 0)

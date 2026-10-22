@@ -47,6 +47,27 @@ public sealed class MortgageImportTests : IDisposable
     }
 
     [Fact]
+    public void ServicerLayoutWithDueDateAndFeesColumns_IsDetected()
+    {
+        // Layout like Rocket Mortgage's payment activity export (made-up amounts).
+        const string csv = """
+            Date,Date Due,Principal,Interest,Escrow,Other & Fees,Total,Transaction Type
+            10/01/2026,11/01/2026,$891.31,$1259.16,$1024.17,$0.00,$3174.64,Monthly Payment
+            12/17/2020,06/01/2026,$0.0,$0.0,$4932.44,$0.00,$4932.44,Escrow Adjustment
+            12/28/2020,02/01/2021,$0.0,$712.2,$0.0,$0.00,$712.2,Monthly Payment
+            """;
+        var (headers, _) = BankCsvReader.FindHeader(CsvParser.Parse(csv));
+        var loan = MortgageCsvReader.DetectColumns(headers);
+
+        Assert.Equal(("Date", "Transaction Type", "Total", "Principal", "Interest", "Escrow"),
+            (loan.DateColumn, loan.DescriptionColumn, loan.AmountColumn, loan.PrincipalColumn, loan.InterestColumn, loan.EscrowColumn));
+
+        var rows = MortgageCsvReader.Read(csv, loan).Rows;
+        Assert.Equal([MortgageRowKind.Payment, MortgageRowKind.Other, MortgageRowKind.Payment], rows.Select(r => r.Kind));
+        Assert.Equal((891.31m, 1259.16m, 1024.17m, 3174.64m), (rows[0].Principal, rows[0].Interest, rows[0].Escrow, rows[0].Total));
+    }
+
+    [Fact]
     public void DetectsColumns_IgnoringBalance_AndClassifiesRows()
     {
         var loan = NewLoan();

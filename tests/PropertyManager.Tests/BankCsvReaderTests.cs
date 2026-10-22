@@ -75,6 +75,35 @@ public class BankCsvReaderTests
     }
 
     [Fact]
+    public void PositiveAmountsWithDebitCreditIndicator_AreSignedByTheIndicator()
+    {
+        var result = ReadWithDetectedColumns("""
+            Posting Date,Transaction Date,Amount,Credit Debit Indicator,type,Type Group,Reference,Instructed Currency,Currency Exchange Rate,Instructed Amount,Description,Category
+            10/15/2026,10/15/2026,129.71,Debit,ACH Debit,ACH Debit,,,,,Payment to Water Department,Utilities
+            10/05/2026,10/05/2026,4500.00,Credit,Transfer,Transfer,,,,,Transfer From Personal -1111,Transfers
+            09/21/2026,09/18/2026,"2,713.56",Debit,POS,POS,,,,,Costco,General Merchandise
+            """);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal([-129.71m, 4500m, -2713.56m], result.Rows.Select(r => r.Amount));
+        Assert.Equal(new DateOnly(2026, 9, 21), result.Rows[2].Date);
+        Assert.Equal("Payment to Water Department", result.Rows[0].Description);
+    }
+
+    [Fact]
+    public void DirectionColumnIsNotUsedWhenAmountsAreAlreadySigned()
+    {
+        var rows = CsvParser.Parse("""
+            Date,Description,Amount,Type
+            05/01/2026,RENT,4500.00,Credit
+            05/02/2026,REPAIR,-80.00,Debit
+            """);
+        var (headers, start) = BankCsvReader.FindHeader(rows);
+
+        Assert.Null(BankCsvReader.DetectColumns(headers, rows, start).DirectionColumn);
+    }
+
+    [Fact]
     public void IdenticalRowsGetDistinctFingerprints_AndRereadingIsStable()
     {
         const string csv = """

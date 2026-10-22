@@ -53,6 +53,7 @@ public static class BankCsvReader
             return mapping;
         }
         mapping.DebitColumn = mapping.CreditColumn = null;
+        mapping.DirectionColumn = FindDirectionColumn(headers, rows, dataStart, mapping.AmountColumn);
 
         if (headers.Count > 0 && headers[0] == "Column 1")
         {
@@ -73,6 +74,30 @@ public static class BankCsvReader
             mapping.DescriptionColumn = textIndex is { } t ? headers[t] : null;
         }
         return mapping;
+    }
+
+    private static readonly HashSet<string> MoneyOutWords = new(StringComparer.OrdinalIgnoreCase) { "debit", "dr", "withdrawal" };
+    private static readonly HashSet<string> MoneyInWords = new(StringComparer.OrdinalIgnoreCase) { "credit", "cr", "deposit" };
+
+    /// <summary>
+    /// When every amount is positive, finds a column whose values are only "Debit"/"Credit" (or DR/CR,
+    /// Withdrawal/Deposit) that says which way the money moved.
+    /// </summary>
+    private static string? FindDirectionColumn(IReadOnlyList<string> headers, List<string[]> rows, int dataStart, string? amountColumn)
+    {
+        var amountIndex = amountColumn is null ? -1 : headers.ToList().IndexOf(amountColumn);
+        var sample = rows.Skip(dataStart).Take(50).ToList();
+        if (amountIndex < 0 || sample.Count == 0
+            || sample.Any(r => amountIndex < r.Length && ValueParsers.TryParseAmount(r[amountIndex], out var a) && a < 0))
+        {
+            return null;
+        }
+
+        return Enumerable.Range(0, headers.Count)
+            .Where(i => i != amountIndex)
+            .Where(i => sample.All(r => i < r.Length && (MoneyOutWords.Contains(r[i]) || MoneyInWords.Contains(r[i]))))
+            .Select(i => headers[i])
+            .FirstOrDefault();
     }
 
     public static bool IsComplete(BankAccount m) =>
@@ -96,6 +121,11 @@ public static class BankCsvReader
         var amountIndex = Index(mapping.AmountColumn);
         var debitIndex = Index(mapping.DebitColumn);
         var creditIndex = Index(mapping.CreditColumn);
+        var directionIndex = Index(mapping.DirectionColumn);
+        if (mapping.DirectionColumn is not null && directionIndex < 0)
+        {
+            return new BankCsvResult(headers, result, ["This file's columns don't match the saved layout for this account. Choose the columns again."]);
+        }
         if (dateIndex < 0 || descriptionIndex < 0 || (amountIndex < 0 && (debitIndex < 0 || creditIndex < 0)))
         {
             return new BankCsvResult(headers, result, ["This file's columns don't match the saved layout for this account. Choose the columns again."]);
@@ -126,6 +156,23 @@ public static class BankCsvReader
                 {
                     // Balance lines such as Bank of America's "Beginning balance" have no amount.
                     continue;
+                }
+                if (directionIndex >= 0)
+                {
+                    var direction = Cell(directionIndex);
+                    if (MoneyOutWords.Contains(direction))
+                    {
+                        amount = -Math.Abs(amount.Value);
+                    }
+                    else if (MoneyInWords.Contains(direction))
+                    {
+                        amount = Math.Abs(amount.Value);
+                    }
+                    else
+                    {
+                        errors.Add($"Line {line}: \"{direction}\" isn't Debit or Credit; skipped.");
+                        continue;
+                    }
                 }
             }
             else

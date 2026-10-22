@@ -62,7 +62,7 @@ The database stores only each file's name, size, and upload time. The files them
 
 ## Importing financial information
 
-**Bank and Zelle CSV files** (**Import** page): download transactions as CSV from your bank's website and upload them. Common layouts (Chase, Bank of America, Capital One, Wells Fargo, and others) are detected automatically; otherwise you pick the date, description, and amount columns once per account.
+**Bank and Zelle CSV files** (**Import** page): download transactions as CSV from your bank's website and upload them. Common layouts (Chase, Bank of America, Capital One, Wells Fargo, and others) are detected automatically, including banks whose amounts are all positive with a separate Debit/Credit column; otherwise you pick the columns once per account.
 
 Every row is reviewed before it is saved, and each is recorded as one of:
 
@@ -96,7 +96,7 @@ If the mortgage company offers a CSV payment history, use **Import → Import a 
 - Each payment is matched to the bank expense for the same amount within 10 days and that expense is **split** into interest, principal, and escrow deposit, so the payment isn't counted twice. Any amount not covered by those (such as a late fee) goes to Other.
 - A payment with no matching bank expense is added as new expenses; if that bank payment is imported later, it's suggested as **Ignore**.
 - Property tax and insurance the lender paid from escrow are added as **Taxes** and **Insurance** on the date paid.
-- Rows already imported for the loan are skipped on later imports.
+- Rows already imported for the loan are skipped on later imports. Lenders often include years of history, so the review screen starts from the most recent year; earlier years can be imported later.
 
 ## Tracking rent
 

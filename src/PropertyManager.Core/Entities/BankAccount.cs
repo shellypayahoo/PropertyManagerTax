@@ -25,6 +25,12 @@ public class BankAccount
     public string? CreditColumn { get; set; }
 
     /// <summary>
+    /// For banks whose amounts are all positive: the column saying "Debit" (money out) or "Credit" (money in),
+    /// such as "Credit Debit Indicator". Used with <see cref="AmountColumn"/>.
+    /// </summary>
+    public string? DirectionColumn { get; set; }
+
+    /// <summary>
     /// True for a mortgage loan whose payment history is imported from the lender. For a loan, <see cref="AmountColumn"/>
     /// is the payment total (optional) and the payment is broken down by the principal, interest, and escrow columns.
     /// </summary>

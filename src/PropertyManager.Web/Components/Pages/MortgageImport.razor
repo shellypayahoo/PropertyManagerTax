@@ -63,10 +63,20 @@
         break;
 
     case Step.Review:
-        var pending = rows.Where(r => !r.AlreadyImported).ToList();
+        var pending = Pending();
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <label class="form-label mb-0" for="from-year">Import payments from</label>
+            <select id="from-year" class="form-select form-select-sm w-auto" @bind="fromYear">
+                @foreach (var y in rows.Select(r => r.Row.Date.Year).Distinct().OrderDescending())
+                {
+                    <option value="@y">@y on</option>
+                }
+            </select>
+            <span class="small text-muted">Earlier rows are left out and can be imported later.</span>
+        </div>
         <p>
             <strong>@pending.Count</strong> new rows for <strong>@loan.Name</strong> (@properties.FirstOrDefault(p => p.Id == loan.PropertyId)?.Name).
-            @if (rows.Count > pending.Count) { <span class="text-muted">@(rows.Count - pending.Count) already imported were skipped.</span> }
+            @if (rows.Any(r => r.AlreadyImported)) { <span class="text-muted">@rows.Count(r => r.AlreadyImported) already imported were skipped.</span> }
         </p>
         @if (readErrors.Count > 0)
         {
@@ -106,7 +116,7 @@
                 the matching payment is suggested as <em>Ignore</em> so it isn't counted twice.
             </div>
         }
-        <button class="btn btn-primary" disabled="@saving" @onclick="CommitAsync">Import @pending.Count rows</button>
+        <button class="btn btn-primary" disabled="@(saving || pending.Count == 0)" @onclick="CommitAsync">Import @pending.Count rows</button>
         <button class="btn btn-link" @onclick="ResetAsync">Cancel</button>
         <FormError Message="@error" />
         break;
@@ -138,6 +148,7 @@
     private List<MortgageImportRow> rows = [];
     private IReadOnlyList<string> readErrors = [];
     private MortgageImportSummary? summary;
+    private int fromYear;
     private string? error;
     private bool saving;
 
@@ -225,6 +236,8 @@
         }
         readErrors = result.Errors;
         rows = await ImportService.PrepareAsync(loan, result.Rows);
+        // Lenders often include years of history; start with the most recent year.
+        fromYear = rows.Where(r => !r.AlreadyImported).Select(r => r.Row.Date.Year).DefaultIfEmpty(rows.Max(r => r.Row.Date.Year)).Max();
         step = Step.Review;
     }
 
@@ -234,7 +247,7 @@
         error = null;
         try
         {
-            summary = await ImportService.CommitAsync(loan, rows);
+            summary = await ImportService.CommitAsync(loan, Pending());
             step = Step.Done;
         }
         catch (InvalidOperationException ex)
@@ -257,6 +270,9 @@
         newLoanPropertyId = 0;
         await OnInitializedAsync();
     }
+
+    private List<MortgageImportRow> Pending() =>
+        rows.Where(r => !r.AlreadyImported && r.Row.Date.Year >= fromYear).ToList();
 
     private static string Money(decimal amount) => amount == 0m ? "" : amount.ToString("C");
 
