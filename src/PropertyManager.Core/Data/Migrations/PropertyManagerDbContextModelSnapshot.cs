@@ -397,6 +397,105 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("Properties");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.RecurringExpense", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DayOfMonth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsPaused")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PaidWith")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("StartMonth")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("VendorId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VendorId");
+
+                    b.ToTable("RecurringExpenses");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.RecurringExpenseRun", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ExpenseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly>("Month")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TargetId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpenseId");
+
+                    b.HasIndex("TargetId", "Month")
+                        .IsUnique();
+
+                    b.ToTable("RecurringExpenseRuns");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.RecurringExpenseTarget", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("PropertyId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RecurringExpenseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly>("StartMonth")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("UnitId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("RecurringExpenseId");
+
+                    b.HasIndex("UnitId");
+
+                    b.ToTable("RecurringExpenseTargets");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.RentPayment", b =>
                 {
                     b.Property<int>("Id")
@@ -674,6 +773,59 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Vendor");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.RecurringExpense", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Vendor");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.RecurringExpenseRun", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Expense", "Expense")
+                        .WithMany()
+                        .HasForeignKey("ExpenseId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.RecurringExpenseTarget", "Target")
+                        .WithMany()
+                        .HasForeignKey("TargetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Expense");
+
+                    b.Navigation("Target");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.RecurringExpenseTarget", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("PropertyManager.Core.Entities.RecurringExpense", "RecurringExpense")
+                        .WithMany("Targets")
+                        .HasForeignKey("RecurringExpenseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PropertyManager.Core.Entities.Unit", "Unit")
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Property");
+
+                    b.Navigation("RecurringExpense");
+
+                    b.Navigation("Unit");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.RentPayment", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.Lease", "Lease")
@@ -713,6 +865,11 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Expenses");
 
                     b.Navigation("Units");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.RecurringExpense", b =>
+                {
+                    b.Navigation("Targets");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Unit", b =>

@@ -2,14 +2,21 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
 @inject ExpenseSplitService SplitService
+@inject RecurringExpenseService Recurring
 
 <PageTitle>Expenses</PageTitle>
 
 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
     <h1 class="me-auto mb-0">Expenses</h1>
+    <a class="btn btn-outline-primary" href="expenses/recurring">Recurring</a>
     <a class="btn btn-outline-primary" href="expenses/from-text">Add from a text message</a>
     <a class="btn btn-outline-secondary" href="import">Import from bank</a>
 </div>
+
+@if (recurringAdded > 0)
+{
+    <div class="alert alert-info py-2">Added @recurringAdded recurring @(recurringAdded == 1 ? "expense" : "expenses") that came due.</div>
+}
 
 <div class="row g-2 mb-3">
     <div class="col-auto">
@@ -152,17 +159,48 @@
                             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                                 <strong>Split @e.Amount.ToString("C")</strong>
                                 <span class="small text-muted">Use the amounts from the statement.</span>
-                                <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="() => UseMortgageParts(e)">Mortgage payment</button>
+                                <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="() => showUnitPicker = !showUnitPicker">Divide across units</button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => UseMortgageParts(e)">Mortgage payment</button>
                             </div>
+                            @if (showUnitPicker)
+                            {
+                                <div class="border rounded p-2 mb-2 bg-body">
+                                    <div class="small mb-1">Which units did this cover? The amount is divided evenly.</div>
+                                    @foreach (var p in properties)
+                                    {
+                                        <div class="d-flex flex-wrap gap-3 mb-1">
+                                            <span class="small fw-semibold" style="min-width: 10rem">@p.Name</span>
+                                            @foreach (var u in p.Units.OrderBy(u => u.Label))
+                                            {
+                                                <label class="form-check-label small">
+                                                    <input type="checkbox" class="form-check-input me-1" checked="@pickedUnits.Contains(u.Id)"
+                                                           @onchange="ev => { if ((bool)ev.Value!) pickedUnits.Add(u.Id); else pickedUnits.Remove(u.Id); }" />Unit @u.Label
+                                                </label>
+                                            }
+                                        </div>
+                                    }
+                                    <button class="btn btn-sm btn-primary mt-1" disabled="@(pickedUnits.Count < 2)" @onclick="() => DivideAcrossUnits(e)">
+                                        Divide @e.Amount.ToString("C") across @pickedUnits.Count units
+                                    </button>
+                                </div>
+                            }
                             @foreach (var part in splitParts)
                             {
-                                <div class="d-flex gap-2 mb-1" style="max-width: 36rem">
-                                    <select class="form-select form-select-sm" @bind="part.Category"><CategoryOptions /></select>
-                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" style="width: 9rem" @bind="part.Amount" @bind:event="oninput" />
+                                <div class="d-flex flex-wrap gap-2 mb-1" style="max-width: 56rem">
+                                    <select class="form-select form-select-sm" style="max-width: 12rem" value="@part.Location" @onchange="ev => { part.Location = (string)ev.Value!; part.UnitId = null; }">
+                                        <option value="@SharedValue">All properties (shared)</option>
+                                        @foreach (var p in properties) { <option value="@p.Id">@p.Name</option> }
+                                    </select>
+                                    <select class="form-select form-select-sm" style="max-width: 7rem" @bind="part.UnitId" disabled="@(part.Location == SharedValue)">
+                                        <option value="">All units</option>
+                                        @foreach (var u in UnitsOf(int.TryParse(part.Location, out var pid) ? pid : null)) { <option value="@u.Id">Unit @u.Label</option> }
+                                    </select>
+                                    <select class="form-select form-select-sm" style="max-width: 16rem" @bind="part.Category"><CategoryOptions /></select>
+                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" style="width: 8rem" @bind="part.Amount" @bind:event="oninput" />
                                     <button class="btn btn-sm btn-link text-danger" disabled="@(splitParts.Count <= 2)" @onclick="() => splitParts.Remove(part)">Remove</button>
                                 </div>
                             }
-                            <button class="btn btn-sm btn-link px-0" @onclick="() => splitParts.Add(new SplitPart { Category = ExpenseCategory.Other })">+ Add a part</button>
+                            <button class="btn btn-sm btn-link px-0" @onclick="() => splitParts.Add(NewPart(e, ExpenseCategory.Other))">+ Add a part</button>
                             @if (showEscrowHint)
                             {
                                 <div class="small text-muted mt-1">
@@ -260,12 +298,20 @@
     private int propertyFilter;
     private string? error;
     private DateOnly today;
+    private int recurringAdded;
 
     private class SplitPart
     {
         public ExpenseCategory Category { get; set; }
         public decimal Amount { get; set; }
+
+        /// <summary>A property id, or SharedValue for all properties.</summary>
+        public string Location { get; set; } = SharedValue;
+        public int? UnitId { get; set; }
     }
+
+    private bool showUnitPicker;
+    private HashSet<int> pickedUnits = [];
 
     private int? splitting;
     private bool showEscrowHint;
@@ -287,6 +333,7 @@
         await using var db = await DbFactory.CreateDbContextAsync();
         properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
         vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+        recurringAdded = await Recurring.GenerateDueAsync();
         await LoadAsync();
     }
 
@@ -392,11 +439,33 @@
         splitting = e.Id;
         splitError = null;
         showEscrowHint = false;
-        splitParts =
-        [
-            new SplitPart { Category = e.Category, Amount = e.Amount },
-            new SplitPart { Category = ExpenseCategory.Other },
-        ];
+        showUnitPicker = false;
+        pickedUnits = [];
+        var first = NewPart(e, e.Category);
+        first.Amount = e.Amount;
+        splitParts = [first, NewPart(e, ExpenseCategory.Other)];
+    }
+
+    /// <summary>A split part on the original expense's property and unit.</summary>
+    private static SplitPart NewPart(Expense e, ExpenseCategory category) => new()
+    {
+        Category = category,
+        Location = PropertyValue(e.PropertyId),
+        UnitId = e.UnitId,
+    };
+
+    private void DivideAcrossUnits(Expense e)
+    {
+        var picked = properties.SelectMany(p => p.Units.OrderBy(u => u.Label)).Where(u => pickedUnits.Contains(u.Id)).ToList();
+        var amounts = ExpenseSplitService.DivideEvenly(e.Amount, picked.Count);
+        splitParts = picked.Select((u, i) => new SplitPart
+        {
+            Category = e.Category,
+            Amount = amounts[i],
+            Location = u.PropertyId.ToString(),
+            UnitId = u.Id,
+        }).ToList();
+        showUnitPicker = false;
     }
 
     /// <summary>Interest, principal, and escrow deposit, as on a mortgage statement.</summary>
@@ -404,9 +473,9 @@
     {
         splitParts =
         [
-            new SplitPart { Category = ExpenseCategory.MortgageInterest },
-            new SplitPart { Category = ExpenseCategory.MortgagePrincipal },
-            new SplitPart { Category = ExpenseCategory.EscrowDeposit },
+            NewPart(e, ExpenseCategory.MortgageInterest),
+            NewPart(e, ExpenseCategory.MortgagePrincipal),
+            NewPart(e, ExpenseCategory.EscrowDeposit),
         ];
         showEscrowHint = true;
     }
@@ -415,7 +484,10 @@
     {
         try
         {
-            await SplitService.SplitAsync(expenseId, splitParts.Select(p => new ExpenseSplitPart(p.Category, p.Amount)).ToList());
+            await SplitService.SplitAsync(expenseId, splitParts
+                .Select(p => new ExpenseSplitPart(p.Category, p.Amount,
+                    new ExpenseLocation(int.TryParse(p.Location, out var id) ? id : null, p.UnitId)))
+                .ToList());
             splitting = null;
             await LoadAsync();
         }

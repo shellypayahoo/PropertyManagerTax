@@ -1,0 +1,260 @@
+@page "/expenses/recurring"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject RecurringExpenseService Recurring
+@inject TimeProvider Clock
+
+<PageTitle>Recurring expenses</PageTitle>
+
+<p><a href="expenses">← Expenses</a></p>
+<h1>Recurring expenses</h1>
+<p class="text-muted" style="max-width: 48rem">
+    Monthly bills such as a service plan. Each month the app adds one expense for every unit (or property) you choose,
+    including any months it missed while the app wasn't open. Deleting an expense it added won't bring it back.
+</p>
+
+@if (generated > 0)
+{
+    <div class="alert alert-success py-2">Added @generated recurring @(generated == 1 ? "expense" : "expenses") that were due.</div>
+}
+
+@if (items.Count > 0)
+{
+    <table class="table align-middle">
+        <thead><tr><th>Name</th><th>Where</th><th class="text-end">Each month</th><th>Category</th><th>Next</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var r in items)
+            {
+                <tr class="@(r.IsPaused ? "text-muted" : "")">
+                    <td>
+                        @r.Name
+                        @if (r.Vendor is not null) { <div class="small text-muted">@r.Vendor.Name</div> }
+                    </td>
+                    <td class="small">@string.Join(", ", r.Targets.Select(TargetName))</td>
+                    <td class="text-end text-nowrap">
+                        @r.Amount.ToString("C") × @r.Targets.Count
+                        <div class="small text-muted">@((r.Amount * r.Targets.Count).ToString("C")) total</div>
+                    </td>
+                    <td>@r.Category.DisplayName()</td>
+                    <td class="text-nowrap">
+                        @(r.IsPaused ? "Paused" : RecurringExpenseService.NextOccurrence(r, today)?.ToString("MMM d, yyyy") ?? "Ended")
+                    </td>
+                    <td class="text-nowrap text-end">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(r)">Edit</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => TogglePauseAsync(r.Id)">@(r.IsPaused ? "Resume" : "Pause")</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(r.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h2 class="h4 mt-4">@(form.Id == 0 ? "Add a recurring expense" : $"Edit {form.Name}")</h2>
+<div class="row g-2" style="max-width: 60rem">
+    <div class="col-md-4"><label class="form-label">Name</label><input class="form-control" @bind="form.Name" placeholder="e.g. HVAC service" /></div>
+    <div class="col-md-4">
+        <label class="form-label">Vendor</label>
+        <select class="form-select" @bind="form.VendorId">
+            <option value="">—</option>
+            @foreach (var v in vendors) { <option value="@v.Id">@v.Name</option> }
+        </select>
+    </div>
+    <div class="col-md-4"><label class="form-label">Category</label><select class="form-select" @bind="form.Category"><CategoryOptions /></select></div>
+    <div class="col-md-3">
+        <label class="form-label">Amount per unit / month</label>
+        <input type="number" step="0.01" class="form-control" @bind="form.Amount" />
+    </div>
+    <div class="col-md-3">
+        <label class="form-label">Paid with</label>
+        <select class="form-select" @bind="form.PaidWith">
+            <option value="">—</option>
+            @foreach (var m in Enum.GetValues<PaymentMethod>()) { <option value="@m">@m</option> }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Day of month</label>
+        <input type="number" min="1" max="31" class="form-control" @bind="form.DayOfMonth" />
+    </div>
+    <div class="col-md-2"><label class="form-label">Starts</label><input type="date" class="form-control" @bind="form.StartMonth" /></div>
+    <div class="col-md-2"><label class="form-label">Ends (optional)</label><input type="date" class="form-control" @bind="form.EndDate" /></div>
+
+    <div class="col-12">
+        <label class="form-label">Record it for</label>
+        <div class="border rounded p-2">
+            @foreach (var p in properties)
+            {
+                <div class="d-flex flex-wrap gap-3 mb-1">
+                    <span class="small fw-semibold" style="min-width: 10rem">@p.Name</span>
+                    @foreach (var u in p.Units.OrderBy(u => u.Label))
+                    {
+                        <label class="form-check-label small">
+                            <input type="checkbox" class="form-check-input me-1" checked="@pickedUnits.Contains(u.Id)" @onchange="ev => Toggle(pickedUnits, u.Id, (bool)ev.Value!)" />Unit @u.Label
+                        </label>
+                    }
+                </div>
+            }
+            <label class="form-check-label small">
+                <input type="checkbox" class="form-check-input me-1" @bind="pickedShared" />All properties (shared), e.g. a business-wide subscription
+            </label>
+        </div>
+        <div class="small text-muted mt-1">
+            @{ var count = pickedUnits.Count + (pickedShared ? 1 : 0); }
+            @count @(count == 1 ? "expense" : "expenses") of @form.Amount.ToString("C") each month = @((form.Amount * count).ToString("C")).
+        </div>
+    </div>
+    <div class="col-12 d-flex gap-2">
+        <button class="btn btn-primary" @onclick="SaveAsync">@(form.Id == 0 ? "Add" : "Save")</button>
+        @if (form.Id != 0) { <button class="btn btn-link" @onclick="Reset">Cancel</button> }
+    </div>
+</div>
+<FormError Message="@error" />
+@if (form.Id != 0)
+{
+    <p class="small text-muted mt-2">Changes apply to months added from now on; expenses already added stay as they are (edit them on the Expenses page).</p>
+}
+
+@code {
+    private List<RecurringExpense> items = [];
+    private List<Property> properties = [];
+    private List<Vendor> vendors = [];
+    private RecurringExpense form = new();
+    private HashSet<int> pickedUnits = [];
+    private bool pickedShared;
+    private string? error;
+    private int generated;
+    private DateOnly today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        Reset();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
+        vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        items = await db.RecurringExpenses.AsNoTracking()
+            .Include(r => r.Vendor)
+            .Include(r => r.Targets).ThenInclude(t => t.Property)
+            .Include(r => r.Targets).ThenInclude(t => t.Unit)
+            .OrderBy(r => r.Name)
+            .ToListAsync();
+    }
+
+    private static string TargetName(RecurringExpenseTarget t) =>
+        t.Property is null ? "All properties" : t.Unit is null ? t.Property.Name : $"{t.Property.Name} {t.Unit.Label}";
+
+    private static void Toggle(HashSet<int> set, int id, bool on)
+    {
+        if (on)
+        {
+            set.Add(id);
+        }
+        else
+        {
+            set.Remove(id);
+        }
+    }
+
+    private void Reset()
+    {
+        form = new RecurringExpense { StartMonth = new DateOnly(today.Year, today.Month, 1), DayOfMonth = 1, Category = ExpenseCategory.CleaningAndMaintenance };
+        pickedUnits = [];
+        pickedShared = false;
+        error = null;
+    }
+
+    private void Edit(RecurringExpense r)
+    {
+        form = new RecurringExpense
+        {
+            Id = r.Id, Name = r.Name, VendorId = r.VendorId, Category = r.Category, PaidWith = r.PaidWith, Amount = r.Amount,
+            DayOfMonth = r.DayOfMonth, StartMonth = r.StartMonth, EndDate = r.EndDate, IsPaused = r.IsPaused,
+        };
+        pickedUnits = r.Targets.Where(t => t.UnitId is not null).Select(t => t.UnitId!.Value).ToHashSet();
+        pickedShared = r.Targets.Any(t => t.PropertyId is null);
+        error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name) || form.Amount <= 0)
+        {
+            error = "Enter a name and an amount greater than zero.";
+            return;
+        }
+        if (form.DayOfMonth is < 1 or > 31)
+        {
+            error = "Day of month must be between 1 and 31.";
+            return;
+        }
+        if (pickedUnits.Count == 0 && !pickedShared)
+        {
+            error = "Choose at least one unit, or All properties.";
+            return;
+        }
+
+        var startMonth = RentPayment.MonthOf(form.StartMonth);
+        var thisMonth = RentPayment.MonthOf(today);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = form.Id == 0
+            ? db.RecurringExpenses.Add(new RecurringExpense()).Entity
+            : await db.RecurringExpenses.Include(r => r.Targets).SingleAsync(r => r.Id == form.Id);
+
+        entity.Name = form.Name.Trim();
+        entity.VendorId = form.VendorId;
+        entity.Category = form.Category;
+        entity.PaidWith = form.PaidWith;
+        entity.Amount = form.Amount;
+        entity.DayOfMonth = form.DayOfMonth;
+        entity.StartMonth = startMonth;
+        entity.EndDate = form.EndDate;
+
+        // Targets added while editing start this month, so they don't back-fill earlier months.
+        var newTargetStart = form.Id == 0 ? startMonth : (thisMonth > startMonth ? thisMonth : startMonth);
+        var unitsById = properties.SelectMany(p => p.Units).ToDictionary(u => u.Id);
+        entity.Targets.RemoveAll(t => t.UnitId is { } id ? !pickedUnits.Contains(id) : !pickedShared);
+        foreach (var unitId in pickedUnits.Where(id => entity.Targets.All(t => t.UnitId != id)))
+        {
+            entity.Targets.Add(new RecurringExpenseTarget { PropertyId = unitsById[unitId].PropertyId, UnitId = unitId, StartMonth = newTargetStart });
+        }
+        if (pickedShared && entity.Targets.All(t => t.PropertyId is not null))
+        {
+            entity.Targets.Add(new RecurringExpenseTarget { PropertyId = null, StartMonth = newTargetStart });
+        }
+
+        await db.SaveChangesAsync();
+        generated = await Recurring.GenerateDueAsync();
+        Reset();
+        await LoadAsync();
+    }
+
+    private async Task TogglePauseAsync(int id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var r = await db.RecurringExpenses.FindAsync(id);
+        if (r is not null)
+        {
+            r.IsPaused = !r.IsPaused;
+            await db.SaveChangesAsync();
+        }
+        generated = await Recurring.GenerateDueAsync();
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        // Expenses it already added are kept; the run log for this recurring expense is removed with it.
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.RecurringExpenses.Where(r => r.Id == id).ExecuteDeleteAsync();
+        if (form.Id == id)
+        {
+            Reset();
+        }
+        await LoadAsync();
+    }
+}

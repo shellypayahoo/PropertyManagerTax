@@ -17,6 +17,9 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<ImportedTransaction> ImportedTransactions => Set<ImportedTransaction>();
     public DbSet<CategorizationRule> CategorizationRules => Set<CategorizationRule>();
+    public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
+    public DbSet<RecurringExpenseTarget> RecurringExpenseTargets => Set<RecurringExpenseTarget>();
+    public DbSet<RecurringExpenseRun> RecurringExpenseRuns => Set<RecurringExpenseRun>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -98,6 +101,28 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.HasIndex(t => new { t.BankAccountId, t.Fingerprint }).IsUnique();
             e.HasOne(t => t.Expense).WithMany().OnDelete(DeleteBehavior.SetNull);
             e.HasOne(t => t.RentPayment).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<RecurringExpense>(e =>
+        {
+            e.Property(r => r.Name).HasMaxLength(200).IsRequired();
+            e.Property(r => r.Category).HasConversion<string>().HasMaxLength(40);
+            e.Property(r => r.PaidWith).HasConversion<string>().HasMaxLength(20);
+            e.HasOne(r => r.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasMany(r => r.Targets).WithOne(t => t.RecurringExpense).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RecurringExpenseTarget>(e =>
+        {
+            e.HasOne(t => t.Property).WithMany().OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(t => t.Unit).WithMany().OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RecurringExpenseRun>(e =>
+        {
+            e.HasIndex(r => new { r.TargetId, r.Month }).IsUnique();
+            e.HasOne(r => r.Target).WithMany().OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(r => r.Expense).WithMany().OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<CategorizationRule>(e =>

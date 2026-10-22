@@ -26,6 +26,7 @@ builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<MortgageImportService>();
 builder.Services.AddScoped<LeaseDocumentService>();
 builder.Services.AddScoped<ExpenseSplitService>();
+builder.Services.AddScoped<RecurringExpenseService>();
 
 // Uploaded documents live on disk; swap this registration for an Azure Blob implementation when hosting.
 builder.Services.AddSingleton<IDocumentStorage>(new LocalDocumentStorage(
@@ -39,6 +40,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     await using var db = await dbFactory.CreateDbContextAsync();
     await db.Database.MigrateAsync();
     await DbSeeder.SeedAsync(db);
+    await scope.ServiceProvider.GetRequiredService<RecurringExpenseService>().GenerateDueAsync();
 }
 
 if (!app.Environment.IsDevelopment())

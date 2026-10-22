@@ -83,6 +83,12 @@ Costs of the whole rental business, such as software, cloud hosting, or accounti
 
 On the Expenses page, **Edit** changes any expense, and checking several expenses lets you change their property or category at once.
 
+**Split** divides one expense into parts, each with its own property, unit, category, and amount. **Divide across units** spreads a bill evenly over the units you tick (rounding pennies go to the last one), e.g. a cleaning crew that does three of the four units.
+
+## Recurring expenses
+
+**Expenses → Recurring** sets up a monthly bill once, such as an HVAC service plan at $30 per unit: name, vendor, category, how it's paid, the amount per unit, the day of the month, a start (and optional end) date, and the units it applies to (or all properties). The app adds one expense per unit each month, catching up on months it missed whenever it starts or the Expenses page is opened. Each month is added only once; deleting or editing an added expense doesn't bring it back, and changing the amount affects only months added afterwards. If the same charges show up later in a card or bank import, they're flagged as likely duplicates.
+
 ## Mortgage payments
 
 Only the interest in a mortgage payment is deductible (line 12). Principal repays the loan, and money paid into escrow isn't deductible until the lender pays your property taxes (line 16) or insurance (line 9) out of it. So there are two not-deductible categories, **Mortgage principal** and **Escrow deposit**, which are tracked but kept off the Schedule E totals and noted under the report. Record each property tax or insurance payment the lender makes from escrow as a **Taxes** or **Insurance** expense on the date paid; the escrow statement and Form 1098 list them.
