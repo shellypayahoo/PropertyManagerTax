@@ -356,6 +356,48 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("MaintenanceRequests");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.MessageContact", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Handle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Included")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("LastMessageAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MessageCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TenantId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("VendorId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Handle")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("VendorId");
+
+                    b.ToTable("MessageContacts");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.Property", b =>
                 {
                     b.Property<int>("Id")
@@ -559,6 +601,69 @@ namespace PropertyManager.Core.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Tenants");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.TextMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AttachmentCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ChatIdentifier")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContactHandle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Guid")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsFromMe")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsGroupChat")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SenderHandle")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SentAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("TenantId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("VendorId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContactHandle");
+
+                    b.HasIndex("Guid")
+                        .IsUnique();
+
+                    b.HasIndex("SentAt");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("VendorId");
+
+                    b.ToTable("TextMessages");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Unit", b =>
@@ -773,6 +878,23 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Vendor");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.MessageContact", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("Vendor");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.RecurringExpense", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.Vendor", "Vendor")
@@ -835,6 +957,23 @@ namespace PropertyManager.Core.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Lease");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.TextMessage", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("Vendor");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Unit", b =>

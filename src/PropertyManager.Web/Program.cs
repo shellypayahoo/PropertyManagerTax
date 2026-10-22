@@ -27,6 +27,8 @@ builder.Services.AddScoped<MortgageImportService>();
 builder.Services.AddScoped<LeaseDocumentService>();
 builder.Services.AddScoped<ExpenseSplitService>();
 builder.Services.AddScoped<RecurringExpenseService>();
+builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageImportService>();
+builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageSearch>();
 
 // Uploaded documents live on disk; swap this registration for an Azure Blob implementation when hosting.
 builder.Services.AddSingleton<IDocumentStorage>(new LocalDocumentStorage(

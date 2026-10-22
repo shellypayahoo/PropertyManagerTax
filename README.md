@@ -114,6 +114,16 @@ To fix a payment, click **Edit** next to it to change the date, amount, method, 
 
 A lease's page shows the same thing month by month for a year. Rent isn't prorated: the full monthly rent is due for every month a lease covers.
 
+## Text messages
+
+The **Messages** page brings in text conversations from the Mac's Messages app (which includes your iPhone's texts when Messages in iCloud is on, and SMS when Text Message Forwarding is on).
+
+1. **Find contacts in Messages** lists everyone you've texted, with names from the Contacts app, how many texts you've exchanged, and when you last texted. No message text is read at this step.
+2. Tick the people whose conversations you want. Tenants and vendors (matched by the phone or email on their Tenants/Vendors page) are ticked automatically; everyone else starts unticked. Use the **Is** column to link a contact to a tenant or vendor.
+3. **Import messages for ticked contacts** copies those conversations into the app. Run it again any time to pick up new texts; messages already imported are skipped. Unticking someone removes their messages from the app.
+
+The app reads a copy of `~/Library/Messages/chat.db` (and the Contacts databases under `~/Library/Application Support/AddressBook`); it never changes Messages or Contacts. macOS protects these folders, so give **Full Disk Access** to Terminal (or whatever you start the app from) in System Settings → Privacy & Security. Tapback reactions and group-chat events are skipped; attachments are noted but not copied. Paths can be overridden with `Messages:DatabasePath` and `Messages:AddressBookFolder` in `appsettings.json`.
+
 ## Notes
 
 - On the report, click a line name (e.g. Cleaning and maintenance, or Rents received) to list every item behind it, or click one property's amount to see just that property's items, including its share of shared expenses. Each list ends with a total that matches the report.

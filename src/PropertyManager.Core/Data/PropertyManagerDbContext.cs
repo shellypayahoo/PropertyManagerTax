@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PropertyManager.Core.Entities;
 
 namespace PropertyManager.Core.Data;
@@ -20,6 +21,8 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
     public DbSet<RecurringExpenseTarget> RecurringExpenseTargets => Set<RecurringExpenseTarget>();
     public DbSet<RecurringExpenseRun> RecurringExpenseRuns => Set<RecurringExpenseRun>();
+    public DbSet<TextMessage> TextMessages => Set<TextMessage>();
+    public DbSet<MessageContact> MessageContacts => Set<MessageContact>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -123,6 +126,33 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.HasIndex(r => new { r.TargetId, r.Month }).IsUnique();
             e.HasOne(r => r.Target).WithMany().OnDelete(DeleteBehavior.Cascade);
             e.HasOne(r => r.Expense).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<TextMessage>(e =>
+        {
+            e.Property(m => m.Guid).HasMaxLength(100).IsRequired();
+            e.HasIndex(m => m.Guid).IsUnique();
+            e.Property(m => m.ChatIdentifier).HasMaxLength(200);
+            e.Property(m => m.SenderHandle).HasMaxLength(200);
+            // Stored as a number so SQLite can sort and compare message times.
+            e.Property(m => m.SentAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            e.HasIndex(m => m.SentAt);
+            e.Property(m => m.ContactHandle).HasMaxLength(200);
+            e.HasIndex(m => m.ContactHandle);
+            e.HasIndex(m => m.TenantId);
+            e.HasIndex(m => m.VendorId);
+            e.HasOne(m => m.Tenant).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(m => m.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<MessageContact>(e =>
+        {
+            e.Property(c => c.Handle).HasMaxLength(200).IsRequired();
+            e.HasIndex(c => c.Handle).IsUnique();
+            e.Property(c => c.Name).HasMaxLength(200);
+            e.Property(c => c.LastMessageAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            e.HasOne(c => c.Tenant).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(c => c.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<CategorizationRule>(e =>

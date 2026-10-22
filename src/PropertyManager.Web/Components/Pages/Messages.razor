@@ -1,0 +1,255 @@
+@page "/messages"
+@using PropertyManager.Core.Messaging
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TextMessageImportService Importer
+@inject TextMessageSearch Search
+@inject IConfiguration Configuration
+
+<PageTitle>Messages</PageTitle>
+
+<h1>Messages</h1>
+<p class="text-muted" style="max-width: 52rem">
+    Text conversations from this Mac's Messages app (including your iPhone's, with Messages in iCloud). Choose whose
+    conversations to bring in; everyone else's are never read. Your tenants and vendors are ticked automatically.
+</p>
+
+<div class="d-flex flex-wrap gap-2 mb-2">
+    <button class="btn btn-outline-primary" disabled="@busy" @onclick="ScanAsync">@(contacts.Count == 0 ? "Find contacts in Messages" : "Refresh contact list")</button>
+    <button class="btn btn-primary" disabled="@(busy || contacts.All(c => !c.Included))" @onclick="ImportAsync">Import messages for ticked contacts</button>
+    @if (busy) { <span class="text-muted align-self-center">Working…</span> }
+</div>
+@if (status is not null) { <div class="alert alert-success py-2">@status</div> }
+@if (error is not null)
+{
+    <div class="alert alert-warning" style="max-width: 52rem">
+        @error
+        @if (needsFullDiskAccess)
+        {
+            <ol class="mb-0 mt-2 small">
+                <li>Open <strong>System Settings → Privacy &amp; Security → Full Disk Access</strong>.</li>
+                <li>Turn it on for <strong>Terminal</strong> (or the app you start Property Manager from). Use <strong>+</strong> to add it if it isn't listed.</li>
+                <li>Quit and reopen Terminal, start the app again, and click the button above.</li>
+            </ol>
+        }
+    </div>
+}
+
+@if (contacts.Count > 0)
+{
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <input class="form-control form-control-sm w-auto" placeholder="Filter contacts" @bind="filter" @bind:event="oninput" />
+                <select class="form-select form-select-sm w-auto" @bind="show">
+                    <option value="all">Everyone (@contacts.Count)</option>
+                    <option value="ticked">Ticked (@contacts.Count(c => c.Included))</option>
+                    <option value="unticked">Not ticked (@contacts.Count(c => !c.Included))</option>
+                </select>
+            </div>
+            <div style="max-height: 70vh; overflow-y: auto">
+                <table class="table table-sm align-middle">
+                    <thead class="sticky-top bg-body"><tr><th></th><th>Contact</th><th>Is</th><th class="text-end">Texts</th><th>Last</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in VisibleContacts)
+                        {
+                            <tr class="@(selected?.Id == c.Id ? "table-active" : "")">
+                                <td><input type="checkbox" class="form-check-input" checked="@c.Included" disabled="@busy" @onchange="e => SetIncludedAsync(c, (bool)e.Value!)" /></td>
+                                <td>
+                                    @if (c.Included)
+                                    {
+                                        <button class="btn btn-link p-0 text-start" @onclick="() => OpenAsync(c)">@(c.Name ?? Format(c.Handle))</button>
+                                    }
+                                    else
+                                    {
+                                        @(c.Name ?? Format(c.Handle))
+                                    }
+                                    @if (c.Name is not null) { <div class="small text-muted">@Format(c.Handle)</div> }
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm" style="max-width: 11rem" value="@LinkValue(c)" @onchange="e => LinkAsync(c, (string)e.Value!)">
+                                        <option value="">—</option>
+                                        <optgroup label="Tenants">@foreach (var t in tenants) { <option value="t@(t.Id)">@t.FullName</option> }</optgroup>
+                                        <optgroup label="Vendors">@foreach (var v in vendors) { <option value="v@(v.Id)">@v.Name</option> }</optgroup>
+                                    </select>
+                                </td>
+                                <td class="text-end">@c.MessageCount</td>
+                                <td class="small text-nowrap">@c.LastMessageAt?.ToLocalTime().ToString("MMM d, yyyy")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="small text-muted">Unticking someone removes their imported messages from the app (Messages itself is never changed).</p>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="d-flex gap-2 mb-2">
+                <input class="form-control form-control-sm" placeholder="Search @(selected is null ? "all imported messages" : "this conversation")" @bind="query" @bind:event="oninput" @onkeyup="SearchOnEnter" />
+                <button class="btn btn-sm btn-outline-secondary" @onclick="RunSearchAsync">Search</button>
+                @if (selected is not null) { <button class="btn btn-sm btn-link" @onclick="ClearSelection">All</button> }
+            </div>
+            <h2 class="h6">@(selected is null ? "All imported conversations" : selected.Name ?? Format(selected.Handle)) <span class="text-muted small">(@results.Count shown)</span></h2>
+            <div class="border rounded p-2 bg-body-tertiary" style="max-height: 66vh; overflow-y: auto">
+                @if (results.Count == 0)
+                {
+                    <p class="small text-muted mb-0">@(imported == 0 ? "Nothing imported yet: tick contacts, then click Import." : "No messages match.")</p>
+                }
+                @foreach (var m in results)
+                {
+                    <div class="d-flex @(m.IsFromMe ? "justify-content-end" : "") mb-2">
+                        <div class="rounded-3 px-3 py-2 @(m.IsFromMe ? "bg-primary text-white" : "bg-body border")" style="max-width: 80%">
+                            <div class="small @(m.IsFromMe ? "text-white-50" : "text-muted")">
+                                @(m.IsFromMe ? "You" : WhoSent(m)) · @m.SentAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")@(m.IsGroupChat ? " · group" : "")
+                            </div>
+                            @if (m.Text.Length > 0) { <div style="white-space: pre-wrap">@m.Text</div> }
+                            @if (m.AttachmentCount > 0) { <div class="small fst-italic">📎 @m.AttachmentCount attachment@(m.AttachmentCount == 1 ? "" : "s")</div> }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MessageContact> contacts = [];
+    private List<Tenant> tenants = [];
+    private List<Vendor> vendors = [];
+    private Dictionary<string, MessageContact> byHandle = [];
+    private MessageContact? selected;
+    private IReadOnlyList<TextMessage> results = [];
+    private int imported;
+    private string filter = "";
+    private string show = "all";
+    private string query = "";
+    private bool busy;
+    private string? status;
+    private string? error;
+    private bool needsFullDiskAccess;
+
+    private string MessagesPath => Configuration["Messages:DatabasePath"] is { Length: > 0 } p ? p : MessagesDatabaseReader.DefaultPath;
+    private string ContactsFolder => Configuration["Messages:AddressBookFolder"] is { Length: > 0 } p ? p : AddressBookReader.DefaultFolder;
+
+    private IEnumerable<MessageContact> VisibleContacts => contacts
+        .Where(c => show == "all" || (show == "ticked") == c.Included)
+        .Where(c => filter.Length == 0
+            || (c.Name ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || (FilterKey.Length > 0 && c.Handle.Contains(FilterKey)))
+        .OrderByDescending(c => c.Included).ThenByDescending(c => c.LastMessageAt);
+
+    // The filter as it would appear in a stored handle: digits for phone numbers, lowercase for emails.
+    private string FilterKey => new string(filter.Where(ch => char.IsLetterOrDigit(ch) || ch is '@' or '.').ToArray()).ToLowerInvariant();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        await RunSearchAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        contacts = await db.MessageContacts.AsNoTracking().ToListAsync();
+        byHandle = contacts.ToDictionary(c => c.Handle);
+        tenants = await db.Tenants.AsNoTracking().OrderBy(t => t.LastName).ThenBy(t => t.FirstName).ToListAsync();
+        vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+        imported = await db.TextMessages.CountAsync();
+    }
+
+    private async Task RunAsync(Func<Task<string>> work)
+    {
+        busy = true;
+        status = error = null;
+        needsFullDiskAccess = false;
+        try
+        {
+            status = await work();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            error = "macOS didn't allow the app to read Messages. Give it Full Disk Access:";
+            needsFullDiskAccess = true;
+        }
+        catch (FileNotFoundException)
+        {
+            error = $"No Messages database was found at {MessagesPath}. This works on a Mac where you're signed in to Messages.";
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException ex)
+        {
+            error = $"Couldn't read the Messages database ({ex.Message}).";
+        }
+        finally
+        {
+            busy = false;
+        }
+        await LoadAsync();
+        await RunSearchAsync();
+    }
+
+    private Task ScanAsync() => RunAsync(async () =>
+    {
+        var s = await Importer.ScanContactsAsync(MessagesPath, ContactsFolder);
+        return $"Found {s.Contacts} contacts ({s.NewContacts} new). {s.Included} ticked.";
+    });
+
+    private Task ImportAsync() => RunAsync(async () =>
+    {
+        var s = await Importer.ImportAsync(MessagesPath);
+        return $"Imported {s.MessagesAdded} new messages from {s.ChatsMatched} conversations with {s.ContactsIncluded} ticked contacts.";
+    });
+
+    private async Task SetIncludedAsync(MessageContact c, bool included)
+    {
+        await Importer.SetIncludedAsync(c.Id, included);
+        status = included ? $"Ticked {c.Name ?? Format(c.Handle)}. Click Import to bring in their messages." : $"Removed {c.Name ?? Format(c.Handle)}'s messages from the app.";
+        if (!included && selected?.Id == c.Id)
+        {
+            selected = null;
+        }
+        await LoadAsync();
+        await RunSearchAsync();
+    }
+
+    private static string LinkValue(MessageContact c) => c.TenantId is { } t ? $"t{t}" : c.VendorId is { } v ? $"v{v}" : "";
+
+    private async Task LinkAsync(MessageContact c, string value)
+    {
+        int? tenantId = value.StartsWith('t') ? int.Parse(value[1..]) : null;
+        int? vendorId = value.StartsWith('v') ? int.Parse(value[1..]) : null;
+        await Importer.LinkAsync(c.Id, tenantId, vendorId);
+        await LoadAsync();
+    }
+
+    private async Task OpenAsync(MessageContact c)
+    {
+        selected = c;
+        query = "";
+        await RunSearchAsync();
+    }
+
+    private async Task ClearSelection()
+    {
+        selected = null;
+        await RunSearchAsync();
+    }
+
+    private async Task SearchOnEnter(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await RunSearchAsync();
+        }
+    }
+
+    private async Task RunSearchAsync() =>
+        results = await Search.SearchAsync(query, selected?.Handle, limit: query.Length > 0 || selected is not null ? 500 : 100);
+
+    private string WhoSent(TextMessage m)
+    {
+        var handle = ContactHandles.Normalize(m.SenderHandle);
+        return handle is not null && byHandle.TryGetValue(handle, out var c) ? c.Name ?? Format(c.Handle) : m.SenderHandle ?? "Them";
+    }
+
+    private static string Format(string handle) =>
+        handle.Length == 10 && handle.All(char.IsAsciiDigit) ? $"({handle[..3]}) {handle[3..6]}-{handle[6..]}" : handle;
+}
