@@ -1,6 +1,7 @@
 @page "/import/mortgage"
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject MortgageImportService ImportService
+@using PropertyManager.Core.Import.Pdf
 
 <PageTitle>Mortgage import</PageTitle>
 
@@ -11,7 +12,8 @@
 {
     case Step.Upload:
         <p class="text-muted" style="max-width: 48rem">
-            Download the payment history as a CSV from your mortgage company's website. Each payment is matched to the
+            Download the payment history as a CSV from your mortgage company's website, or for Lakeview, save the
+            Payment History page as a PDF (in Safari: File → Export as PDF). Each payment is matched to the
             mortgage payment you imported from your bank and split into interest (deductible), principal, and escrow
             (not deductible), so nothing is counted twice. Property tax and insurance the lender paid from escrow are
             added as Taxes and Insurance.
@@ -39,8 +41,8 @@
                 </div>
             }
             <div class="col-12">
-                <label class="form-label">CSV file</label>
-                <InputFile OnChange="LoadFileAsync" accept=".csv,text/csv" class="form-control" />
+                <label class="form-label">CSV file, or Lakeview payment history PDF</label>
+                <InputFile OnChange="LoadFileAsync" accept=".csv,text/csv,.pdf,application/pdf" class="form-control" />
             </div>
         </div>
         <FormError Message="@error" />
@@ -78,6 +80,14 @@
             <strong>@pending.Count</strong> new rows for <strong>@loan.Name</strong> (@properties.FirstOrDefault(p => p.Id == loan.PropertyId)?.Name).
             @if (rows.Any(r => r.AlreadyImported)) { <span class="text-muted">@rows.Count(r => r.AlreadyImported) already imported were skipped.</span> }
         </p>
+        @if (pdfResult is not null)
+        {
+            <div class="alert @(pdfResult.Warnings.Count == 0 ? "alert-info" : "alert-warning") small" style="max-width: 56rem">
+                Read from the PDF: @pdfResult.Payments payments and @pdfResult.Disbursements escrow payouts.
+                Compare the totals with the statement before importing.
+                @foreach (var w in pdfResult.Warnings) { <div>⚠ @w</div> }
+            </div>
+        }
         @if (readErrors.Count > 0)
         {
             <details class="mb-2 text-warning"><summary>@readErrors.Count lines had problems</summary><ul class="small">@foreach (var e in readErrors) { <li>@e</li> }</ul></details>
@@ -149,6 +159,7 @@
     private IReadOnlyList<string> readErrors = [];
     private MortgageImportSummary? summary;
     private int fromYear;
+    private MortgagePdfResult? pdfResult;
     private string? error;
     private bool saving;
 
@@ -183,14 +194,52 @@
             return;
         }
 
-        using (var reader = new StreamReader(e.File.OpenReadStream(MaxFileBytes)))
+        var isPdf = e.File.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        pdfResult = null;
+        if (isPdf)
         {
+            using var buffer = new MemoryStream();
+            await e.File.OpenReadStream(MaxFileBytes).CopyToAsync(buffer);
+            buffer.Position = 0;
+            try
+            {
+                pdfResult = LakeviewPdfReader.Read(buffer);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                error = $"Couldn't read that PDF ({ex.Message}).";
+                return;
+            }
+            csvText = pdfResult.Csv;
+        }
+        else
+        {
+            using var reader = new StreamReader(e.File.OpenReadStream(MaxFileBytes));
             csvText = await reader.ReadToEndAsync();
         }
 
         loan = loanId == 0
             ? new BankAccount { Name = newLoanName.Trim(), PropertyId = newLoanPropertyId, IsMortgage = true, IsRentalOnly = true }
             : loans.Single(l => l.Id == loanId);
+
+        if (isPdf)
+        {
+            // The PDF is converted to a known layout, so there are no columns to choose.
+            var standard = MortgageCsvReader.DetectColumns(LakeviewPdfReader.CsvHeader.Split(','));
+            loan.DateColumn = standard.DateColumn;
+            loan.DescriptionColumn = standard.DescriptionColumn;
+            loan.AmountColumn = standard.AmountColumn;
+            loan.PrincipalColumn = standard.PrincipalColumn;
+            loan.InterestColumn = standard.InterestColumn;
+            loan.EscrowColumn = standard.EscrowColumn;
+            if (pdfResult!.Payments + pdfResult.Disbursements == 0)
+            {
+                error = string.Join(" ", pdfResult.Warnings);
+                return;
+            }
+            await ReviewAsync();
+            return;
+        }
 
         var (found, _) = BankCsvReader.FindHeader(CsvParser.Parse(csvText));
         headers = found;
@@ -265,6 +314,7 @@
         step = Step.Upload;
         rows = [];
         csvText = "";
+        pdfResult = null;
         error = null;
         newLoanName = "";
         newLoanPropertyId = 0;

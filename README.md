@@ -98,6 +98,8 @@ If the mortgage company offers a CSV payment history, use **Import → Import a 
 - Property tax and insurance the lender paid from escrow are added as **Taxes** and **Insurance** on the date paid.
 - Rows already imported for the loan are skipped on later imports. Lenders often include years of history, so the review screen starts from the most recent year; earlier years can be imported later.
 
+**Lakeview** doesn't offer CSV downloads. Save its Payment History page as a PDF (in Safari: File → Export as PDF) and upload the PDF instead. The app reads the payments and the tax and insurance disbursements from it (using [PdfPig](https://github.com/UglyToad/PdfPig)) and shows them on the same review screen, with a warning if a row's parts don't add up.
+
 ## Tracking rent
 
 The **Rent** page lists every lease for a month with its rent, what's been paid, and a status (Paid, short, Not paid). **Mark paid** records the payment toward that month; change the amount for a partial payment. Each payment records both the date it was received and the month it's for, so October rent paid on November 2 still counts for October.
