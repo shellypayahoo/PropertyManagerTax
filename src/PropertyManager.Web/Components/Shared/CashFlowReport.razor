@@ -1,0 +1,109 @@
+@using PropertyManager.Core.Reports
+@inject OperatingReports Reports
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+
+<p class="text-muted" style="max-width: 52rem">
+    Money in and out each month: rent by the date received, and everything paid out by the date paid, including
+    mortgage principal and escrow deposits (which the P&amp;L leaves out because they aren't deductible).
+</p>
+<select class="form-select w-auto mb-3" @bind="propertyId" @bind:after="LoadAsync">
+    <option value="0">All properties</option>
+    @foreach (var p in properties)
+    {
+        <option value="@p.Id">@p.Name</option>
+    }
+</select>
+@if (months is not null)
+{
+    <div class="table-responsive">
+        <table class="table table-sm align-middle" style="max-width: 64rem">
+            <thead>
+                <tr>
+                    <th>Month</th>
+                    <th class="text-end">Rent in</th>
+                    <th class="text-end">Expenses</th>
+                    <th class="text-end">Principal &amp; escrow</th>
+                    <th class="text-end">Total out</th>
+                    <th class="text-end">Net</th>
+                    <th style="width: 18%"></th>
+                    <th class="text-end">Running total</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in months)
+                {
+                    <tr>
+                        <td>@m.Month.ToString("MMMM")</td>
+                        <td class="text-end">@Money(m.RentIn)</td>
+                        <td class="text-end">@Money(m.Expenses)</td>
+                        <td class="text-end">@Money(m.LoanAndEscrow)</td>
+                        <td class="text-end">@Money(m.TotalOut)</td>
+                        <td class="text-end fw-semibold @(m.Net < 0 ? "text-danger" : "")">@Money(m.Net)</td>
+                        <td>
+                            @* Bar for the month's net, scaled to the largest month. *@
+                            <div class="d-flex" style="height: .8rem">
+                                <div class="w-50 d-flex justify-content-end">
+                                    @if (m.Net < 0) { <div class="bg-danger rounded-start" style="width: @Width(m.Net)%"></div> }
+                                </div>
+                                <div class="w-50">
+                                    @if (m.Net > 0) { <div class="bg-success rounded-end h-100" style="width: @Width(m.Net)%"></div> }
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-end @(m.Cumulative < 0 ? "text-danger" : "")">@Money(m.Cumulative)</td>
+                    </tr>
+                }
+                <tr class="fw-bold border-top">
+                    <td>Year</td>
+                    <td class="text-end">@Money(months.Sum(m => m.RentIn))</td>
+                    <td class="text-end">@Money(months.Sum(m => m.Expenses))</td>
+                    <td class="text-end">@Money(months.Sum(m => m.LoanAndEscrow))</td>
+                    <td class="text-end">@Money(months.Sum(m => m.TotalOut))</td>
+                    <td class="text-end @(months.Sum(m => m.Net) < 0 ? "text-danger" : "")">@Money(months.Sum(m => m.Net))</td>
+                    <td></td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    @if (propertyId != 0)
+    {
+        <p class="small text-muted">Expenses shared by all properties are counted by this property's share of units.</p>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public int Year { get; set; }
+
+    private IReadOnlyList<CashFlowMonth>? months;
+    private List<Property> properties = [];
+    private int propertyId;
+    private int loadedYear;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (properties.Count == 0)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            properties = await db.Properties.AsNoTracking().OrderBy(p => p.Name).ToListAsync();
+        }
+        if (loadedYear != Year)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        loadedYear = Year;
+        months = await Reports.GetCashFlowAsync(Year, propertyId == 0 ? null : propertyId);
+    }
+
+    private string Width(decimal net)
+    {
+        var max = months!.Max(m => Math.Abs(m.Net));
+        return max == 0 ? "0" : (Math.Abs(net) / max * 100m).ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string Money(decimal amount) => amount == 0 ? "–" : amount.ToString("$#,##0;($#,##0)");
+}

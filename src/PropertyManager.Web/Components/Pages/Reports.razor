@@ -4,12 +4,7 @@
 
 <PageTitle>Reports</PageTitle>
 
-<h1>Annual profit &amp; loss</h1>
-<p class="text-muted">
-    Expenses are grouped by IRS Schedule E line. Rents received are the payments recorded on each lease, entered
-    by hand or imported from your bank. Scheduled rent is what the leases call for, shown for comparison.
-    Click a line name or an amount to see the items behind it.
-</p>
+<h1>Reports</h1>
 
 <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
     <select class="form-select w-auto" @bind="year" @bind:after="LoadAsync">
@@ -18,6 +13,37 @@
             <option value="@y">@y</option>
         }
     </select>
+    <ul class="nav nav-tabs flex-grow-1">
+        @foreach (var (key, label) in Tabs)
+        {
+            <li class="nav-item">
+                <button class="nav-link @(tab == key ? "active" : "")" @onclick="() => tab = key">@label</button>
+            </li>
+        }
+    </ul>
+</div>
+
+@if (tab == "cash")
+{
+    <CashFlowReport Year="year" />
+}
+else if (tab == "rent")
+{
+    <RentCollectionReport Year="year" />
+}
+else if (tab == "vendors")
+{
+    <VendorSpendingReport Year="year" />
+}
+else
+{
+<p class="text-muted">
+    Expenses are grouped by IRS Schedule E line. Rents received are the payments recorded on each lease, entered
+    by hand or imported from your bank. Scheduled rent is what the leases call for, shown for comparison.
+    Click a line name or an amount to see the items behind it.
+</p>
+
+<div class="d-flex flex-wrap align-items-center gap-3 mb-3">
     <a class="btn btn-outline-primary" href="reports/@year/profit-and-loss.pdf@(includeDetail ? "?detail=true" : "")" target="_blank">Download PDF</a>
     <div class="form-check">
         <input class="form-check-input" type="checkbox" id="pdf-detail" @bind="includeDetail" />
@@ -117,12 +143,17 @@ else
     }
     <p class="small text-muted">This is a bookkeeping summary, not tax advice. Check the figures with your tax preparer before filing.</p>
 }
+}
 
 @code {
     private IReadOnlyList<PropertyProfitAndLoss>? statements;
     private int year;
     private int currentYear;
     private bool includeDetail = true;
+    private string tab = "pnl";
+
+    private static readonly (string Key, string Label)[] Tabs =
+        [("pnl", "Profit & loss"), ("cash", "Cash flow"), ("rent", "Rent collection"), ("vendors", "Vendors")];
 
     private IEnumerable<ExpenseCategory> UsedCategories =>
         statements!.SelectMany(s => s.Expenses).Select(e => e.Category).Distinct().Order();

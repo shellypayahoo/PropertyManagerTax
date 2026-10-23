@@ -1,0 +1,133 @@
+@using PropertyManager.Core.Reports
+@inject OperatingReports Reports
+
+<p class="text-muted" style="max-width: 52rem">
+    Rent for each lease, month by month. Rent is due on the 1st; a month is <span class="badge text-bg-warning">late</span>
+    when it was paid in full after the grace period (or still isn't). The number is how many days after the 1st it was paid.
+</p>
+<div class="d-flex align-items-center gap-2 mb-3">
+    <label class="form-label mb-0" for="grace">Grace period</label>
+    <select id="grace" class="form-select form-select-sm w-auto" @bind="graceDays" @bind:after="LoadAsync">
+        @foreach (var d in new[] { 0, 3, 5, 7, 10 })
+        {
+            <option value="@d">@(d == 0 ? "none (late after the 1st)" : $"{d} days (late after the {d + 1}{Suffix(d + 1)})")</option>
+        }
+    </select>
+</div>
+@if (rows is not null)
+{
+    @if (rows.Count == 0)
+    {
+        <p class="text-muted">No leases cover @Year.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle text-center">
+                <thead>
+                    <tr>
+                        <th class="text-start">Unit · tenants</th>
+                        @for (var m = 1; m <= 12; m++) { <th>@(new DateOnly(Year, m, 1).ToString("MMM"))</th> }
+                        <th class="text-end">Due</th>
+                        <th class="text-end">Paid</th>
+                        <th class="text-end">Balance</th>
+                        <th>Late</th>
+                        <th>Missed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in rows)
+                    {
+                        <tr>
+                            <td class="text-start">
+                                <a href="leases/@row.Lease.Id">@row.Lease.Unit?.DisplayName</a>
+                                <div class="small text-muted">@row.Lease.TenantNames</div>
+                            </td>
+                            @for (var m = 1; m <= 12; m++)
+                            {
+                                var cell = row.Months.FirstOrDefault(c => c.Month.Month == m);
+                                <td>
+                                    @if (cell is not null)
+                                    {
+                                        <span class="badge @Badge(cell)" title="@Title(cell)">@Label(cell)</span>
+                                    }
+                                </td>
+                            }
+                            <td class="text-end">@row.Due.ToString("C0")</td>
+                            <td class="text-end">@row.Paid.ToString("C0")</td>
+                            <td class="text-end @(row.Balance > 0 ? "text-danger fw-semibold" : "")">@(row.Balance == 0 ? "–" : row.Balance.ToString("C0"))</td>
+                            <td>@(row.LateMonths == 0 ? "" : row.LateMonths.ToString())</td>
+                            <td class="@(row.MissedMonths > 0 ? "text-danger fw-semibold" : "")">@(row.MissedMonths == 0 ? "" : row.MissedMonths.ToString())</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td class="text-start">All leases</td>
+                        <td colspan="12"></td>
+                        <td class="text-end">@rows.Sum(r => r.Due).ToString("C0")</td>
+                        <td class="text-end">@rows.Sum(r => r.Paid).ToString("C0")</td>
+                        <td class="text-end">@rows.Sum(r => r.Balance).ToString("C0")</td>
+                        <td>@rows.Sum(r => r.LateMonths)</td>
+                        <td>@rows.Sum(r => r.MissedMonths)</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <p class="small text-muted">
+            <span class="badge text-bg-success">✓</span> paid on time ·
+            <span class="badge text-bg-warning">12</span> paid 12 days after the 1st ·
+            <span class="badge text-bg-info">½</span> partly paid ·
+            <span class="badge text-bg-danger">✗</span> not paid ·
+            <span class="badge text-bg-light">due</span> due, still within the grace period or upcoming.
+            Hover over a month for amounts.
+        </p>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public int Year { get; set; }
+
+    private IReadOnlyList<RentCollectionRow>? rows;
+    private int graceDays = 5;
+    private int loadedYear;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedYear != Year)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        loadedYear = Year;
+        rows = await Reports.GetRentCollectionAsync(Year, graceDays);
+    }
+
+    private static string Badge(RentCollectionCell c) => c.Status switch
+    {
+        RentStatus.Paid when c.IsLate => "text-bg-warning",
+        RentStatus.Paid => "text-bg-success",
+        RentStatus.Partial => "text-bg-info",
+        RentStatus.Unpaid when c.IsLate => "text-bg-danger",
+        RentStatus.NotDue => "text-bg-secondary",
+        _ => "text-bg-light",
+    };
+
+    private static string Label(RentCollectionCell c) => c.Status switch
+    {
+        RentStatus.Paid when c.IsLate => c.DaysLate.ToString(),
+        RentStatus.Paid => "✓",
+        RentStatus.Partial => "½",
+        RentStatus.Unpaid when c.IsLate => "✗",
+        RentStatus.NotDue => "extra",
+        _ => "due",
+    };
+
+    private static string Title(RentCollectionCell c) =>
+        $"{c.Month:MMMM}: due {c.Due:C}, paid {c.Paid:C}" + (c.IsLate && c.Status == RentStatus.Paid ? $", paid in full {c.DaysLate} days after the 1st" : "");
+
+    private static string Suffix(int day) => day switch { 1 or 21 or 31 => "st", 2 or 22 => "nd", 3 or 23 => "rd", _ => "th" };
+}

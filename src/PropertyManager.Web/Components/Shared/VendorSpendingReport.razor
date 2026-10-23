@@ -1,0 +1,83 @@
+@using PropertyManager.Core.Reports
+@inject OperatingReports Reports
+
+<p class="text-muted" style="max-width: 52rem">
+    Everything paid to each vendor in @Year, largest first, across all categories (including mortgage payments to a lender).
+    Click a vendor to see the items. Set vendors on the <a href="expenses">Expenses</a> page.
+</p>
+@if (vendors is not null)
+{
+    @if (vendors.Count == 0)
+    {
+        <p class="text-muted">No expenses in @Year.</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle" style="max-width: 72rem">
+            <thead>
+                <tr><th>Vendor</th><th>Categories</th><th>Properties</th><th class="text-end">Items</th><th class="text-end">Total</th><th class="text-end">Share</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var v in vendors)
+                {
+                    <tr class="@(open == v.Name ? "table-active" : "")" style="cursor: pointer" @onclick="() => open = open == v.Name ? null : v.Name">
+                        <td>
+                            <span class="@(v.VendorId is null ? "fst-italic text-muted" : "")">@v.Name</span>
+                            @if (v.Trade is not null) { <div class="small text-muted">@v.Trade</div> }
+                        </td>
+                        <td class="small">@string.Join(", ", v.Categories)</td>
+                        <td class="small">@string.Join(", ", v.Properties)</td>
+                        <td class="text-end">@v.Items.Count</td>
+                        <td class="text-end fw-semibold">@v.Total.ToString("C")</td>
+                        <td class="text-end text-muted">@(total == 0 ? "" : (v.Total / total).ToString("P0"))</td>
+                    </tr>
+                    @if (open == v.Name)
+                    {
+                        <tr>
+                            <td colspan="6" class="bg-body-tertiary">
+                                <table class="table table-sm small mb-0">
+                                    @foreach (var e in v.Items)
+                                    {
+                                        <tr>
+                                            <td class="text-nowrap">@e.Date.ToString("d")</td>
+                                            <td>@(e.IsShared ? "All properties" : e.Unit is null ? e.Property?.Name : $"{e.Property?.Name} – Unit {e.Unit.Label}")</td>
+                                            <td>@e.Description</td>
+                                            <td class="small text-muted">@e.Category.DisplayName()</td>
+                                            <td class="text-end">@e.Amount.ToString("C")</td>
+                                        </tr>
+                                    }
+                                </table>
+                            </td>
+                        </tr>
+                    }
+                }
+                <tr class="fw-bold border-top">
+                    <td colspan="3">All vendors</td>
+                    <td class="text-end">@vendors.Sum(v => v.Items.Count)</td>
+                    <td class="text-end">@total.ToString("C")</td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public int Year { get; set; }
+
+    private IReadOnlyList<VendorSpending>? vendors;
+    private decimal total;
+    private string? open;
+    private int loadedYear;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedYear != Year)
+        {
+            loadedYear = Year;
+            vendors = await Reports.GetVendorSpendingAsync(new DateOnly(Year, 1, 1), new DateOnly(Year, 12, 31));
+            total = vendors.Sum(v => v.Total);
+            open = null;
+        }
+    }
+}

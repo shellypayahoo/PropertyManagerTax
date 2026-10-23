@@ -206,6 +206,14 @@ Notes:
 - Rent, expenses, leases, tenants, maintenance, and documents are looked up when you ask, so new entries and uploads show up right away. New texts need **Import messages for ticked contacts** on the Messages page first, and new emails need **Get new emails** on the Email page.
 - A conversation is kept only while the page is open; **New conversation** starts over.
 
+## Other reports
+
+The **Reports** page has tabs next to **Profit & loss**, each for the chosen year:
+
+- **Cash flow**: rent received and money paid out each month, with net and a running total. Unlike the P&L, mortgage principal and escrow deposits count as money out, since they leave your account. Pick one property to see just its numbers (shared expenses count by its share of units).
+- **Rent collection**: a grid of every lease by month: paid on time, paid late (with how many days after the 1st), partly paid, not paid, or due. Rent is treated as due on the 1st; choose the grace period (none, 3, 5, 7, or 10 days). Each row totals rent due so far, paid, the balance owed, and the number of late and missed months.
+- **Vendors**: total paid to each vendor across all categories, largest first, with its share of spending, categories, and properties. Click a vendor to list the items. Expenses without a vendor are grouped as "No vendor recorded"; set vendors on the Expenses page.
+
 ## PDF for your accountant
 
 On **Reports**, pick the year and click **Download PDF** to get `Rental P&L <year>.pdf`: the property addresses, the Schedule E summary by property (rents received, expenses by line, total expenses, net income), and notes on shared expenses split by unit count, mortgage principal and escrow deposits left out, and depreciation. With **Include every item behind each line** ticked (the default), it's followed by an itemized list for each line (date, property, description, vendor or how paid, amount) with totals that match the summary. Losses are shown in parentheses.
