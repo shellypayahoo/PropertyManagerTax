@@ -75,13 +75,11 @@ Every row is reviewed before it is saved, and each is recorded as one of:
 
 Use **Remember** on a row to save a rule (for example "PEPCO" → Utilities, 1354 Taylor St NW) that fills in future imports. Rows already imported into an account are skipped, so overlapping files are safe. Rows that look like an expense or payment you already entered by hand are suggested as ignored.
 
-**Vendor text messages** (**Expenses → Add from a text message**): paste a text such as "it's $180 for the lawn and $40 for the hedges" to create one expense per amount, with the date, vendor, property, category, and how it was paid (cash, Zelle, …). The original text is kept in the expense notes.
-
 **Cash or check rent**: use **Mark paid** on the Rent page or a lease's page.
 
 ## Shared expenses
 
-Costs of the whole rental business, such as software, cloud hosting, or accounting, can be recorded as **All properties (shared)** when importing, on the Expenses page, or from a text message. Schedule E needs expenses per property, so the annual report splits each shared expense across properties by number of units and notes how much was shared.
+Costs of the whole rental business, such as software, cloud hosting, or accounting, can be recorded as **All properties (shared)** when importing or on the Expenses page. Schedule E needs expenses per property, so the annual report splits each shared expense across properties by number of units and notes how much was shared.
 
 On the Expenses page, **Edit** changes any expense, and checking several expenses lets you change their property, category, or vendor at once.
 
