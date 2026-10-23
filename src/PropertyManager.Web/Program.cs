@@ -23,6 +23,7 @@ builder.Services.AddDbContextFactory<PropertyManagerDbContext>(options =>
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<VendorService>();
 builder.Services.AddScoped<PropertyManager.Core.Reports.ProfitAndLossPdf>();
 builder.Services.AddScoped<PropertyManager.Core.Reports.OperatingReports>();
 builder.Services.AddScoped<DashboardService>();

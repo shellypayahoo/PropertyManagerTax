@@ -1,9 +1,28 @@
 @page "/vendors"
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject VendorService VendorService
 
 <PageTitle>Vendors</PageTitle>
 
 <h1>Vendors</h1>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h2 class="h5">@(form.Id == 0 ? "Add vendor" : $"Edit {editingName}")</h2>
+        <EditForm Model="form" OnValidSubmit="SaveAsync" FormName="vendor" class="row g-2">
+            <div class="col-md-3"><InputText @bind-Value="form.Name" class="form-control" placeholder="Name" /></div>
+            <div class="col-md-2"><InputText @bind-Value="form.Trade" class="form-control" placeholder="Trade (e.g. Plumber)" /></div>
+            <div class="col-md-2"><InputText @bind-Value="form.Phone" class="form-control" placeholder="Phone" type="tel" /></div>
+            <div class="col-md-3"><InputText @bind-Value="form.Email" class="form-control" placeholder="Email" type="email" /></div>
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">@(form.Id == 0 ? "Add" : "Save")</button>
+                @if (form.Id != 0) { <button type="button" class="btn btn-link" @onclick="CancelEdit">Cancel</button> }
+            </div>
+        </EditForm>
+        <FormError Message="@error" />
+        @if (status is not null) { <div class="alert alert-success py-1 px-2 mt-2 mb-0 small">@status</div> }
+    </div>
+</div>
 
 <table class="table align-middle">
     <thead>
@@ -12,34 +31,75 @@
     <tbody>
         @foreach (var v in vendors)
         {
-            <tr>
+            <tr class="@(acting?.Id == v.Id ? "table-active" : "")">
                 <td>@v.Name</td>
                 <td>@v.Trade</td>
                 <td>@v.Phone</td>
                 <td>@v.Email</td>
-                <td><button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(v)">Edit</button></td>
+                <td class="text-nowrap text-end">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(v)">Edit</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartAsync(v, merging: true)">Merge into…</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => StartAsync(v, merging: false)">Delete</button>
+                </td>
             </tr>
+            @if (acting?.Id == v.Id && usage is not null)
+            {
+                <tr>
+                    <td colspan="5" class="bg-body-tertiary">
+                        @if (merging)
+                        {
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <span>Merge <strong>@v.Name</strong> (@usage) into</span>
+                                <select class="form-select form-select-sm w-auto" @bind="mergeInto">
+                                    <option value="0">Choose the vendor to keep…</option>
+                                    @foreach (var other in vendors.Where(o => o.Id != v.Id))
+                                    {
+                                        <option value="@other.Id">@other.Name</option>
+                                    }
+                                </select>
+                                <button class="btn btn-sm btn-primary" disabled="@(mergeInto == 0)" @onclick="MergeAsync">Merge</button>
+                                <button class="btn btn-sm btn-link" @onclick="() => acting = null">Cancel</button>
+                            </div>
+                            <div class="small text-muted mt-1">
+                                Everything that uses @v.Name moves to the vendor you keep, which also gets any phone, email, or trade it's missing.
+                                Then @v.Name is deleted.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <span>
+                                    Delete <strong>@v.Name</strong>?
+                                    @if (usage.IsUnused)
+                                    {
+                                        <span>It isn't used anywhere.</span>
+                                    }
+                                    else
+                                    {
+                                        <span>It's used by @usage; those are kept but will have no vendor. If it's a duplicate, use <strong>Merge into…</strong> instead.</span>
+                                    }
+                                </span>
+                                <button class="btn btn-sm btn-danger" @onclick="DeleteAsync">Delete</button>
+                                <button class="btn btn-sm btn-link" @onclick="() => acting = null">Cancel</button>
+                            </div>
+                        }
+                    </td>
+                </tr>
+            }
         }
     </tbody>
 </table>
 
-<h2 class="h4 mt-4">@(form.Id == 0 ? "Add vendor" : $"Edit {form.Name}")</h2>
-<EditForm Model="form" OnValidSubmit="SaveAsync" FormName="vendor" class="row g-2">
-    <div class="col-md-3"><InputText @bind-Value="form.Name" class="form-control" placeholder="Name" /></div>
-    <div class="col-md-2"><InputText @bind-Value="form.Trade" class="form-control" placeholder="Trade (e.g. Plumber)" /></div>
-    <div class="col-md-2"><InputText @bind-Value="form.Phone" class="form-control" placeholder="Phone" type="tel" /></div>
-    <div class="col-md-3"><InputText @bind-Value="form.Email" class="form-control" placeholder="Email" type="email" /></div>
-    <div class="col-md-2 d-flex gap-2">
-        <button type="submit" class="btn btn-primary">@(form.Id == 0 ? "Add" : "Save")</button>
-        @if (form.Id != 0) { <button type="button" class="btn btn-link" @onclick="() => form = new()">Cancel</button> }
-    </div>
-</EditForm>
-<FormError Message="@error" />
-
 @code {
     private List<Vendor> vendors = [];
     private Vendor form = new();
+    private string editingName = "";
     private string? error;
+    private string? status;
+    private Vendor? acting;
+    private VendorUsage? usage;
+    private bool merging;
+    private int mergeInto;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -49,10 +109,19 @@
         vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
     }
 
-    private void Edit(Vendor v) => form = new Vendor
+    private void Edit(Vendor v)
     {
-        Id = v.Id, Name = v.Name, Trade = v.Trade, Phone = v.Phone, Email = v.Email, Notes = v.Notes,
-    };
+        acting = null;
+        status = null;
+        editingName = v.Name;
+        form = new Vendor { Id = v.Id, Name = v.Name, Trade = v.Trade, Phone = v.Phone, Email = v.Email, Notes = v.Notes };
+    }
+
+    private void CancelEdit()
+    {
+        form = new();
+        error = null;
+    }
 
     private async Task SaveAsync()
     {
@@ -61,19 +130,63 @@
             error = "Name is required.";
             return;
         }
+        var name = form.Name.Trim();
+        if (vendors.Any(v => v.Id != form.Id && string.Equals(v.Name.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            error = $"There's already a vendor named {name}.";
+            return;
+        }
 
         await using var db = await DbFactory.CreateDbContextAsync();
+        form.Name = name;
         if (form.Id == 0)
         {
             db.Vendors.Add(form);
+            status = $"Added {name}.";
         }
         else
         {
             db.Vendors.Update(form);
+            status = $"Saved {name}.";
         }
         await db.SaveChangesAsync();
         form = new();
         error = null;
+        await LoadAsync();
+    }
+
+    private async Task StartAsync(Vendor v, bool merging)
+    {
+        acting = v;
+        this.merging = merging;
+        mergeInto = 0;
+        status = null;
+        usage = await VendorService.GetUsageAsync(v.Id);
+    }
+
+    private async Task MergeAsync()
+    {
+        var keep = vendors.First(v => v.Id == mergeInto);
+        await VendorService.MergeAsync(acting!.Id, keep.Id);
+        status = $"Merged {acting.Name} into {keep.Name}.";
+        await FinishAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        await VendorService.DeleteAsync(acting!.Id);
+        status = $"Deleted {acting.Name}.";
+        await FinishAsync();
+    }
+
+    private async Task FinishAsync()
+    {
+        if (form.Id == acting!.Id)
+        {
+            form = new();
+        }
+        acting = null;
+        usage = null;
         await LoadAsync();
     }
 }

@@ -220,6 +220,10 @@ On **Reports**, pick the year and click **Download PDF** to get `Rental P&L <yea
 
 PDFs are made with [QuestPDF](https://www.questpdf.com) under its free Community license (individuals and businesses with under $1M in annual revenue).
 
+## Vendors
+
+Add and edit vendors at the top of the **Vendors** page; a second vendor with the same name is refused. To fix a vendor entered twice, click **Merge into…** on the duplicate and choose the one to keep: its expenses, recurring expenses, maintenance requests, import rules, texts, and emails move over, the kept vendor gets any phone, email, trade, or notes it was missing, and the duplicate is deleted. **Delete** removes a vendor after saying what uses it; those items are kept with no vendor.
+
 ## Notes
 
 - On the report, click a line name (e.g. Cleaning and maintenance, or Rents received) to list every item behind it, or click one property's amount to see just that property's items, including its share of shared expenses. Each list ends with a total that matches the report.
