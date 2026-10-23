@@ -119,7 +119,12 @@
                 <option value="">Category…</option>
                 <CategoryOptions />
             </select>
-            <button class="btn btn-sm btn-primary" disabled="@(bulkProperty == "" && bulkCategory == "")" @onclick="ApplyBulkAsync">Apply</button>
+            <select class="form-select form-select-sm w-auto" @bind="bulkVendor">
+                <option value="">Vendor…</option>
+                <option value="@NoVendorValue">No vendor</option>
+                @foreach (var v in vendors) { <option value="@v.Id">@v.Name</option> }
+            </select>
+            <button class="btn btn-sm btn-primary" disabled="@(bulkProperty == "" && bulkCategory == "" && bulkVendor == "")" @onclick="ApplyBulkAsync">Apply</button>
             <button class="btn btn-sm btn-link" @onclick="() => selected.Clear()">Clear selection</button>
         </div>
     </div>
@@ -330,6 +335,10 @@
     private HashSet<int> selected = [];
     private string bulkProperty = "";
     private string bulkCategory = "";
+    private string bulkVendor = "";
+
+    /// <summary>Bulk vendor dropdown value meaning "remove the vendor".</summary>
+    private const string NoVendorValue = "none";
 
     protected override async Task OnInitializedAsync()
     {
@@ -541,10 +550,18 @@
             {
                 e.Category = category;
             }
+            if (bulkVendor == NoVendorValue)
+            {
+                e.VendorId = null;
+            }
+            else if (int.TryParse(bulkVendor, out var vendorId))
+            {
+                e.VendorId = vendorId;
+            }
         }
         await db.SaveChangesAsync();
         selected.Clear();
-        bulkProperty = bulkCategory = "";
+        bulkProperty = bulkCategory = bulkVendor = "";
         await LoadAsync();
     }
 

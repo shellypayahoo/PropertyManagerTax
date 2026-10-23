@@ -83,7 +83,7 @@ Use **Remember** on a row to save a rule (for example "PEPCO" → Utilities, 135
 
 Costs of the whole rental business, such as software, cloud hosting, or accounting, can be recorded as **All properties (shared)** when importing, on the Expenses page, or from a text message. Schedule E needs expenses per property, so the annual report splits each shared expense across properties by number of units and notes how much was shared.
 
-On the Expenses page, **Edit** changes any expense, and checking several expenses lets you change their property or category at once.
+On the Expenses page, **Edit** changes any expense, and checking several expenses lets you change their property, category, or vendor at once.
 
 **Split** divides one expense into parts, each with its own property, unit, category, and amount. **Divide across units** spreads a bill evenly over the units you tick (rounding pennies go to the last one), e.g. a cleaning crew that does three of the four units.
 
