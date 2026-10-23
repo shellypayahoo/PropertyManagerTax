@@ -1,0 +1,61 @@
+@using PropertyManager.Core.Calendar
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+@if (synced)
+{
+    <h2 class="h5 mt-4">Upcoming appointments <span class="small text-muted fw-normal">(next @Days days)</span></h2>
+    @if (events.Count == 0)
+    {
+        <p class="text-muted">Nothing on your synced calendars. <a href="email">Get calendar events</a> to refresh.</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle" style="max-width: 60rem">
+            <tbody>
+                @foreach (var (ev, property, request) in events)
+                {
+                    <tr>
+                        <td class="text-nowrap">@ev.StartDate.ToString("ddd, MMM d")</td>
+                        <td class="text-nowrap">@(ev.IsAllDay ? "All day" : ev.StartsAt.ToLocalTime().ToString("h:mm tt"))</td>
+                        <td>
+                            @ev.Subject
+                            @if (!string.IsNullOrWhiteSpace(ev.Location)) { <span class="small text-muted"> · @ev.Location</span> }
+                        </td>
+                        <td>@property?.Name</td>
+                        <td>@if (request is not null) { <a href="maintenance">@request.Title</a> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private const int Days = 14;
+    private bool synced;
+    private List<(CalendarEvent Event, Property? Property, MaintenanceRequest? Request)> events = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        synced = await db.CalendarSources.AnyAsync();
+        if (!synced)
+        {
+            return;
+        }
+        var now = Clock.GetUtcNow();
+        // All-day events are stored at midnight UTC, so start the window at the start of today.
+        var from = new DateTimeOffset(DateTime.SpecifyKind(Clock.GetLocalNow().Date, DateTimeKind.Utc));
+        var upcoming = await db.CalendarEvents.AsNoTracking()
+            .Where(e => e.EndsAt > from && e.StartsAt < now.AddDays(Days))
+            .OrderBy(e => e.StartsAt)
+            .ToListAsync();
+        var properties = await db.Properties.AsNoTracking().ToListAsync();
+        var linked = await db.MaintenanceRequests.AsNoTracking().Where(m => m.CalendarEventId != null).ToDictionaryAsync(m => m.CalendarEventId!.Value);
+        events = upcoming
+            .Where(e => e.IsAllDay || e.EndsAt > now)
+            .Select(e => (e, EventMatcher.PropertyFor(e, properties), linked.GetValueOrDefault(e.Id)))
+            .ToList();
+    }
+}

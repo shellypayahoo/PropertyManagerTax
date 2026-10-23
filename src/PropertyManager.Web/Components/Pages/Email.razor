@@ -5,14 +5,16 @@
 @inject EmailSignIn SignIn
 @inject IMailSource Mail
 @inject EmailSyncService Sync
+@inject PropertyManager.Core.Calendar.CalendarSyncService CalendarSync
 
-<PageTitle>Email</PageTitle>
+<PageTitle>Email &amp; calendar</PageTitle>
 
-<h1>Email</h1>
+<h1>Email &amp; calendar</h1>
 <p class="text-muted" style="max-width: 52rem">
     Emails with tenants and vendors, copied from the Hotmail / Outlook.com folders you choose (read-only; nothing in
     your mailbox is changed). PDF and Word attachments are read so the <a href="ask">Ask</a> page can search them;
-    pictures are kept so you can open them here.
+    pictures are kept so you can open them here. Appointments from the calendars you choose show on the
+    <a href="">Dashboard</a> and are suggested on <a href="maintenance">Maintenance</a> requests.
 </p>
 
 @if (!SignIn.IsConfigured)
@@ -44,6 +46,23 @@ else
         <span>Signed in as <strong>@signedInAs</strong></span>
         <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="SignOutAsync">Sign out</button>
     </div>
+    @if (needsSignInAgain)
+    {
+        <div class="alert alert-info" style="max-width: 52rem">
+            The app can now read your calendar too, which needs your permission once.
+            @if (deviceCode is { } againCode)
+            {
+                <div class="mt-2">
+                    Go to <a href="@againCode.Url" target="_blank" rel="noopener">@againCode.Url</a> and enter the code
+                    <strong class="font-monospace fs-5 mx-1">@againCode.Code</strong>, then sign in and accept.
+                </div>
+            }
+            else
+            {
+                <button class="btn btn-sm btn-primary ms-2" disabled="@busy" @onclick="SignInAsync">Sign in again</button>
+            }
+        </div>
+    }
 
     <h2 class="h5">Folders</h2>
     @if (choosing)
@@ -85,6 +104,45 @@ else
         <div class="d-flex flex-wrap gap-2 mb-3">
             <button class="btn btn-outline-primary" disabled="@busy" @onclick="ChooseFoldersAsync">Choose folders</button>
             <button class="btn btn-primary" disabled="@(busy || folders.Count == 0)" @onclick="SyncAsync">Get new emails</button>
+        </div>
+    }
+
+    <h2 class="h5 mt-4">Calendars</h2>
+    @if (choosingCalendars)
+    {
+        <div class="border rounded p-2 mb-2" style="max-width: 40rem">
+            @foreach (var c in mailCalendars)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="c-@c.Id.GetHashCode()" checked="@pickedCalendars.Contains(c.Id)"
+                           @onchange="e => { if ((bool)e.Value!) pickedCalendars.Add(c.Id); else pickedCalendars.Remove(c.Id); }" />
+                    <label class="form-check-label" for="c-@c.Id.GetHashCode()">@c.Name</label>
+                </div>
+            }
+        </div>
+        <div class="d-flex gap-2 mb-3">
+            <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="SaveCalendarsAsync">Save</button>
+            <button class="btn btn-outline-secondary btn-sm" disabled="@busy" @onclick="() => choosingCalendars = false">Cancel</button>
+        </div>
+    }
+    else
+    {
+        @if (calendars.Count == 0)
+        {
+            <p class="text-muted">No calendars chosen yet. Choose the calendar you keep rental appointments in.</p>
+        }
+        else
+        {
+            <ul>
+                @foreach (var c in calendars)
+                {
+                    <li>@c.Name <span class="text-muted small">(@c.Events.Count events@(c.LastSyncedAt is { } at ? $", last synced {at.ToLocalTime():g}" : ", not synced yet"))</span></li>
+                }
+            </ul>
+        }
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button class="btn btn-outline-primary" disabled="@(busy || needsSignInAgain)" @onclick="ChooseCalendarsAsync">Choose calendars</button>
+            <button class="btn btn-primary" disabled="@(busy || calendars.Count == 0 || needsSignInAgain)" @onclick="SyncCalendarsAsync">Get calendar events</button>
         </div>
     }
 }
@@ -144,6 +202,11 @@ else
 @code {
     private const int Shown = 100;
     private string? signedInAs;
+    private bool needsSignInAgain;
+    private List<CalendarSource> calendars = [];
+    private IReadOnlyList<CalendarInfo> mailCalendars = [];
+    private readonly HashSet<string> pickedCalendars = [];
+    private bool choosingCalendars;
     private (string Url, string Code)? deviceCode;
     private List<EmailFolder> folders = [];
     private IReadOnlyList<MailFolderInfo> mailFolders = [];
@@ -165,6 +228,7 @@ else
         try
         {
             signedInAs = await SignIn.GetSignedInAddressAsync();
+            needsSignInAgain = signedInAs is not null && await SignIn.NeedsSignInAgainAsync();
         }
         catch (Exception ex)
         {
@@ -177,6 +241,7 @@ else
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         folders = await db.EmailFolders.AsNoTracking().Include(f => f.Messages).OrderBy(f => f.Path).ToListAsync();
+        calendars = await db.CalendarSources.AsNoTracking().Include(c => c.Events).OrderBy(c => c.Name).ToListAsync();
         emailCount = await db.EmailMessages.CountAsync();
         await LoadEmailsAsync();
     }
@@ -223,6 +288,7 @@ else
             deviceCode = (url, code);
             await InvokeAsync(StateHasChanged);
         }, leaving.Token);
+        needsSignInAgain = false;
     });
 
     private Task SignOutAsync() => RunAsync(async () =>
@@ -254,6 +320,29 @@ else
         await LoadAsync();
         status = $"{summary.Added} new email(s), {summary.Updated} updated, {summary.Removed} removed, {summary.Attachments} attachment(s) saved.";
         problems = summary.Problems;
+    });
+
+    private Task ChooseCalendarsAsync() => RunAsync(async () =>
+    {
+        mailCalendars = await Mail.GetCalendarsAsync(leaving.Token);
+        pickedCalendars.Clear();
+        pickedCalendars.UnionWith(calendars.Select(c => c.GraphId));
+        choosingCalendars = true;
+    });
+
+    private Task SaveCalendarsAsync() => RunAsync(async () =>
+    {
+        await CalendarSync.SetCalendarsAsync(mailCalendars.Where(c => pickedCalendars.Contains(c.Id)), leaving.Token);
+        choosingCalendars = false;
+        await LoadAsync();
+        status = "Calendars saved. Click Get calendar events to copy their appointments.";
+    });
+
+    private Task SyncCalendarsAsync() => RunAsync(async () =>
+    {
+        var summary = await CalendarSync.SyncAsync(leaving.Token);
+        await LoadAsync();
+        status = $"Calendar: {summary.Added} new event(s), {summary.Updated} updated, {summary.Removed} removed (from a year ago to a year ahead).";
     });
 
     public void Dispose()

@@ -94,6 +94,43 @@ public class GraphMailSource(HttpClient http, IMailTokenProvider tokens) : IMail
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    public async Task<IReadOnlyList<CalendarInfo>> GetCalendarsAsync(CancellationToken ct = default)
+    {
+        var calendars = new List<CalendarInfo>();
+        await foreach (var c in PagesAsync(BaseUrl + "calendars?$top=100&$select=id,name", ct))
+        {
+            calendars.Add(new CalendarInfo(c.GetProperty("id").GetString()!, c.TryGetProperty("name", out var name) ? name.GetString() ?? "" : ""));
+        }
+        return calendars;
+    }
+
+    public async Task<IReadOnlyList<CalendarItem>> GetEventsAsync(string calendarId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        var url = $"{BaseUrl}calendars/{Uri.EscapeDataString(calendarId)}/calendarView"
+            + $"?startDateTime={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}&endDateTime={to.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}"
+            + "&$top=100&$select=subject,location,bodyPreview,start,end,isAllDay,isCancelled";
+        var events = new List<CalendarItem>();
+        await foreach (var e in PagesAsync(url, ct))
+        {
+            static string? Text(JsonElement item, string name) =>
+                item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+            // With the outlook.timezone="UTC" preference, times come back as UTC without an offset.
+            static DateTimeOffset Time(JsonElement e, string name) =>
+                new(DateTime.SpecifyKind(DateTime.Parse(Text(e.GetProperty(name), "dateTime")!, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc));
+
+            events.Add(new CalendarItem(
+                e.GetProperty("id").GetString()!,
+                Text(e, "subject") ?? "",
+                e.TryGetProperty("location", out var location) ? Text(location, "displayName") is { Length: > 0 } place ? place : null : null,
+                Text(e, "bodyPreview") is { Length: > 0 } preview ? preview : null,
+                Time(e, "start"),
+                Time(e, "end"),
+                e.TryGetProperty("isAllDay", out var allDay) && allDay.ValueKind == JsonValueKind.True,
+                e.TryGetProperty("isCancelled", out var cancelled) && cancelled.ValueKind == JsonValueKind.True));
+        }
+        return events;
+    }
+
     private static MailItem ToMailItem(string id, JsonElement item)
     {
         static MailAddress? Address(JsonElement recipient) =>
@@ -138,8 +175,8 @@ public class GraphMailSource(HttpClient http, IMailTokenProvider tokens) : IMail
     private async Task<JsonDocument> GetJsonAsync(string url, CancellationToken ct, bool isDelta = false)
     {
         using var request = await RequestAsync(url, ct);
-        // Plain-text bodies instead of HTML, 50 messages per page.
-        request.Headers.Add("Prefer", ["outlook.body-content-type=\"text\"", "odata.maxpagesize=50"]);
+        // Plain-text bodies instead of HTML, event times in UTC, 50 messages per page.
+        request.Headers.Add("Prefer", ["outlook.body-content-type=\"text\"", "outlook.timezone=\"UTC\"", "odata.maxpagesize=50"]);
         using var response = await http.SendAsync(request, ct);
         if (isDelta && response.StatusCode == HttpStatusCode.Gone)
         {

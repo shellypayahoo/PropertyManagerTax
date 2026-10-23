@@ -22,6 +22,10 @@ public class MaintenanceRequest
     public DateOnly? ScheduledFor { get; set; }
     public DateOnly? CompletedOn { get; set; }
 
+    /// <summary>The calendar appointment this request was scheduled from, if any.</summary>
+    public int? CalendarEventId { get; set; }
+    public CalendarEvent? CalendarEvent { get; set; }
+
     public List<Expense> Expenses { get; set; } = [];
 
     public bool IsOpen => Status is not (MaintenanceStatus.Completed or MaintenanceStatus.Cancelled);

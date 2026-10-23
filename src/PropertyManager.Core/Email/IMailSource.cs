@@ -16,10 +16,15 @@ public record MailChanges(IReadOnlyList<MailItem> Changed, IReadOnlyList<string>
 
 public record MailAttachmentInfo(string Id, string Name, string ContentType, long Size, bool IsInline);
 
+public record CalendarInfo(string Id, string Name);
+
+/// <summary>One calendar appointment, or one occurrence of a recurring one. Times are UTC; all-day events start at midnight UTC of their date.</summary>
+public record CalendarItem(string Id, string Subject, string? Location, string? Preview, DateTimeOffset Start, DateTimeOffset End, bool IsAllDay, bool IsCancelled);
+
 /// <summary>Thrown when a saved delta link is too old to use; the folder has to be synced from the start.</summary>
 public class MailDeltaExpiredException(string message) : Exception(message);
 
-/// <summary>Read-only access to a mailbox. Implemented with Microsoft Graph; tests use a fake.</summary>
+/// <summary>Read-only access to a mailbox and its calendars. Implemented with Microsoft Graph; tests use a fake.</summary>
 public interface IMailSource
 {
     Task<IReadOnlyList<MailFolderInfo>> GetFoldersAsync(CancellationToken ct = default);
@@ -30,6 +35,11 @@ public interface IMailSource
     Task<IReadOnlyList<MailAttachmentInfo>> GetAttachmentsAsync(string messageId, CancellationToken ct = default);
 
     Task<byte[]> DownloadAttachmentAsync(string messageId, string attachmentId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<CalendarInfo>> GetCalendarsAsync(CancellationToken ct = default);
+
+    /// <summary>Events in a calendar between two times, with recurring events expanded into occurrences.</summary>
+    Task<IReadOnlyList<CalendarItem>> GetEventsAsync(string calendarId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
 }
 
 /// <summary>Supplies Microsoft Graph access tokens for the signed-in mailbox.</summary>

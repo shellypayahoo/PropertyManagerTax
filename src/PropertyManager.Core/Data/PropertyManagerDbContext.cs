@@ -26,6 +26,8 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<EmailFolder> EmailFolders => Set<EmailFolder>();
     public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
     public DbSet<EmailAttachment> EmailAttachments => Set<EmailAttachment>();
+    public DbSet<CalendarSource> CalendarSources => Set<CalendarSource>();
+    public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -81,6 +83,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.Property(m => m.Priority).HasConversion<string>().HasMaxLength(20);
             e.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             e.HasOne(m => m.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(m => m.CalendarEvent).WithMany().OnDelete(DeleteBehavior.SetNull);
             e.Ignore(m => m.IsOpen);
         });
 
@@ -182,6 +185,28 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.HasIndex(a => a.StorageKey).IsUnique();
             e.Ignore(a => a.HasText);
             e.HasOne(a => a.EmailMessage).WithMany(m => m.Attachments).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CalendarSource>(e =>
+        {
+            e.Property(c => c.GraphId).HasMaxLength(500).IsRequired();
+            e.HasIndex(c => c.GraphId).IsUnique();
+            e.Property(c => c.Name).HasMaxLength(200).IsRequired();
+            e.Property(c => c.LastSyncedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+        });
+
+        modelBuilder.Entity<CalendarEvent>(e =>
+        {
+            e.Property(c => c.GraphId).HasMaxLength(500).IsRequired();
+            e.HasIndex(c => c.GraphId).IsUnique();
+            e.Property(c => c.Subject).HasMaxLength(500);
+            e.Property(c => c.Location).HasMaxLength(500);
+            e.Property(c => c.Preview).HasMaxLength(1000);
+            // Stored as numbers so SQLite can sort and compare event times.
+            e.Property(c => c.StartsAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            e.Property(c => c.EndsAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            e.HasIndex(c => c.StartsAt);
+            e.HasOne(c => c.CalendarSource).WithMany(s => s.Events).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<MessageContact>(e =>

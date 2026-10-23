@@ -1,4 +1,5 @@
 @page "/maintenance"
+@using PropertyManager.Core.Calendar
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
 
@@ -24,6 +25,25 @@
                 <td>
                     <div>@m.Title</div>
                     @if (!string.IsNullOrWhiteSpace(m.Description)) { <div class="small text-muted">@m.Description</div> }
+                    @if (m.CalendarEvent is { } linked)
+                    {
+                        <div class="small">
+                            📅 @linked.Subject, @linked.StartDate.ToString("ddd, MMM d")@(linked.IsAllDay ? "" : linked.StartsAt.ToLocalTime().ToString(" h:mm tt"))
+                            <button class="btn btn-link btn-sm p-0 ms-1" @onclick="() => UnlinkAsync(m.Id)">Unlink</button>
+                        </div>
+                    }
+                    else if (m.IsOpen)
+                    {
+                        @foreach (var s in SuggestionsFor(m))
+                        {
+                            <div class="small border-start border-3 border-info ps-2 mt-1">
+                                📅 Calendar: <strong>@s.Event.Subject</strong>, @s.Event.StartDate.ToString("ddd, MMM d")@(s.Event.IsAllDay ? "" : s.Event.StartsAt.ToLocalTime().ToString(" h:mm tt"))
+                                <span class="text-muted">(mentions @string.Join(", ", s.Reasons))</span>
+                                <button class="btn btn-sm btn-outline-primary py-0 ms-1" @onclick="() => LinkAsync(m.Id, s.Event)">Use as scheduled date</button>
+                                <button class="btn btn-sm btn-link py-0" @onclick="() => dismissed.Add((m.Id, s.Event.Id))">Not this</button>
+                            </div>
+                        }
+                    }
                 </td>
                 <td><span class="badge @PriorityBadge(m.Priority)">@m.Priority</span></td>
                 <td>
@@ -45,6 +65,7 @@
                         }
                     </select>
                     @if (m.CompletedOn is { } done) { <div class="small text-muted">Completed @done.ToString("d")</div> }
+                    else if (m.ScheduledFor is { } when) { <div class="small text-muted">Scheduled @when.ToString("d")</div> }
                 </td>
                 <td class="text-end">@(m.Expenses.Count == 0 ? "" : m.Expenses.Sum(e => e.Amount).ToString("C"))</td>
             </tr>
@@ -89,6 +110,8 @@
     private bool showClosed;
     private string? error;
     private DateOnly today;
+    private List<CalendarEvent> calendarEvents = [];
+    private readonly HashSet<(int RequestId, int EventId)> dismissed = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -110,9 +133,22 @@
         await using var db = await DbFactory.CreateDbContextAsync();
         requests = await db.MaintenanceRequests.AsNoTracking()
             .Include(m => m.Unit).ThenInclude(u => u!.Property)
+            .Include(m => m.Vendor)
+            .Include(m => m.CalendarEvent)
             .Include(m => m.Expenses)
             .OrderByDescending(m => m.ReportedOn).ThenByDescending(m => m.Id)
             .ToListAsync();
+
+        // Appointments that could be the visit for an open request, other than ones already linked to a request.
+        var open = requests.Where(r => r.IsOpen && r.CalendarEventId is null).ToList();
+        if (open.Count > 0 && await db.CalendarEvents.AnyAsync())
+        {
+            var from = new DateTimeOffset(open.Min(r => r.ReportedOn).AddDays(-4).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            var linked = requests.Where(r => r.CalendarEventId is not null).Select(r => r.CalendarEventId!.Value).ToHashSet();
+            calendarEvents = (await db.CalendarEvents.AsNoTracking().Where(e => e.StartsAt >= from).ToListAsync())
+                .Where(e => !linked.Contains(e.Id))
+                .ToList();
+        }
     }
 
     private async Task AddAsync()
@@ -139,6 +175,38 @@
         {
             request.Status = status;
             request.CompletedOn = status == MaintenanceStatus.Completed ? request.CompletedOn ?? today : null;
+            await db.SaveChangesAsync();
+        }
+        await LoadAsync();
+    }
+
+    private IEnumerable<ScheduleSuggestion> SuggestionsFor(MaintenanceRequest request) =>
+        EventMatcher.Suggest(request, calendarEvents.Where(e => !dismissed.Contains((request.Id, e.Id))));
+
+    private async Task LinkAsync(int id, CalendarEvent ev)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var request = await db.MaintenanceRequests.FindAsync(id);
+        if (request is not null)
+        {
+            request.CalendarEventId = ev.Id;
+            request.ScheduledFor = ev.StartDate;
+            if (request.Status == MaintenanceStatus.Open)
+            {
+                request.Status = MaintenanceStatus.Scheduled;
+            }
+            await db.SaveChangesAsync();
+        }
+        await LoadAsync();
+    }
+
+    private async Task UnlinkAsync(int id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var request = await db.MaintenanceRequests.FindAsync(id);
+        if (request is not null)
+        {
+            request.CalendarEventId = null;
             await db.SaveChangesAsync();
         }
         await LoadAsync();

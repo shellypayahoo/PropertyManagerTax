@@ -296,8 +296,8 @@ public sealed class EmailTests : IDisposable
         }
     }
 
-    /// <summary>Returns queued changes per folder, one batch per sync.</summary>
-    private sealed class FakeMailSource : IMailSource
+    /// <summary>Returns queued changes per folder, one batch per sync, and set calendar events.</summary>
+    internal sealed class FakeMailSource : IMailSource
     {
         public Dictionary<string, List<MailChanges>> Changes { get; } = [];
         public Dictionary<string, List<(MailAttachmentInfo Info, byte[] Bytes)>> Attachments { get; } = [];
@@ -327,6 +327,18 @@ public sealed class EmailTests : IDisposable
 
         public Task<byte[]> DownloadAttachmentAsync(string messageId, string attachmentId, CancellationToken ct = default) =>
             Task.FromResult(Attachments[messageId].Single(a => a.Info.Id == attachmentId).Bytes);
+
+        public Dictionary<string, List<CalendarItem>> Events { get; } = [];
+        public (DateTimeOffset From, DateTimeOffset To) EventWindow { get; private set; }
+
+        public Task<IReadOnlyList<CalendarInfo>> GetCalendarsAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<CalendarInfo>>(Events.Keys.Select(k => new CalendarInfo(k, k)).ToList());
+
+        public Task<IReadOnlyList<CalendarItem>> GetEventsAsync(string calendarId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        {
+            EventWindow = (from, to);
+            return Task.FromResult<IReadOnlyList<CalendarItem>>(Events[calendarId].ToList());
+        }
     }
 
     private sealed class TestDbContextFactory(DbContextOptions<PropertyManagerDbContext> options)

@@ -89,6 +89,81 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("BankAccounts");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.CalendarEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CalendarSourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("EndsAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("GraphId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsAllDay")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Preview")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("StartsAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalendarSourceId");
+
+                    b.HasIndex("GraphId")
+                        .IsUnique();
+
+                    b.HasIndex("StartsAt");
+
+                    b.ToTable("CalendarEvents");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.CalendarSource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("GraphId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastSyncedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GraphId")
+                        .IsUnique();
+
+                    b.ToTable("CalendarSources");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.CategorizationRule", b =>
                 {
                     b.Property<int>("Id")
@@ -468,6 +543,9 @@ namespace PropertyManager.Core.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("CalendarEventId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateOnly?>("CompletedOn")
                         .HasColumnType("TEXT");
 
@@ -502,6 +580,8 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CalendarEventId");
 
                     b.HasIndex("UnitId");
 
@@ -906,6 +986,17 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Property");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.CalendarEvent", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.CalendarSource", "CalendarSource")
+                        .WithMany("Events")
+                        .HasForeignKey("CalendarSourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CalendarSource");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.CategorizationRule", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.Property", "Property")
@@ -1052,6 +1143,11 @@ namespace PropertyManager.Core.Data.Migrations
 
             modelBuilder.Entity("PropertyManager.Core.Entities.MaintenanceRequest", b =>
                 {
+                    b.HasOne("PropertyManager.Core.Entities.CalendarEvent", "CalendarEvent")
+                        .WithMany()
+                        .HasForeignKey("CalendarEventId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("PropertyManager.Core.Entities.Unit", "Unit")
                         .WithMany("MaintenanceRequests")
                         .HasForeignKey("UnitId")
@@ -1062,6 +1158,8 @@ namespace PropertyManager.Core.Data.Migrations
                         .WithMany()
                         .HasForeignKey("VendorId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CalendarEvent");
 
                     b.Navigation("Unit");
 
@@ -1175,6 +1273,11 @@ namespace PropertyManager.Core.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.CalendarSource", b =>
+                {
+                    b.Navigation("Events");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.EmailFolder", b =>

@@ -142,16 +142,25 @@ Microsoft requires an app registration for any app that reads mail. It's free:
 1. Sign in to the [Azure portal](https://portal.azure.com) with an account in your own (personal) directory, not a work directory, and open **Microsoft Entra ID → App registrations → New registration**.
 2. Name: `Property Manager`. Supported account types: **Personal Microsoft accounts only** (or "accounts in any organizational directory and personal Microsoft accounts"). Leave the redirect URI empty. Click **Register**.
 3. On the app's **Authentication** page, turn on **Allow public client flows** and save.
-4. On **API permissions**, add **Microsoft Graph → Delegated permissions → Mail.Read**. (No admin consent is needed for a personal account.)
+4. On **API permissions**, add **Microsoft Graph → Delegated permissions → Mail.Read** and **Calendars.Read**. (No admin consent is needed for a personal account.)
 5. Copy the **Application (client) ID** from the **Overview** page and, from the repository root:
 
    ```sh
    dotnet user-secrets set "Email:ClientId" "<Application (client) ID>" --project src/PropertyManager.Web
    ```
 
-6. Restart the app, open **Email**, click **Sign in to Microsoft**, and enter the code shown at microsoft.com/devicelogin with your Hotmail account. Then **Choose folders**, tick the tenant folder, **Save**, and **Get new emails**.
+6. Restart the app, open **Email & calendar**, click **Sign in to Microsoft**, and enter the code shown at microsoft.com/devicelogin with your Hotmail account. Then **Choose folders**, tick the tenant folder, **Save**, and **Get new emails**.
 
 The sign-in is remembered in the macOS Keychain (macOS may ask to allow access the first time), so you don't sign in on every start; **Sign out** removes it. The app never sees your password. If you send email from more than one address, list the others with `Email:MyAddresses` so they count as sent by you.
+
+### Calendar
+
+The same page (**Email & calendar**) copies appointments from the Outlook.com calendars you choose, for example one you keep for the rentals. **Get calendar events** refreshes everything from a year ago to a year ahead (recurring appointments are expanded into each occurrence); appointments cancelled or deleted in Outlook are removed.
+
+- The **Dashboard** lists the next two weeks of appointments, with the property each one mentions (by street number or street name, e.g. "1354" or "Taylor") and the maintenance request it's linked to.
+- On **Maintenance**, open requests show appointments that look like the visit: within a few days before to four months after the request was reported, mentioning its property or its vendor, and ideally its unit or words from its title. **Use as scheduled date** links the appointment, fills in the scheduled date, and marks the request Scheduled; **Not this** hides a suggestion.
+
+Calendar access uses the **Calendars.Read** permission. If you signed in before calendar support was added, the page asks you to sign in again once. You can also add Microsoft Graph → Delegated → **Calendars.Read** under the app registration's API permissions, though personal accounts are asked for it at sign-in either way.
 
 ## Ask (AI assistant)
 

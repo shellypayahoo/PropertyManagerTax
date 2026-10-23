@@ -5,12 +5,12 @@ using Microsoft.Identity.Client.Extensions.Msal;
 namespace PropertyManager.Core.Email;
 
 /// <summary>
-/// Signs in to the mailbox with Microsoft (device code flow, read-only Mail.Read permission). The sign-in is kept in
+/// Signs in to the mailbox with Microsoft (device code flow, read-only Mail.Read and Calendars.Read permissions). The sign-in is kept in
 /// the macOS Keychain (Windows: DPAPI) so it survives restarts; the app never sees the password.
 /// </summary>
 public class EmailSignIn(IOptions<EmailOptions> options) : IMailTokenProvider
 {
-    private static readonly string[] Scopes = ["Mail.Read"];
+    private static readonly string[] Scopes = ["Mail.Read", "Calendars.Read"];
     private readonly SemaphoreSlim gate = new(1, 1);
     private IPublicClientApplication? app;
 
@@ -37,6 +37,28 @@ public class EmailSignIn(IOptions<EmailOptions> options) : IMailTokenProvider
             .AcquireTokenWithDeviceCode(Scopes, code => showCode(code.VerificationUrl, code.UserCode))
             .ExecuteAsync(ct);
         return result.Account.Username;
+    }
+
+    /// <summary>
+    /// True when signed in but the sign-in doesn't cover every permission the app now uses (e.g. it was made before
+    /// calendar access was added), so the owner needs to sign in again once.
+    /// </summary>
+    public async Task<bool> NeedsSignInAgainAsync(CancellationToken ct = default)
+    {
+        var client = await AppAsync();
+        if ((await client.GetAccountsAsync()).FirstOrDefault() is not { } account)
+        {
+            return false;
+        }
+        try
+        {
+            await client.AcquireTokenSilent(Scopes, account).ExecuteAsync(ct);
+            return false;
+        }
+        catch (MsalUiRequiredException)
+        {
+            return true;
+        }
     }
 
     public async Task SignOutAsync()
