@@ -133,6 +133,9 @@ else
         catch (Exception ex)
         {
             turn.Error = $"Couldn't get an answer from {providerName}: {ex.Message}"
+                + (ex.Message.Contains("429")
+                    ? " The model's tokens-per-minute limit was reached. Wait a minute and ask again, or raise the deployment's rate limit (in Azure AI Foundry: Deployments → the model → Edit)."
+                    : "")
                 + (Selected?.Type == AssistantProviderType.AzureFoundry && ex.Message.Contains("404")
                     ? $" Check that a deployment named \"{Selected.Model}\" exists in this resource (Deployments page in the Foundry portal) and that the endpoint is this resource's."
                     : "")

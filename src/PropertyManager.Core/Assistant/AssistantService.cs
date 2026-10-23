@@ -75,8 +75,10 @@ public class AssistantService(IOptionsMonitor<AssistantOptions> options, Assista
         // A declined turn isn't kept, so it doesn't affect later questions.
         if (!declined)
         {
+            // Keep only the question and answer: re-sending earlier lookups with every question uses up the provider's
+            // tokens-per-minute limit quickly, and the model can look things up again when needed.
             conversation.History.Add(userMessage);
-            conversation.History.AddRange(response.Messages);
+            conversation.History.Add(new ChatMessage(ChatRole.Assistant, text));
         }
         return new AssistantReply(text, lookups, declined, provider.Name);
     }

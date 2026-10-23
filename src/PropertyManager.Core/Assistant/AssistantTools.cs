@@ -38,7 +38,8 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         AIFunctionFactory.Create(ReadDocumentAsync, "read_document"),
     ];
 
-    private const int DocumentChunk = 30_000;
+    // Kept modest so a question fits within small tokens-per-minute limits; the model can ask for more.
+    private const int DocumentChunk = 12_000;
 
     [Description("Searches imported text messages with tenants and vendors. Every word of the query must appear in a message (case-insensitive), so use one or two distinctive words, and try synonyms if nothing is found. Returns the newest matches in date order, each with date, time, sender, and text.")]
     public async Task<string> SearchTextMessagesAsync(
@@ -46,7 +47,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         [Description("Optional: a contact's name, tenant or vendor name, phone number, or email, to search only that conversation.")] string? contact = null,
         [Description("Optional start date, yyyy-MM-dd.")] string? fromDate = null,
         [Description("Optional end date, yyyy-MM-dd (inclusive).")] string? toDate = null,
-        [Description("Maximum messages to return (default 50, up to 150).")] int limit = 50,
+        [Description("Maximum messages to return (default 30, up to 150).")] int limit = 30,
         CancellationToken ct = default)
     {
         var handles = await ResolveContactAsync(contact, ct);
@@ -70,7 +71,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         [Description("The contact's name, tenant or vendor name, phone number, or email.")] string contact,
         [Description("Optional start date, yyyy-MM-dd.")] string? fromDate = null,
         [Description("Optional end date, yyyy-MM-dd (inclusive).")] string? toDate = null,
-        [Description("Maximum messages to return, newest kept (default 100, up to 150).")] int limit = 100,
+        [Description("Maximum messages to return, newest kept (default 60, up to 150).")] int limit = 60,
         CancellationToken ct = default) =>
         await SearchTextMessagesAsync(null, contact, fromDate, toDate, limit, ct);
 
@@ -259,7 +260,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         [Description("Optional: a tenant's or vendor's name, a person's name, or an email address, to search only emails with them.")] string? contact = null,
         [Description("Optional start date, yyyy-MM-dd.")] string? fromDate = null,
         [Description("Optional end date, yyyy-MM-dd (inclusive).")] string? toDate = null,
-        [Description("Maximum emails to return (default 20, up to 50).")] int limit = 20,
+        [Description("Maximum emails to return (default 10, up to 50).")] int limit = 10,
         CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -296,7 +297,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         var text = new StringBuilder($"{found.Count} email(s):\n");
         foreach (var m in found)
         {
-            var body = m.Text.Length > 1500 ? m.Text[..1500] + $" … (truncated; read_email {m.Id} for all of it)" : m.Text;
+            var body = m.Text.Length > 800 ? m.Text[..800] + $" … (truncated; read_email {m.Id} for all of it)" : m.Text;
             text.AppendLine($"Email #{m.Id} [{m.SentAt.ToLocalTime().ToString("yyyy-MM-dd ddd h:mm tt", Us)}] From {(m.IsFromMe ? "Me" : m.FromDisplay)} to {m.To}{(m.Cc.Length > 0 ? ", cc " + m.Cc : "")}");
             text.AppendLine($"  Subject: {m.Subject}");
             text.AppendLine($"  {body.ReplaceLineEndings("\n  ")}");
@@ -385,7 +386,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         return result.ToString();
     }
 
-    [Description("Reads the text of one document, 30,000 characters at a time. PDF pages are marked [Page N].")]
+    [Description("Reads the text of one document, 12,000 characters at a time. PDF pages are marked [Page N].")]
     public async Task<string> ReadDocumentAsync(
         [Description("The document id from list_documents, search_documents, or an email's attachments, e.g. \"L3\" or \"E12\".")] string documentId,
         [Description("Character position to start reading from (default 0, the beginning).")] int fromCharacter = 0,

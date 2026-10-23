@@ -140,6 +140,24 @@ public sealed class AssistantTests : IDisposable
     }
 
     [Fact]
+    public async Task Ask_FollowUp_DoesNotResendEarlierLookups()
+    {
+        var model = new ScriptedChatClient(
+            _ => new ChatResponse(new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call1", "search_text_messages", new Dictionary<string, object?> { ["query"] = "leak" })])),
+            _ => new ChatResponse(new ChatMessage(ChatRole.Assistant, "March 2.")),
+            _ => new ChatResponse(new ChatMessage(ChatRole.Assistant, "Thursday.")));
+        var service = Service(_ => model);
+        var conversation = new AssistantConversation();
+
+        await service.AskAsync(conversation, "Fake", "When was the leak reported?");
+        await service.AskAsync(conversation, "Fake", "When is the plumber coming?");
+
+        var followUp = model.Received.Last();
+        Assert.DoesNotContain(followUp.SelectMany(m => m.Contents), c => c is FunctionCallContent or FunctionResultContent);
+        Assert.Equal(["When was the leak reported?", "March 2.", "When is the plumber coming?"], followUp.Skip(1).Select(m => m.Text));
+    }
+
+    [Fact]
     public async Task Ask_DeclinedAnswer_IsReportedAndNotKept()
     {
         var model = new ScriptedChatClient(_ => new ChatResponse(new ChatMessage(ChatRole.Assistant, "")) { FinishReason = ChatFinishReason.ContentFilter });

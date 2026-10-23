@@ -1,4 +1,5 @@
 using System.ClientModel;
+using System.ClientModel.Primitives;
 using Anthropic;
 using Anthropic.Foundry;
 using Anthropic.Helpers;
@@ -24,7 +25,12 @@ public static class ChatClientFactory
             AssistantProviderType.AzureFoundry => new OpenAI.Chat.ChatClient(
                     provider.Model,
                     new ApiKeyCredential(provider.ApiKey!),
-                    new OpenAIClientOptions { Endpoint = FoundryEndpoint(provider.Endpoint!) })
+                    new OpenAIClientOptions
+                    {
+                        Endpoint = FoundryEndpoint(provider.Endpoint!),
+                        // Azure answers 429 when the deployment's tokens-per-minute limit is hit; wait (honoring Retry-After) and retry.
+                        RetryPolicy = new ClientRetryPolicy(maxRetries: 6),
+                    })
                 .AsIChatClient(),
             AssistantProviderType.Ollama => new OllamaApiClient(new Uri(provider.Endpoint ?? "http://localhost:11434"), provider.Model),
             _ => throw new NotSupportedException($"Unknown provider type {provider.Type}."),
