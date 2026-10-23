@@ -16,6 +16,7 @@
     <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.90.1" />
     <PackageReference Include="OllamaSharp" Version="5.5.0" />
     <PackageReference Include="PdfPig" Version="0.1.16" />
+    <PackageReference Include="QuestPDF" Version="2026.9.1" />
   </ItemGroup>
 
 </Project>

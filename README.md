@@ -206,6 +206,12 @@ Notes:
 - Rent, expenses, leases, tenants, maintenance, and documents are looked up when you ask, so new entries and uploads show up right away. New texts need **Import messages for ticked contacts** on the Messages page first, and new emails need **Get new emails** on the Email page.
 - A conversation is kept only while the page is open; **New conversation** starts over.
 
+## PDF for your accountant
+
+On **Reports**, pick the year and click **Download PDF** to get `Rental P&L <year>.pdf`: the property addresses, the Schedule E summary by property (rents received, expenses by line, total expenses, net income), and notes on shared expenses split by unit count, mortgage principal and escrow deposits left out, and depreciation. With **Include every item behind each line** ticked (the default), it's followed by an itemized list for each line (date, property, description, vendor or how paid, amount) with totals that match the summary. Losses are shown in parentheses.
+
+PDFs are made with [QuestPDF](https://www.questpdf.com) under its free Community license (individuals and businesses with under $1M in annual revenue).
+
 ## Notes
 
 - On the report, click a line name (e.g. Cleaning and maintenance, or Rents received) to list every item behind it, or click one property's amount to see just that property's items, including its share of shared expenses. Each list ends with a total that matches the report.

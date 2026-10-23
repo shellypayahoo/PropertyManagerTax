@@ -11,13 +11,18 @@
     Click a line name or an amount to see the items behind it.
 </p>
 
-<div class="mb-3" style="max-width: 10rem">
-    <select class="form-select" @bind="year" @bind:after="LoadAsync">
+<div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+    <select class="form-select w-auto" @bind="year" @bind:after="LoadAsync">
         @foreach (var y in Enumerable.Range(currentYear - 5, 6).Reverse())
         {
             <option value="@y">@y</option>
         }
     </select>
+    <a class="btn btn-outline-primary" href="reports/@year/profit-and-loss.pdf@(includeDetail ? "?detail=true" : "")" target="_blank">Download PDF</a>
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="pdf-detail" @bind="includeDetail" />
+        <label class="form-check-label" for="pdf-detail">Include every item behind each line</label>
+    </div>
 </div>
 
 @if (statements is null)
@@ -117,6 +122,7 @@ else
     private IReadOnlyList<PropertyProfitAndLoss>? statements;
     private int year;
     private int currentYear;
+    private bool includeDetail = true;
 
     private IEnumerable<ExpenseCategory> UsedCategories =>
         statements!.SelectMany(s => s.Expenses).Select(e => e.Category).Distinct().Order();

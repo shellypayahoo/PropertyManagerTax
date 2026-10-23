@@ -23,6 +23,7 @@ builder.Services.AddDbContextFactory<PropertyManagerDbContext>(options =>
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<PropertyManager.Core.Reports.ProfitAndLossPdf>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<MortgageImportService>();
@@ -109,6 +110,9 @@ app.MapGet("/documents/{id:int}", async (int id, bool? download, IDbContextFacto
         ? Results.File(stream, document!.ContentType, document.FileName)
         : Results.File(stream, document!.ContentType);
 });
+app.MapGet("/reports/{year:int}/profit-and-loss.pdf", async (int year, bool? detail, PropertyManager.Core.Reports.ProfitAndLossPdf pdf, CancellationToken ct) =>
+    Results.File(await pdf.CreateAsync(year, detail == true, ct), "application/pdf", PropertyManager.Core.Reports.ProfitAndLossPdf.FileName(year)));
+
 app.MapGet("/email-attachments/{id:int}", async (int id, bool? download, IDbContextFactory<PropertyManagerDbContext> dbFactory,
     IDocumentStorage storage, HttpContext http, CancellationToken ct) =>
 {
