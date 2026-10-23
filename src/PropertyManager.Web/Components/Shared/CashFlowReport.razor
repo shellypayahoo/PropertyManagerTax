@@ -5,6 +5,7 @@
 <p class="text-muted" style="max-width: 52rem">
     Money in and out each month: rent by the date received, and everything paid out by the date paid, including
     mortgage principal and escrow deposits (which the P&amp;L leaves out because they aren't deductible).
+    Months in the red list what was paid out; click any month to see its payments.
 </p>
 <select class="form-select w-auto mb-3" @bind="propertyId" @bind:after="LoadAsync">
     <option value="0">All properties</option>
@@ -32,7 +33,7 @@
             <tbody>
                 @foreach (var m in months)
                 {
-                    <tr>
+                    <tr style="cursor: pointer" class="@(IsOpen(m) ? "table-active" : "")" @onclick="() => ToggleAsync(m)">
                         <td>@m.Month.ToString("MMMM")</td>
                         <td class="text-end">@Money(m.RentIn)</td>
                         <td class="text-end">@Money(m.Expenses)</td>
@@ -52,6 +53,35 @@
                         </td>
                         <td class="text-end @(m.Cumulative < 0 ? "text-danger" : "")">@Money(m.Cumulative)</td>
                     </tr>
+                    @if (IsOpen(m) && items.TryGetValue(m.Month, out var paid))
+                    {
+                        <tr>
+                            <td colspan="8" class="bg-body-tertiary px-3">
+                                <div class="small fw-semibold mb-1">
+                                    Paid out in @m.Month.ToString("MMMM"): @Money(m.TotalOut)@(m.RentIn > 0 ? $" against {Money(m.RentIn)} of rent" : ", with no rent received")
+                                </div>
+                                @if (paid.Count == 0)
+                                {
+                                    <div class="small text-muted">Nothing paid out.</div>
+                                }
+                                else
+                                {
+                                    <table class="table table-sm small mb-1">
+                                        @foreach (var i in paid)
+                                        {
+                                            <tr>
+                                                <td class="text-nowrap">@i.Date.ToString("MMM d")</td>
+                                                <td>@i.Where</td>
+                                                <td>@i.Description@(i.Vendor is null ? "" : $" · {i.Vendor}")</td>
+                                                <td class="text-muted">@i.Category.DisplayName()</td>
+                                                <td class="text-end">@i.Amount.ToString("C")</td>
+                                            </tr>
+                                        }
+                                    </table>
+                                }
+                            </td>
+                        </tr>
+                    }
                 }
                 <tr class="fw-bold border-top">
                     <td>Year</td>
@@ -93,10 +123,34 @@
         }
     }
 
+    // Months whose payments are listed: those in the red, plus any the owner clicks open (or minus any clicked closed).
+    private readonly Dictionary<DateOnly, IReadOnlyList<CashFlowItem>> items = [];
+    private readonly HashSet<DateOnly> toggled = [];
+
+    private bool IsOpen(CashFlowMonth m) => (m.Net < 0) != toggled.Contains(m.Month);
+
     private async Task LoadAsync()
     {
         loadedYear = Year;
         months = await Reports.GetCashFlowAsync(Year, propertyId == 0 ? null : propertyId);
+        items.Clear();
+        toggled.Clear();
+        foreach (var m in months.Where(m => m.Net < 0))
+        {
+            items[m.Month] = await Reports.GetCashFlowItemsAsync(m.Month, propertyId == 0 ? null : propertyId);
+        }
+    }
+
+    private async Task ToggleAsync(CashFlowMonth m)
+    {
+        if (!toggled.Remove(m.Month))
+        {
+            toggled.Add(m.Month);
+        }
+        if (IsOpen(m) && !items.ContainsKey(m.Month))
+        {
+            items[m.Month] = await Reports.GetCashFlowItemsAsync(m.Month, propertyId == 0 ? null : propertyId);
+        }
     }
 
     private string Width(decimal net)

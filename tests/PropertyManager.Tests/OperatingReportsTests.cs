@@ -77,6 +77,21 @@ public sealed class OperatingReportsTests : IDisposable
     }
 
     [Fact]
+    public async Task CashFlowItems_AddUpToTheMonth_LargestFirst()
+    {
+        var jan = new DateOnly(2026, 1, 1);
+        var all = await reports.GetCashFlowItemsAsync(jan);
+        var taylor = await reports.GetCashFlowItemsAsync(jan, taylorId);
+
+        Assert.Equal(["Interest", "Principal", "Sink", "Software"], all.Select(i => i.Description));
+        Assert.Equal((await reports.GetCashFlowAsync(2026))[0].TotalOut, all.Sum(i => i.Amount));
+        var share = taylor.Single(i => i.Description == "Software");
+        Assert.Equal((50m, true, "Share of all properties"), (share.Amount, share.SharedPortion, share.Where));
+        Assert.Equal((await reports.GetCashFlowAsync(2026, taylorId))[0].TotalOut, taylor.Sum(i => i.Amount));
+        Assert.Empty(await reports.GetCashFlowItemsAsync(new DateOnly(2026, 7, 1)));
+    }
+
+    [Fact]
     public async Task RentCollection_FlagsLatePartialAndMissedMonths()
     {
         var row = Assert.Single(await reports.GetRentCollectionAsync(2026, graceDays: 5));

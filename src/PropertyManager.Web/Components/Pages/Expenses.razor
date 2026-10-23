@@ -18,6 +18,71 @@
     <div class="alert alert-info py-2">Added @recurringAdded recurring @(recurringAdded == 1 ? "expense" : "expenses") that came due.</div>
 }
 
+<div class="card mb-3">
+<div class="card-body">
+<h2 class="h5">Add expense</h2>
+<EditForm Model="form" OnValidSubmit="AddAsync" FormName="expense" class="row g-2 align-items-end">
+    <div class="col-md-2"><label class="form-label">Date</label><InputDate @bind-Value="form.Date" class="form-control" /></div>
+    <div class="col-md-2">
+        <label class="form-label">Property</label>
+        <select class="form-select" value="@(addPropertyChosen ? PropertyValue(form.PropertyId) : "")" @onchange="OnAddPropertyChanged">
+            <option value="">Select…</option>
+            <option value="@SharedValue">All properties (shared)</option>
+            @foreach (var p in properties)
+            {
+                <option value="@p.Id">@p.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-1">
+        <label class="form-label">Unit</label>
+        <InputSelect @bind-Value="form.UnitId" class="form-select" disabled="@(form.PropertyId is null)">
+            <option value="">All</option>
+            @foreach (var u in UnitsOf(form.PropertyId))
+            {
+                <option value="@u.Id">@u.Label</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label">Category</label>
+        <InputSelect @bind-Value="form.Category" class="form-select">
+            <CategoryOptions />
+        </InputSelect>
+    </div>
+    <div class="col-md-2"><label class="form-label">Description</label><InputText @bind-Value="form.Description" class="form-control" /></div>
+    <div class="col-md-1">
+        <label class="form-label">Vendor</label>
+        <InputSelect @bind-Value="form.VendorId" class="form-select">
+            <option value="">—</option>
+            @foreach (var v in vendors)
+            {
+                <option value="@v.Id">@v.Name</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-1"><label class="form-label">Amount</label><InputNumber @bind-Value="form.Amount" class="form-control" /></div>
+    <div class="col-md-1">
+        <label class="form-label">Paid with</label>
+        <InputSelect @bind-Value="form.PaidWith" class="form-select">
+            <option value="">—</option>
+            @foreach (var m in Enum.GetValues<PaymentMethod>())
+            {
+                <option value="@m">@m</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-1"><button type="submit" class="btn btn-primary w-100">Add</button></div>
+</EditForm>
+<FormError Message="@error" />
+@if (added is not null) { <div class="alert alert-success py-1 px-2 mt-2 mb-0 small">Added @added</div> }
+<p class="small text-muted mt-1 mb-0">
+    Use <strong>All properties (shared)</strong> for costs of the whole rental business, such as software, cloud hosting, or accounting.
+    The annual report splits them across properties by number of units.
+</p>
+</div>
+</div>
+
 <div class="row g-2 mb-3">
     <div class="col-auto">
         <select class="form-select" @bind="year" @bind:after="LoadAsync">
@@ -224,70 +289,12 @@
     </tbody>
 </table>
 
-<h2 class="h4 mt-4">Add expense</h2>
-<EditForm Model="form" OnValidSubmit="AddAsync" FormName="expense" class="row g-2 align-items-end">
-    <div class="col-md-2"><label class="form-label">Date</label><InputDate @bind-Value="form.Date" class="form-control" /></div>
-    <div class="col-md-2">
-        <label class="form-label">Property</label>
-        <select class="form-select" value="@(addPropertyChosen ? PropertyValue(form.PropertyId) : "")" @onchange="OnAddPropertyChanged">
-            <option value="">Select…</option>
-            <option value="@SharedValue">All properties (shared)</option>
-            @foreach (var p in properties)
-            {
-                <option value="@p.Id">@p.Name</option>
-            }
-        </select>
-    </div>
-    <div class="col-md-1">
-        <label class="form-label">Unit</label>
-        <InputSelect @bind-Value="form.UnitId" class="form-select" disabled="@(form.PropertyId is null)">
-            <option value="">All</option>
-            @foreach (var u in UnitsOf(form.PropertyId))
-            {
-                <option value="@u.Id">@u.Label</option>
-            }
-        </InputSelect>
-    </div>
-    <div class="col-md-2">
-        <label class="form-label">Category</label>
-        <InputSelect @bind-Value="form.Category" class="form-select">
-            <CategoryOptions />
-        </InputSelect>
-    </div>
-    <div class="col-md-2"><label class="form-label">Description</label><InputText @bind-Value="form.Description" class="form-control" /></div>
-    <div class="col-md-1">
-        <label class="form-label">Vendor</label>
-        <InputSelect @bind-Value="form.VendorId" class="form-select">
-            <option value="">—</option>
-            @foreach (var v in vendors)
-            {
-                <option value="@v.Id">@v.Name</option>
-            }
-        </InputSelect>
-    </div>
-    <div class="col-md-1"><label class="form-label">Amount</label><InputNumber @bind-Value="form.Amount" class="form-control" /></div>
-    <div class="col-md-1">
-        <label class="form-label">Paid with</label>
-        <InputSelect @bind-Value="form.PaidWith" class="form-select">
-            <option value="">—</option>
-            @foreach (var m in Enum.GetValues<PaymentMethod>())
-            {
-                <option value="@m">@m</option>
-            }
-        </InputSelect>
-    </div>
-    <div class="col-md-1"><button type="submit" class="btn btn-primary w-100">Add</button></div>
-</EditForm>
-<FormError Message="@error" />
-<p class="small text-muted mt-1">
-    Use <strong>All properties (shared)</strong> for costs of the whole rental business, such as software, cloud hosting, or accounting.
-    The annual report splits them across properties by number of units.
-</p>
 
 @code {
     /// <summary>Property dropdown value meaning "shared by all properties".</summary>
     private const string SharedValue = "shared";
     private const int SharedFilter = -1;
+    private string? added;
 
     private List<Expense> expenses = [];
     private List<Property> properties = [];
@@ -383,12 +390,14 @@
         if (!addPropertyChosen || form.Amount <= 0 || string.IsNullOrWhiteSpace(form.Description))
         {
             error = "Property (or All properties), description, and a positive amount are required.";
+            added = null;
             return;
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
         db.Expenses.Add(form);
         await db.SaveChangesAsync();
+        added = $"{form.Description}, {form.Amount:C} on {form.Date:d}.";
         form = NewForm();
         addPropertyChosen = false;
         error = null;

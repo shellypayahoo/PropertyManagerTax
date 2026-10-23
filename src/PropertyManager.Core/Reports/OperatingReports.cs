@@ -12,6 +12,9 @@ public record CashFlowMonth(DateOnly Month, decimal RentIn, decimal Expenses, de
     public decimal Net => RentIn - TotalOut;
 }
 
+/// <summary>One payment out in a cash-flow month. <see cref="SharedPortion"/> marks this property's share of a shared expense.</summary>
+public record CashFlowItem(DateOnly Date, string Where, string Description, string? Vendor, ExpenseCategory Category, decimal Amount, bool SharedPortion);
+
 /// <summary>One lease's rent for one month in the collection grid.</summary>
 public record RentCollectionCell(DateOnly Month, decimal Due, decimal Paid, RentStatus Status, int DaysLate)
 {
@@ -67,7 +70,9 @@ public class OperatingReports(IDbContextFactory<PropertyManagerDbContext> dbFact
                 .ToList();
             if (propertyId is not null)
             {
-                counted.AddRange(ReportService.AllocateSharedExpenses(properties, inMonth.Where(e => e.IsShared))
+                // Each shared expense is split on its own, matching GetCashFlowItemsAsync to the penny.
+                counted.AddRange(inMonth.Where(e => e.IsShared)
+                    .SelectMany(e => ReportService.AllocateSharedExpenses(properties, [e]))
                     .Where(a => a.PropertyId == propertyId)
                     .Select(a => (a.Category, a.Amount)));
             }
@@ -79,6 +84,37 @@ public class OperatingReports(IDbContextFactory<PropertyManagerDbContext> dbFact
             months.Add(new CashFlowMonth(month, rent, other, loan, cumulative));
         }
         return months;
+    }
+
+    /// <summary>
+    /// The money paid out in one month, largest first: for one property, its own expenses plus its share of each
+    /// shared expense. The items add up to the month's total out on the cash flow report.
+    /// </summary>
+    public async Task<IReadOnlyList<CashFlowItem>> GetCashFlowItemsAsync(DateOnly month, int? propertyId = null, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var (start, end) = (new DateOnly(month.Year, month.Month, 1), new DateOnly(month.Year, month.Month, 1).AddMonths(1).AddDays(-1));
+        var expenses = await db.Expenses.AsNoTracking()
+            .Include(e => e.Property).Include(e => e.Unit).Include(e => e.Vendor)
+            .Where(e => e.Date >= start && e.Date <= end)
+            .ToListAsync(ct);
+        var properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync(ct);
+
+        static string Where(Expense e) => e.IsShared ? "All properties" : e.Unit is null ? e.Property!.Name : $"{e.Property!.Name} – Unit {e.Unit.Label}";
+        var items = new List<CashFlowItem>();
+        foreach (var e in expenses)
+        {
+            if (propertyId is null || e.PropertyId == propertyId)
+            {
+                items.Add(new CashFlowItem(e.Date, Where(e), e.Description, e.Vendor?.Name, e.Category, e.Amount, false));
+            }
+            else if (e.IsShared)
+            {
+                var share = ReportService.AllocateSharedExpenses(properties, [e]).Where(a => a.PropertyId == propertyId).Sum(a => a.Amount);
+                items.Add(new CashFlowItem(e.Date, "Share of all properties", e.Description, e.Vendor?.Name, e.Category, share, true));
+            }
+        }
+        return items.OrderByDescending(i => i.Amount).ThenBy(i => i.Date).ToList();
     }
 
     /// <summary>

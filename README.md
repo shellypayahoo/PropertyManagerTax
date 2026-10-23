@@ -210,7 +210,7 @@ Notes:
 
 The **Reports** page has tabs next to **Profit & loss**, each for the chosen year:
 
-- **Cash flow**: rent received and money paid out each month, with net and a running total. Unlike the P&L, mortgage principal and escrow deposits count as money out, since they leave your account. Pick one property to see just its numbers (shared expenses count by its share of units).
+- **Cash flow**: rent received and money paid out each month, with net and a running total. Unlike the P&L, mortgage principal and escrow deposits count as money out, since they leave your account. Pick one property to see just its numbers (shared expenses count by its share of units). Months in the red list everything paid out that month, largest first; click any month to see or hide its payments.
 - **Rent collection**: a grid of every lease by month: paid on time, paid late (with how many days after the 1st), partly paid, not paid, or due. Rent is treated as due on the 1st; choose the grace period (none, 3, 5, 7, or 10 days). Each row totals rent due so far, paid, the balance owed, and the number of late and missed months.
 - **Vendors**: total paid to each vendor across all categories, largest first, with its share of spending, categories, and properties. Click a vendor to list the items. Expenses without a vendor are grouped as "No vendor recorded"; set vendors on the Expenses page.
 
