@@ -1,0 +1,72 @@
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
+
+@* Open Emergency, High, and Normal maintenance requests as reminders; Low priority is left on the Maintenance page. *@
+
+@if (requests is not null)
+{
+    <h2 class="h5 mt-4">Open maintenance <span class="small text-muted fw-normal">(urgent and normal)</span></h2>
+    @if (requests.Count == 0)
+    {
+        <p class="text-muted">Nothing urgent or normal priority is open. <a href="maintenance">Maintenance</a></p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle" style="max-width: 60rem">
+            <tbody>
+                @foreach (var m in requests)
+                {
+                    var age = today.DayNumber - m.ReportedOn.DayNumber;
+                    <tr>
+                        <td style="width: 7rem"><span class="badge @Badge(m.Priority)">@(m.Priority is MaintenancePriority.Emergency or MaintenancePriority.High ? $"Urgent · {m.Priority}" : "Normal")</span></td>
+                        <td>
+                            <a href="maintenance">@m.Title</a>
+                            <div class="small text-muted">@m.Unit?.DisplayName</div>
+                        </td>
+                        <td class="small">
+                            @if (m.ScheduledFor is { } when)
+                            {
+                                <span class="@(when < today ? "text-danger" : "")">Scheduled @when.ToString("ddd, MMM d")@(when < today ? " (passed)" : "")</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">Not scheduled</span>
+                            }
+                            <div class="text-muted">@(m.Vendor?.Name ?? "No vendor yet")</div>
+                        </td>
+                        <td class="small text-end text-nowrap @(age > 14 ? "text-danger" : "text-muted")">
+                            @(age switch { <= 0 => "reported today", 1 => "reported yesterday", _ => $"reported {age} days ago" })
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private List<MaintenanceRequest>? requests;
+    private DateOnly today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        requests = (await db.MaintenanceRequests.AsNoTracking()
+                .Include(m => m.Unit).ThenInclude(u => u!.Property)
+                .Include(m => m.Vendor)
+                .Where(m => m.Status != MaintenanceStatus.Completed && m.Status != MaintenanceStatus.Cancelled
+                    && m.Priority != MaintenancePriority.Low)
+                .ToListAsync())
+            .OrderByDescending(m => m.Priority)
+            .ThenBy(m => m.ReportedOn)
+            .ToList();
+    }
+
+    private static string Badge(MaintenancePriority p) => p switch
+    {
+        MaintenancePriority.Emergency => "text-bg-danger",
+        MaintenancePriority.High => "text-bg-warning",
+        _ => "text-bg-secondary",
+    };
+}
