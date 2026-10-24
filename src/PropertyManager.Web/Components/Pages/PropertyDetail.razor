@@ -1,6 +1,7 @@
 @page "/properties/{Id:int}"
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
+@inject PropertyPhotoService Photos
 
 <PageTitle>@(property?.Name ?? "Property")</PageTitle>
 
@@ -11,8 +12,63 @@
 else
 {
     <p><a href="properties">← Properties</a></p>
-    <h1>@property.Name</h1>
-    <p class="text-muted">@property.FullAddress</p>
+    <div class="d-flex flex-wrap gap-4 align-items-start mb-3">
+        <div>
+            @if (property.PhotoKey is not null)
+            {
+                <a href="properties/@property.Id/photo?v=@photoVersion" target="_blank">
+                    <img src="properties/@property.Id/photo?v=@photoVersion" alt="@property.Name" class="rounded border" style="width: 320px; max-height: 240px; object-fit: cover" />
+                </a>
+            }
+            else
+            {
+                <div class="rounded border bg-body-tertiary d-flex align-items-center justify-content-center text-muted" style="width: 320px; height: 200px">No photo yet</div>
+            }
+        </div>
+        <div class="flex-grow-1" style="min-width: 18rem">
+            <h1>@property.Name</h1>
+            <p class="text-muted">@property.FullAddress</p>
+            @if (photoStatus is not null) { <div class="alert alert-success py-1 px-2 small">@photoStatus</div> }
+            @if (photoError is not null) { <div class="alert alert-warning py-1 px-2 small">@photoError</div> }
+
+            <form method="post" action="properties/@property.Id/photo" enctype="multipart/form-data" data-file-upload data-return-hash="">
+                <AntiforgeryToken />
+                <label class="form-label small mb-1">Upload a photo of the house</label>
+                <div class="d-flex gap-2">
+                    <input type="file" name="files" required class="form-control form-control-sm" accept="image/*,.heic" />
+                    <button type="submit" class="btn btn-sm btn-primary">Upload</button>
+                </div>
+                <div class="alert alert-danger small mt-2" data-upload-message hidden></div>
+            </form>
+
+            <label class="form-label small mb-1 mt-3">Or use a photo from a web page (like your LLC's website)</label>
+            <div class="d-flex gap-2">
+                <input class="form-control form-control-sm" placeholder="parkerflatsllc.com" @bind="webAddress" @bind:event="oninput" />
+                <button class="btn btn-sm btn-outline-primary text-nowrap" disabled="@(finding || string.IsNullOrWhiteSpace(webAddress))" @onclick="FindPhotosAsync">@(finding ? "Looking…" : "Find photos")</button>
+            </div>
+            @if (property.PhotoKey is not null)
+            {
+                <button class="btn btn-link btn-sm p-0 mt-2 link-danger" @onclick="RemovePhotoAsync">Remove photo</button>
+            }
+        </div>
+    </div>
+    @if (webPhotos is not null)
+    {
+        <div class="border rounded p-2 mb-3 bg-body-tertiary">
+            <div class="d-flex justify-content-between mb-2">
+                <span class="small">@(webPhotos.Count == 0 ? "No photos found on that page. On the website, right-click the picture, choose Copy Image Address, and paste it above." : $"{webPhotos.Count} picture(s) found. Click the one of {property.Name}:")</span>
+                <button class="btn btn-sm btn-link p-0" @onclick="() => webPhotos = null">Close</button>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                @foreach (var url in webPhotos)
+                {
+                    <button class="btn p-0 border rounded overflow-hidden" title="Use this photo" disabled="@finding" @onclick="() => UseWebPhotoAsync(url)">
+                        <img src="@url" alt="" loading="lazy" referrerpolicy="no-referrer" style="width: 180px; height: 130px; object-fit: cover" onerror="this.closest('button').style.display='none'" />
+                    </button>
+                }
+            </div>
+        </div>
+    }
 
     <h2 class="h4 mt-4">Units</h2>
     <table class="table align-middle">
@@ -91,6 +147,70 @@ else
     private bool loaded;
     private bool saved;
     private DateOnly today;
+
+    // Set by the photo upload endpoint when it redirects back here.
+    [SupplyParameterFromQuery] public string? Photo { get; set; }
+    [SupplyParameterFromQuery] public string? PhotoError { get; set; }
+
+    private string? photoStatus;
+    private string? photoError;
+    private string webAddress = "";
+    private bool finding;
+    private IReadOnlyList<string>? webPhotos;
+    private long photoVersion = DateTime.UtcNow.Ticks;
+
+    protected override void OnInitialized()
+    {
+        photoStatus = Photo == "updated" ? "Photo saved." : null;
+        photoError = PhotoError;
+    }
+
+    private async Task FindPhotosAsync()
+    {
+        finding = true;
+        photoError = photoStatus = null;
+        try
+        {
+            webPhotos = await Photos.FindImagesAsync(webAddress);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or TaskCanceledException)
+        {
+            photoError = $"Couldn't read that page: {ex.Message}";
+        }
+        finally
+        {
+            finding = false;
+        }
+    }
+
+    private async Task UseWebPhotoAsync(string url)
+    {
+        finding = true;
+        photoError = photoStatus = null;
+        try
+        {
+            await Photos.SetFromUrlAsync(property!.Id, url);
+            webPhotos = null;
+            photoStatus = "Photo saved.";
+            photoVersion = DateTime.UtcNow.Ticks;
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or TaskCanceledException)
+        {
+            photoError = $"Couldn't use that picture: {ex.Message}";
+        }
+        finally
+        {
+            finding = false;
+        }
+    }
+
+    private async Task RemovePhotoAsync()
+    {
+        await Photos.RemoveAsync(property!.Id);
+        photoStatus = "Photo removed.";
+        await LoadAsync();
+    }
 
     protected override async Task OnParametersSetAsync()
     {

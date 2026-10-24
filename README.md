@@ -227,6 +227,10 @@ On **Reports**, pick the year and click **Download PDF** to get `Rental P&L <yea
 
 PDFs are made with [QuestPDF](https://www.questpdf.com) under its free Community license (individuals and businesses with under $1M in annual revenue).
 
+## Property photos
+
+Open a property from **Properties** to give it a photo: **Upload** a picture (JPG, PNG, or an iPhone HEIC photo, which is converted to JPEG), or type a web page address such as your LLC's website and click **Find photos** to pick one of the pictures on that page (or paste a picture's own address, from right-click → Copy Image Address). The photo shows on the property's page, in the Properties list, and on the Dashboard's unit cards. Photos are saved in `App_Data/documents`; the app reads the website from your Mac, so it needs an internet connection only when you find or download a photo.
+
 ## Maintenance
 
 The **Dashboard** shows a card for each unit listing its open Emergency, High ("urgent"), and Normal requests as reminders, most urgent first (the card is outlined red or yellow when something urgent is open; units with nothing open say "All clear"), with scheduled date (red once it has passed), vendor, and how long ago it was reported (red after two weeks); Low-priority requests stay on the Maintenance page. Add a request at the top of the **Maintenance** page (unit, issue, priority, date reported, vendor, details). Vendor and status can be changed right in the list; **Edit** opens the whole request below its row to change the unit, issue, priority, status, reported/scheduled/completed dates, vendor, or details, or to delete it (expenses recorded for it are kept).

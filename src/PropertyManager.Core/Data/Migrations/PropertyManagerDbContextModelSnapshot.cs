@@ -701,6 +701,12 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PhotoContentType")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PhotoKey")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PostalCode")
                         .HasColumnType("TEXT");
 

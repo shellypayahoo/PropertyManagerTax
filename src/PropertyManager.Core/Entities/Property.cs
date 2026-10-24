@@ -12,6 +12,10 @@ public class Property
     public decimal? PurchasePrice { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>The house's photo in <see cref="Storage.IDocumentStorage"/> (a JPEG when it could be converted).</summary>
+    public string? PhotoKey { get; set; }
+    public string? PhotoContentType { get; set; }
+
     public List<Unit> Units { get; set; } = [];
     public List<Expense> Expenses { get; set; } = [];
 

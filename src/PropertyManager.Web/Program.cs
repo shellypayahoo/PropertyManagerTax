@@ -25,6 +25,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<VendorService>();
 builder.Services.AddScoped<ReceiptService>();
+builder.Services.AddHttpClient<PropertyPhotoService>(c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<PropertyManager.Core.Reports.ProfitAndLossPdf>();
 builder.Services.AddScoped<PropertyManager.Core.Reports.OperatingReports>();
 builder.Services.AddScoped<DashboardService>();
@@ -117,6 +118,37 @@ app.MapGet("/documents/{id:int}", async (int id, bool? download, IDbContextFacto
 });
 app.MapGet("/reports/{year:int}/profit-and-loss.pdf", async (int year, bool? detail, PropertyManager.Core.Reports.ProfitAndLossPdf pdf, CancellationToken ct) =>
     Results.File(await pdf.CreateAsync(year, detail == true, ct), "application/pdf", PropertyManager.Core.Reports.ProfitAndLossPdf.FileName(year)));
+
+app.MapPost("/properties/{id:int}/photo", async (int id, IFormFileCollection files, PropertyPhotoService photos, CancellationToken ct) =>
+{
+    var query = "photo=updated";
+    try
+    {
+        var file = files.FirstOrDefault() ?? throw new InvalidDataException("Choose a photo first.");
+        await using var stream = file.OpenReadStream();
+        await photos.SetFromUploadAsync(id, file.FileName, stream, ct);
+    }
+    catch (InvalidDataException ex)
+    {
+        query = "photoError=" + Uri.EscapeDataString(ex.Message);
+    }
+    return Results.Redirect($"/properties/{id}?{query}");
+})
+.WithMetadata(new RequestSizeLimitAttribute(PropertyPhotoService.MaxBytes + 1024 * 1024));
+
+app.MapGet("/properties/{id:int}/photo", async (int id, IDbContextFactory<PropertyManagerDbContext> dbFactory, IDocumentStorage storage, HttpContext http, CancellationToken ct) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync(ct);
+    var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
+    var stream = property?.PhotoKey is { } key ? await storage.OpenReadAsync(key, ct) : null;
+    if (stream is null)
+    {
+        return Results.NotFound();
+    }
+    http.Response.Headers.XContentTypeOptions = "nosniff";
+    http.Response.Headers.CacheControl = "no-cache";
+    return Results.File(stream, property!.PhotoContentType ?? "image/jpeg");
+});
 
 app.MapPost("/expenses/{id:int}/receipts", async (int id, IFormFileCollection files, ReceiptService receipts, CancellationToken ct) =>
 {
