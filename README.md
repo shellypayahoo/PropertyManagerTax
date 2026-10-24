@@ -27,6 +27,76 @@ Data is stored in a local SQLite file (`src/PropertyManager.Web/propertymanager.
 
 To work in an IDE, open `PropertyManager.slnx` in JetBrains Rider, or open the folder in VS Code with the C# Dev Kit extension.
 
+## Run on Windows
+
+Everything works on Windows except importing text messages, which needs the Mac's Messages app.
+
+1. Install the .NET 10 SDK and Git. In PowerShell:
+
+   ```powershell
+   winget install Microsoft.DotNet.SDK.10
+   winget install Git.Git
+   ```
+
+   Close and reopen PowerShell afterwards so the new commands are found.
+
+2. Get the code and start the app:
+
+   ```powershell
+   git clone https://github.com/shellypayahoo/PropertyManagerTax.git
+   cd PropertyManagerTax
+   dotnet dev-certs https --trust   # one time, so the browser trusts https://localhost
+   dotnet run --project src\PropertyManager.Web
+   ```
+
+3. Open the URL printed in PowerShell (for example `https://localhost:7xxx`). Stop the app with Ctrl+C.
+
+To work in an IDE, open `PropertyManager.slnx` in Visual Studio 2022 or later (or Rider) and press F5. To update later, run `git pull` in the `PropertyManagerTax` folder and start the app again.
+
+### Settings
+
+User secrets are stored per computer (on Windows in `%APPDATA%\Microsoft\UserSecrets`), so set them again on the Windows machine, from the `PropertyManagerTax` folder:
+
+```powershell
+dotnet user-secrets set "Assistant:Providers:AzureFoundry:Model" "<deployment name>" --project src\PropertyManager.Web
+dotnet user-secrets set "Assistant:Providers:AzureFoundry:Endpoint" "https://<resource>.cognitiveservices.azure.com/openai/v1/" --project src\PropertyManager.Web
+dotnet user-secrets set "Assistant:Providers:AzureFoundry:ApiKey" "<key>" --project src\PropertyManager.Web
+dotnet user-secrets set "Email:ClientId" "<Application (client) ID>" --project src\PropertyManager.Web
+```
+
+Then sign in once on **Email & calendar**. On Windows the email sign-in is kept encrypted for your Windows user (instead of in the Keychain).
+
+### Your data
+
+A new copy on Windows starts with an empty database (just the four units). The two computers don't sync, so to use your existing data:
+
+1. Stop the app on the Mac.
+2. Copy `src/PropertyManager.Web/propertymanager.db` and the `src/PropertyManager.Web/App_Data` folder (lease files, receipts, attachments, photos) from the Mac into the same places on Windows, replacing what's there.
+3. Start the app on Windows.
+
+From then on, changes made on one computer don't appear on the other, so treat one as the main machine and copy the files again when you switch. Don't run both against the same database in a shared OneDrive or iCloud folder; SQLite databases can be damaged that way.
+
+### What's different on Windows
+
+- **Text messages:** importing needs the Mac's Messages app. Texts already imported (in the copied database) still show on the Messages page and can be searched on the Ask page; to bring in new ones, import on the Mac and copy the database over again.
+- **iPhone (HEIC) photos uploaded on Windows:** the original is saved, but no JPEG copy is made (that uses a macOS tool), and Edge and Chrome can't show HEIC. Upload JPG/PNG photos on Windows, or upload HEIC photos from the Mac. Photos already converted on the Mac show fine.
+- Email, calendar, the Ask page, receipts, documents, rent, expenses, and reports work the same.
+
+## Use it from your phone
+
+While the app runs on your Mac or Windows computer, your phone can open it over the same Wi-Fi:
+
+1. Start the app so other devices can reach it, from the repository folder:
+
+   ```sh
+   dotnet run --project src/PropertyManager.Web --urls http://0.0.0.0:5220
+   ```
+
+2. Find the computer's address: on a Mac run `ipconfig getifaddr en0`; on Windows run `ipconfig` and use the IPv4 address (for example `10.0.0.154`).
+3. On the phone, open `http://<that address>:5220` (type the `http://`). Allow the connection if macOS or Windows Defender Firewall asks. In Safari, Share → **Add to Home Screen** gives it an icon.
+
+The app has no sign-in, so anyone on your Wi-Fi who knows the address can open it while it runs this way; stop it with Ctrl+C when you're done. To reach it away from home, install [Tailscale](https://tailscale.com) on the computer and the phone and use the computer's Tailscale name or address instead.
+
 ## Tests
 
 ```sh
