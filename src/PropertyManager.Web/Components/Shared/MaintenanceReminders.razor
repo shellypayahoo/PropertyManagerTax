@@ -5,53 +5,61 @@
 
 @if (requests is not null)
 {
-    <h2 class="h5 mt-4">Open maintenance <span class="small text-muted fw-normal">(urgent and normal)</span></h2>
-    @if (requests.Count == 0)
-    {
-        <p class="text-muted">Nothing urgent or normal priority is open. <a href="maintenance">Maintenance</a></p>
-    }
-    else
-    {
-        <table class="table table-sm align-middle" style="max-width: 60rem">
-            <tbody>
-                @foreach (var m in requests)
-                {
-                    var age = today.DayNumber - m.ReportedOn.DayNumber;
-                    <tr>
-                        <td style="width: 7rem"><span class="badge @Badge(m.Priority)">@(m.Priority is MaintenancePriority.Emergency or MaintenancePriority.High ? $"Urgent · {m.Priority}" : "Normal")</span></td>
-                        <td>
-                            <a href="maintenance">@m.Title</a>
-                            <div class="small text-muted">@m.Unit?.DisplayName</div>
-                        </td>
-                        <td class="small">
-                            @if (m.ScheduledFor is { } when)
-                            {
-                                <span class="@(when < today ? "text-danger" : "")">Scheduled @when.ToString("ddd, MMM d")@(when < today ? " (passed)" : "")</span>
-                            }
-                            else
-                            {
-                                <span class="text-muted">Not scheduled</span>
-                            }
-                            <div class="text-muted">@(m.Vendor?.Name ?? "No vendor yet")</div>
-                        </td>
-                        <td class="small text-end text-nowrap @(age > 14 ? "text-danger" : "text-muted")">
-                            @(age switch { <= 0 => "reported today", 1 => "reported yesterday", _ => $"reported {age} days ago" })
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    }
+    <h2 class="h5 mt-4">Open maintenance <span class="small text-muted fw-normal">(urgent and normal, by unit)</span></h2>
+    <div class="row row-cols-1 row-cols-md-2 g-3 mb-2" style="max-width: 72rem">
+        @foreach (var unit in units)
+        {
+            var open = requests.Where(r => r.UnitId == unit.Id).ToList();
+            var border = open.Any(r => r.Priority == MaintenancePriority.Emergency) ? "border-danger"
+                : open.Any(r => r.Priority == MaintenancePriority.High) ? "border-warning" : "";
+            <div class="col">
+                <div class="card h-100 @border @(border.Length > 0 ? "border-2" : "")">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold">@unit.Property?.Name · Unit @unit.Label</span>
+                        @if (open.Count > 0) { <span class="badge text-bg-light border">@open.Count open</span> }
+                    </div>
+                    <div class="card-body py-2">
+                        @if (open.Count == 0)
+                        {
+                            <span class="text-success">✓ All clear</span>
+                        }
+                        @foreach (var m in open)
+                        {
+                            var age = today.DayNumber - m.ReportedOn.DayNumber;
+                            <div class="mb-2">
+                                <span class="badge @Badge(m.Priority) me-1">@m.Priority</span>
+                                <a href="maintenance">@m.Title</a>
+                                <div class="small text-muted ms-1">
+                                    @if (m.ScheduledFor is { } when)
+                                    {
+                                        <span class="@(when < today ? "text-danger" : "")">@when.ToString("ddd, MMM d")@(when < today ? " (passed)" : "")</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Not scheduled</span>
+                                    }
+                                    · @(m.Vendor?.Name ?? "No vendor yet")
+                                    · <span class="@(age > 14 ? "text-danger" : "")">@(age switch { <= 0 => "reported today", 1 => "reported yesterday", _ => $"reported {age} days ago" })</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
 }
 
 @code {
     private List<MaintenanceRequest>? requests;
+    private List<Unit> units = [];
     private DateOnly today;
 
     protected override async Task OnInitializedAsync()
     {
         today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
         await using var db = await DbFactory.CreateDbContextAsync();
+        units = await db.Units.AsNoTracking().Include(u => u.Property).OrderBy(u => u.Property!.Name).ThenBy(u => u.Label).ToListAsync();
         requests = (await db.MaintenanceRequests.AsNoTracking()
                 .Include(m => m.Unit).ThenInclude(u => u!.Property)
                 .Include(m => m.Vendor)

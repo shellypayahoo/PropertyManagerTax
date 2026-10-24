@@ -229,7 +229,7 @@ PDFs are made with [QuestPDF](https://www.questpdf.com) under its free Community
 
 ## Maintenance
 
-The **Dashboard** lists open Emergency, High ("urgent"), and Normal requests as reminders, most urgent first, with the unit, scheduled date (red once it has passed), vendor, and how long ago it was reported (red after two weeks); Low-priority requests stay on the Maintenance page. Add a request at the top of the **Maintenance** page (unit, issue, priority, date reported, vendor, details). Vendor and status can be changed right in the list; **Edit** opens the whole request below its row to change the unit, issue, priority, status, reported/scheduled/completed dates, vendor, or details, or to delete it (expenses recorded for it are kept).
+The **Dashboard** shows a card for each unit listing its open Emergency, High ("urgent"), and Normal requests as reminders, most urgent first (the card is outlined red or yellow when something urgent is open; units with nothing open say "All clear"), with scheduled date (red once it has passed), vendor, and how long ago it was reported (red after two weeks); Low-priority requests stay on the Maintenance page. Add a request at the top of the **Maintenance** page (unit, issue, priority, date reported, vendor, details). Vendor and status can be changed right in the list; **Edit** opens the whole request below its row to change the unit, issue, priority, status, reported/scheduled/completed dates, vendor, or details, or to delete it (expenses recorded for it are kept).
 
 ## Vendors
 
