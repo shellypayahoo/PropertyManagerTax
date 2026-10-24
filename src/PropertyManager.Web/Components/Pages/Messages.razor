@@ -64,6 +64,15 @@
                                         @(c.Name ?? Format(c.Handle))
                                     }
                                     @if (c.Name is not null) { <div class="small text-muted">@Format(c.Handle)</div> }
+                                    @if (c.Included && (c.TenantId is not null || c.VendorId is not null))
+                                    {
+                                        var tenant = tenants.FirstOrDefault(t => t.Id == c.TenantId);
+                                        var vendor = vendors.FirstOrDefault(v => v.Id == c.VendorId);
+                                        <KeepUntilEditor TenantId="c.TenantId" VendorId="c.TenantId is null ? c.VendorId : null" Name="@(tenant?.FullName ?? vendor?.Name ?? "")"
+                                                         Current="tenant?.KeepMessagesUntil ?? vendor?.KeepMessagesUntil"
+                                                         Suggested="tenant is null ? null : MessageRetentionService.Suggest(tenant, Today)"
+                                                         OnChanged="RefreshAsync" />
+                                    }
                                 </td>
                                 <td>
                                     <select class="form-select form-select-sm" style="max-width: 11rem" value="@LinkValue(c)" @onchange="e => LinkAsync(c, (string)e.Value!)">
@@ -140,6 +149,14 @@
     private string? error;
     private bool needsFullDiskAccess;
 
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+
+    private async Task RefreshAsync()
+    {
+        await LoadAsync();
+        await RunSearchAsync();
+    }
+
     private string MessagesPath => Configuration["Messages:DatabasePath"] is { Length: > 0 } p ? p : MessagesDatabaseReader.DefaultPath;
     private string ContactsFolder => Configuration["Messages:AddressBookFolder"] is { Length: > 0 } p ? p : AddressBookReader.DefaultFolder;
 
@@ -164,7 +181,7 @@
         await using var db = await DbFactory.CreateDbContextAsync();
         contacts = await db.MessageContacts.AsNoTracking().ToListAsync();
         byHandle = contacts.ToDictionary(c => c.Handle);
-        tenants = await db.Tenants.AsNoTracking().OrderBy(t => t.LastName).ThenBy(t => t.FirstName).ToListAsync();
+        tenants = await db.Tenants.AsNoTracking().Include(t => t.Leases).OrderBy(t => t.LastName).ThenBy(t => t.FirstName).ToListAsync();
         vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
         imported = await db.TextMessages.CountAsync();
     }

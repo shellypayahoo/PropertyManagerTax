@@ -26,7 +26,7 @@
 
 <table class="table align-middle">
     <thead>
-        <tr><th>Name</th><th>Trade</th><th>Phone</th><th>Email</th><th></th></tr>
+        <tr><th>Name</th><th>Trade</th><th>Phone</th><th>Email</th><th>Texts &amp; emails</th><th></th></tr>
     </thead>
     <tbody>
         @foreach (var v in vendors)
@@ -36,6 +36,7 @@
                 <td>@v.Trade</td>
                 <td>@v.Phone</td>
                 <td>@v.Email</td>
+                <td><KeepUntilEditor VendorId="v.Id" Name="@v.Name" Current="v.KeepMessagesUntil" OnChanged="LoadAsync" /></td>
                 <td class="text-nowrap text-end">
                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(v)">Edit</button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartAsync(v, merging: true)">Merge into…</button>
@@ -45,7 +46,7 @@
             @if (acting?.Id == v.Id && usage is not null)
             {
                 <tr>
-                    <td colspan="5" class="bg-body-tertiary">
+                    <td colspan="6" class="bg-body-tertiary">
                         @if (merging)
                         {
                             <div class="d-flex flex-wrap align-items-center gap-2">
@@ -114,7 +115,7 @@
         acting = null;
         status = null;
         editingName = v.Name;
-        form = new Vendor { Id = v.Id, Name = v.Name, Trade = v.Trade, Phone = v.Phone, Email = v.Email, Notes = v.Notes };
+        form = new Vendor { Id = v.Id, Name = v.Name, Trade = v.Trade, Phone = v.Phone, Email = v.Email, Notes = v.Notes, KeepMessagesUntil = v.KeepMessagesUntil };
     }
 
     private void CancelEdit()

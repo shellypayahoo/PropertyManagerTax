@@ -50,6 +50,7 @@ public class EmailSyncService(
 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var people = await PeopleByAddressAsync(db, ct);
+        var cutoffs = await MessageRetentionService.CutoffsAsync(db, ct);
         int added = 0, updated = 0, removed = 0, attachments = 0;
         var problems = new List<string>();
 
@@ -85,6 +86,17 @@ public class EmailSyncService(
                 email ??= new EmailMessage { GraphId = item.Id, EmailFolder = folder };
                 var before = (email.Subject, email.FullText, email.EmailFolderId);
                 Fill(email, item, folder, myAddresses, people);
+                if (MessageRetentionService.IsAfterCutoff(cutoffs, email.TenantId, email.VendorId, email.SentAt))
+                {
+                    // After this former tenant's or vendor's keep-until date: not kept.
+                    if (!isNew)
+                    {
+                        await DeleteAttachmentFilesAsync(email.Attachments, ct);
+                        db.EmailMessages.Remove(email);
+                        removed++;
+                    }
+                    continue;
+                }
                 if (isNew)
                 {
                     db.EmailMessages.Add(email);

@@ -35,6 +35,7 @@ builder.Services.AddScoped<RecurringExpenseService>();
 builder.Services.AddSingleton<PropertyManager.Core.Messaging.IImageConverter, PropertyManager.Core.Messaging.SipsImageConverter>();
 builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageImportService>();
 builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageSearch>();
+builder.Services.AddScoped<PropertyManager.Core.Messaging.MessageRetentionService>();
 
 // AI models for the Ask page. API keys belong in user secrets or environment variables (see README), not appsettings.json.
 builder.Services.Configure<AssistantOptions>(builder.Configuration.GetSection(AssistantOptions.Section));

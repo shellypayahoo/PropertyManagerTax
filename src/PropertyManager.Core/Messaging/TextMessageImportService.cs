@@ -87,6 +87,7 @@ public class TextMessageImportService(IDbContextFactory<PropertyManagerDbContext
             .ToDictionary(x => x.Chat.Id);
 
         var existing = await db.TextMessages.AsNoTracking().ToDictionaryAsync(m => m.Guid, ct);
+        var cutoffs = await MessageRetentionService.CutoffsAsync(db, ct);
         var rows = reader.ReadMessages(matched.Keys);
         var withFiles = new Dictionary<long, TextMessage>();
         var added = 0;
@@ -106,6 +107,11 @@ public class TextMessageImportService(IDbContextFactory<PropertyManagerDbContext
             var sender = ContactHandles.Normalize(row.SenderHandle);
             var handle = !row.IsFromMe && sender is not null && included.ContainsKey(sender) ? sender : contacts[0];
             var contact = included[handle];
+            if (MessageRetentionService.IsAfterCutoff(cutoffs, contact.TenantId, contact.VendorId, row.SentAt))
+            {
+                // After this former tenant's or vendor's keep-until date.
+                continue;
+            }
 
             var message = new TextMessage
             {

@@ -139,6 +139,29 @@ public sealed class EmailTests : IDisposable
     }
 
     [Fact]
+    public async Task Sync_DropsEmailsAfterAFormerTenantsKeepUntilDate()
+    {
+        await sync.SetFoldersAsync([new MailFolderInfo("folder1", "Tenants", 2)]);
+        mail.Changes["folder1"] =
+        [
+            new MailChanges([Item("m1", "Move-out", Tenant, Me, "Keys returned", March2), Item("m2", "Party", Tenant, Me, "Unrelated", March2.AddDays(60))], [], "d1"),
+            new MailChanges([Item("m2", "Party", Tenant, Me, "Unrelated", March2.AddDays(60))], [], "d2"),
+        ];
+        await sync.SyncAsync();
+        await using (var db = dbFactory.CreateDbContext())
+        {
+            (await db.Tenants.SingleAsync()).KeepMessagesUntil = new DateOnly(2026, 4, 1);
+            await db.SaveChangesAsync();
+        }
+
+        var second = await sync.SyncAsync();
+
+        Assert.Equal(1, second.Removed);
+        await using var check = dbFactory.CreateDbContext();
+        Assert.Equal(["Move-out"], await check.EmailMessages.Select(m => m.Subject).ToListAsync());
+    }
+
+    [Fact]
     public async Task ExpiredDeltaLink_ResyncsWithoutDuplicates()
     {
         await sync.SetFoldersAsync([new MailFolderInfo("folder1", "Tenants", 1)]);

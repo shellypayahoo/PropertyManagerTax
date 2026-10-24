@@ -204,6 +204,24 @@ public sealed class TextMessageImportTests : IDisposable
         Assert.Equal(5, await check.TextMessages.CountAsync());
     }
 
+    [Fact]
+    public async Task Import_SkipsTextsAfterAFormerTenantsKeepUntilDate()
+    {
+        await using (var db = dbFactory.CreateDbContext())
+        {
+            (await db.Tenants.SingleAsync()).KeepMessagesUntil = new DateOnly(2026, 5, 1);
+            await db.SaveChangesAsync();
+        }
+        await service.ScanContactsAsync(chatDb, addressBookFolder);
+
+        var summary = await service.ImportAsync(chatDb);
+
+        // Only the May 1 messages; the May 2 photo and the June group chat are after the date.
+        Assert.Equal((2, 0), (summary.MessagesAdded, summary.AttachmentsSaved));
+        await using var check = dbFactory.CreateDbContext();
+        Assert.All(await check.TextMessages.ToListAsync(), m => Assert.Equal(1, m.SentAt.Day));
+    }
+
     /// <summary>Adds a message from Jane with attachments to the sample Messages database.</summary>
     private void AddMessageWithAttachments(int id, params (string Guid, string? FileName, string? Mime, byte[]? Content, bool Sticker)[] files)
     {

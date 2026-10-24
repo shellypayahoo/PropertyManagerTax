@@ -1,0 +1,83 @@
+@using PropertyManager.Core.Messaging
+@inject MessageRetentionService Retention
+
+@* "Keep texts & emails until" for one tenant or vendor. *@
+
+@if (!editing)
+{
+    <span class="small text-nowrap">
+        @if (Current is { } date)
+        {
+            <span title="Texts and emails after this date aren't kept in the app">✂ until @date.ToString("MMM d, yyyy")</span>
+        }
+        else if (Suggested is not null)
+        {
+            <span class="text-muted">all kept</span>
+        }
+        <button class="btn btn-link btn-sm p-0 ms-1" @onclick="Start">@(Current is null ? (Suggested is null ? "Keep until…" : "Stop keeping…") : "Change")</button>
+    </span>
+    @if (status is not null) { <div class="small text-success">@status</div> }
+}
+else
+{
+    <div class="border rounded p-2 bg-body-tertiary small" style="max-width: 26rem">
+        <div class="mb-1">Keep texts and emails with @Name up to:</div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <input type="date" class="form-control form-control-sm w-auto" @bind="date" />
+            @if (Suggested is { } s && date != s)
+            {
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => date = s">Lease end + 1 month (@s.ToString("MMM d, yyyy"))</button>
+            }
+        </div>
+        <div class="text-muted my-1">
+            Anything after that date is removed from the app and not imported again (it stays on your phone and in your mailbox).
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-primary" disabled="@(date is null || busy)" @onclick="() => SaveAsync(date)">Save</button>
+            @if (Current is not null) { <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="() => SaveAsync(null)">Keep everything</button> }
+            <button class="btn btn-sm btn-link" @onclick="() => editing = false">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int? TenantId { get; set; }
+    [Parameter] public int? VendorId { get; set; }
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public DateOnly? Current { get; set; }
+
+    /// <summary>For a former tenant, the suggested date (lease end + 1 month).</summary>
+    [Parameter] public DateOnly? Suggested { get; set; }
+
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool editing;
+    private bool busy;
+    private DateOnly? date;
+    private string? status;
+
+    private void Start()
+    {
+        date = Current ?? Suggested;
+        status = null;
+        editing = true;
+    }
+
+    private async Task SaveAsync(DateOnly? value)
+    {
+        busy = true;
+        try
+        {
+            var result = await Retention.SetKeepUntilAsync(TenantId, VendorId, value);
+            status = value is null
+                ? "Everything is kept again; earlier skipped texts and emails come back on the next import and sync."
+                : $"Removed {result.TextsRemoved} text(s) and {result.EmailsRemoved} email(s) after {value:MMM d, yyyy}.";
+            editing = false;
+            await OnChanged.InvokeAsync();
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

@@ -1,6 +1,7 @@
 @page "/tenants"
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
+@using PropertyManager.Core.Messaging
 
 <PageTitle>Tenants</PageTitle>
 
@@ -8,7 +9,7 @@
 
 <table class="table align-middle">
     <thead>
-        <tr><th>Name</th><th>Email</th><th>Phone</th><th>Current unit</th><th></th></tr>
+        <tr><th>Name</th><th>Email</th><th>Phone</th><th>Current unit</th><th>Texts &amp; emails</th><th></th></tr>
     </thead>
     <tbody>
         @foreach (var t in tenants)
@@ -19,6 +20,10 @@
                 <td>@t.Email</td>
                 <td>@t.Phone</td>
                 <td>@(lease?.Unit?.DisplayName ?? "—")</td>
+                <td>
+                    <KeepUntilEditor TenantId="t.Id" Name="@t.FullName" Current="t.KeepMessagesUntil"
+                                     Suggested="MessageRetentionService.Suggest(t, today)" OnChanged="LoadAsync" />
+                </td>
                 <td><button class="btn btn-sm btn-outline-secondary" @onclick="() => Edit(t)">Edit</button></td>
             </tr>
         }
@@ -63,6 +68,7 @@
     private void Edit(Tenant t) => form = new Tenant
     {
         Id = t.Id, FirstName = t.FirstName, LastName = t.LastName, Email = t.Email, Phone = t.Phone, Notes = t.Notes,
+        KeepMessagesUntil = t.KeepMessagesUntil,
     };
 
     private async Task SaveAsync()

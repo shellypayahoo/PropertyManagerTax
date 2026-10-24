@@ -821,6 +821,9 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateOnly?>("KeepMessagesUntil")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -998,6 +1001,9 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Email")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("KeepMessagesUntil")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
