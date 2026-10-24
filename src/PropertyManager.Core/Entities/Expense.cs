@@ -32,4 +32,6 @@ public class Expense
 
     /// <summary>Free-form notes, e.g. the vendor's text message the expense came from.</summary>
     public string? Notes { get; set; }
+
+    public List<ExpenseReceipt> Receipts { get; set; } = [];
 }

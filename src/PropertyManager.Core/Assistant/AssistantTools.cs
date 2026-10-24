@@ -188,7 +188,7 @@ public class AssistantTools(
 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var expenses = await db.Expenses.AsNoTracking()
-            .Include(e => e.Property).Include(e => e.Unit).Include(e => e.Vendor)
+            .Include(e => e.Property).Include(e => e.Unit).Include(e => e.Vendor).Include(e => e.Receipts)
             .Where(e => e.Date >= from && e.Date <= to)
             .ToListAsync(ct);
 
@@ -208,7 +208,8 @@ public class AssistantTools(
         foreach (var e in matches.Take(300))
         {
             var where = e.IsShared ? "All properties (shared)" : e.Unit?.DisplayName ?? e.Property?.Name;
-            result.AppendLine($"- {e.Date:yyyy-MM-dd} | {Money(e.Amount)} | {e.Category.DisplayName()} | {where} | {e.Description}{(e.Vendor is null ? "" : " | vendor " + e.Vendor.Name)}{(e.PaidWith is { } m ? " | paid by " + m : "")}{(string.IsNullOrWhiteSpace(e.Notes) ? "" : " | notes: " + e.Notes)}");
+            result.AppendLine($"- {e.Date:yyyy-MM-dd} | {Money(e.Amount)} | {e.Category.DisplayName()} | {where} | {e.Description}{(e.Vendor is null ? "" : " | vendor " + e.Vendor.Name)}{(e.PaidWith is { } m ? " | paid by " + m : "")}{(string.IsNullOrWhiteSpace(e.Notes) ? "" : " | notes: " + e.Notes)}"
+                + (e.Receipts.Count == 0 ? " | no receipt" : " | receipt: " + string.Join(", ", e.Receipts.Select(r => $"{r.FileName} ({(r.IsImage ? "photo" : "document")} R{r.Id})"))));
         }
         if (matches.Count > 300)
         {
@@ -346,7 +347,7 @@ public class AssistantTools(
             """;
     }
 
-    [Description("Lists documents: files uploaded to leases (signed leases, addenda, inspection reports) and files attached to imported emails and texts. Shows id, file name, where it's from, date, and whether its text can be read. Photos and scanned PDFs have no readable text.")]
+    [Description("Lists documents: files uploaded to leases (signed leases, addenda, inspection reports) and files attached to imported emails and texts, and expense receipts. Shows id, file name, where it's from, date, and whether its text can be read. Photos and scanned PDFs have no readable text.")]
     public async Task<string> ListDocumentsAsync(CancellationToken ct = default)
     {
         var documents = await LoadDocumentsAsync(ct);
@@ -365,7 +366,7 @@ public class AssistantTools(
         return text.ToString();
     }
 
-    [Description("Searches the text of documents: files uploaded to leases and PDF/Word files attached to emails and texts. Every word must appear somewhere in a document (case-insensitive). Returns matching documents with short excerpts around the words, each with its page and character position; use read_document to read more.")]
+    [Description("Searches the text of documents: files uploaded to leases and PDF/Word files attached to emails and texts, and expense receipts. Every word must appear somewhere in a document (case-insensitive). Returns matching documents with short excerpts around the words, each with its page and character position; use read_document to read more.")]
     public async Task<string> SearchDocumentsAsync(
         [Description("Words to look for, e.g. \"pets\" or \"late fee\".")] string query,
         [Description("Optional: only documents whose lease or email matches this tenant, sender, unit, or property (e.g. \"Taylor\").")] string? lease = null,
@@ -438,6 +439,10 @@ public class AssistantTools(
             .Where(a => a.Status == TextAttachmentStatus.Saved && !a.ContentType.StartsWith("image/") && !a.ContentType.StartsWith("video/"))
             .ToListAsync(ct);
         var names = await db.MessageContacts.AsNoTracking().Where(c => c.Name != null).ToDictionaryAsync(c => c.Handle, c => c.Name!, ct);
+        var receipts = await db.ExpenseReceipts.AsNoTracking()
+            .Include(r => r.Expense).ThenInclude(e => e!.Property)
+            .Include(r => r.Expense).ThenInclude(e => e!.Vendor)
+            .ToListAsync(ct);
 
         return leaseDocuments
             .OrderBy(d => d.Lease?.Unit?.DisplayName).ThenBy(d => d.UploadedAt.UtcTicks)
@@ -450,6 +455,11 @@ public class AssistantTools(
                 .Select(a => new DocumentInfo("T" + a.Id, a.FileName,
                     $"sent by text {(a.TextMessage!.IsFromMe ? "from Me to" : "from")} {names.GetValueOrDefault(a.TextMessage.ContactHandle) ?? a.TextMessage.ContactHandle}, {a.TextMessage.SentAt.ToLocalTime():yyyy-MM-dd}",
                     a.TextMessage.SentAt, a.ContentType, a.Text)))
+            .Concat(receipts
+                .OrderBy(r => r.Expense!.Date)
+                .Select(r => new DocumentInfo("R" + r.Id, r.FileName,
+                    $"receipt for expense {r.Expense!.Date:yyyy-MM-dd} {Money(r.Expense.Amount)} {r.Expense.Description}{(r.Expense.Vendor is null ? "" : " (" + r.Expense.Vendor.Name + ")")}, {(r.Expense.IsShared ? "all properties" : r.Expense.Property?.Name)}",
+                    r.UploadedAt, r.ContentType, r.Text)))
             .ToList();
     }
 
@@ -553,7 +563,7 @@ public class AssistantTools(
         _ => $"file {a.FileName} (document T{a.Id})",
     };
 
-    [Description("Looks at a photo sent by text (id \"T…\") or email (id \"E…\") and answers a question about it, e.g. what damage it shows or what a document in it says. Use when a message's text doesn't say enough and the photo matters to the question.")]
+    [Description("Looks at a photo sent by text (id \"T…\") or email (id \"E…\"), or a receipt photo (id \"R…\"), and answers a question about it, e.g. what damage it shows or what a document in it says. Use when a message's text doesn't say enough and the photo matters to the question.")]
     public async Task<string> DescribePhotoAsync(
         [Description("The photo's attachment id from a message, e.g. \"T12\" or \"E5\".")] string attachmentId,
         [Description("What to find out from the photo, in the context of the owner's question.")] string question,
@@ -577,6 +587,13 @@ public class AssistantTools(
             label = $"{text.FileName}, texted{(text.TextMessage!.IsFromMe ? " by Me" : "")} on {text.TextMessage.SentAt.ToLocalTime().ToString("yyyy-MM-dd", Us)}";
             photo = text.PreviewKey is { } preview ? (await ReadAsync(preview, ct), "image/jpeg")
                 : text.StorageKey is { } original && WebImageType(text.ContentType) is { } type ? (await ReadAsync(original, ct), type)
+                : null;
+        }
+        else if (id[0] == 'R' && await db.ExpenseReceipts.AsNoTracking().Include(r => r.Expense).FirstOrDefaultAsync(r => r.Id == number, ct) is { IsImage: true } receipt)
+        {
+            label = $"receipt {receipt.FileName} for {receipt.Expense!.Description}, {Money(receipt.Expense.Amount)} on {receipt.Expense.Date.ToString("yyyy-MM-dd", Us)}";
+            photo = receipt.PreviewKey is { } preview ? (await ReadAsync(preview, ct), "image/jpeg")
+                : WebImageType(receipt.ContentType) is { } type ? (await ReadAsync(receipt.StorageKey, ct), type)
                 : null;
         }
         else if (id[0] == 'E' && await db.EmailAttachments.AsNoTracking().Include(a => a.EmailMessage).FirstOrDefaultAsync(a => a.Id == number, ct) is { } email

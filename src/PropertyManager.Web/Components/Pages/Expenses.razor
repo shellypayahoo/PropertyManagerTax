@@ -3,6 +3,7 @@
 @inject TimeProvider Clock
 @inject ExpenseSplitService SplitService
 @inject RecurringExpenseService Recurring
+@inject ReceiptService Receipts
 
 <PageTitle>Expenses</PageTitle>
 
@@ -101,7 +102,11 @@
             }
         </select>
     </div>
-    <div class="col-auto ms-auto fs-5">Total: <strong>@expenses.Sum(e => e.Amount).ToString("C")</strong></div>
+    <div class="col-auto form-check align-self-center ms-2">
+        <input class="form-check-input" type="checkbox" id="no-receipt" @bind="withoutReceiptOnly" />
+        <label class="form-check-label" for="no-receipt">Without a receipt only</label>
+    </div>
+    <div class="col-auto ms-auto fs-5">Total: <strong>@Shown.Sum(e => e.Amount).ToString("C")</strong></div>
 </div>
 
 @if (selected.Count > 0)
@@ -138,7 +143,7 @@
         </tr>
     </thead>
     <tbody>
-        @foreach (var e in expenses)
+        @foreach (var e in Shown)
         {
             if (editing?.Id == e.Id)
             {
@@ -214,11 +219,54 @@
                     <td>@e.PaidWith</td>
                     <td class="text-end">@e.Amount.ToString("C")</td>
                     <td class="text-nowrap">
+                        <button class="btn btn-sm @(e.Receipts.Count > 0 ? "btn-outline-success" : "btn-outline-secondary")" title="Receipts"
+                                @onclick="() => ToggleReceipts(e.Id)">📎@(e.Receipts.Count > 0 ? $" {e.Receipts.Count}" : "")</button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(e)">Edit</button>
                         <button class="btn btn-sm btn-outline-secondary" title="Split into several categories, e.g. a mortgage payment" @onclick="() => StartSplit(e)">Split</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(e.Id)">Delete</button>
                     </td>
                 </tr>
+                @if (receiptsOpen == e.Id)
+                {
+                    <tr class="table-light" id="expense-@e.Id">
+                        <td></td>
+                        <td colspan="9">
+                            <div class="d-flex flex-wrap align-items-start gap-3 mb-2">
+                                @foreach (var r in e.Receipts.OrderBy(r => r.UploadedAt.UtcTicks))
+                                {
+                                    <div class="text-center small" style="width: 130px">
+                                        @if (r.IsImage)
+                                        {
+                                            <a href="@($"receipts/{r.Id}{(r.PreviewKey is null ? "" : "?size=preview")}")" target="_blank">
+                                                <img src="@($"receipts/{r.Id}{(r.ThumbnailKey is null ? "" : "?size=thumb")}")" alt="@r.FileName" class="rounded border" style="max-width: 120px; max-height: 120px; object-fit: cover" />
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <a href="receipts/@r.Id" target="_blank" class="d-block fs-2 text-decoration-none">📄</a>
+                                        }
+                                        <div class="text-truncate" title="@r.FileName">@r.FileName</div>
+                                        <button class="btn btn-link btn-sm p-0 link-danger" @onclick="() => DeleteReceiptAsync(r.Id)">Remove</button>
+                                    </div>
+                                }
+                                @if (e.Receipts.Count == 0) { <span class="small text-muted">No receipt attached yet.</span> }
+                            </div>
+                            @if (receiptMessage is not null) { <div class="alert alert-success py-1 px-2 small">@receiptMessage</div> }
+                            @if (receiptError is not null) { <div class="alert alert-warning py-1 px-2 small">@receiptError</div> }
+                            <form method="post" action="expenses/@e.Id/receipts" enctype="multipart/form-data" data-file-upload data-return-hash="#expense-@e.Id">
+                                <AntiforgeryToken />
+                                <div class="d-flex flex-wrap gap-2 align-items-center">
+                                    <input type="file" name="files" multiple required class="form-control form-control-sm w-auto"
+                                           accept="image/*,.heic,.pdf,.doc,.docx" />
+                                    <button type="submit" class="btn btn-sm btn-primary">Attach</button>
+                                    <button type="button" class="btn btn-sm btn-link" @onclick="() => receiptsOpen = null">Close</button>
+                                </div>
+                                <div class="small text-muted mt-1">Photo of the receipt (on a phone you can take one with the camera), or a PDF or Word invoice.</div>
+                                <div class="alert alert-danger small mt-2" data-upload-message hidden></div>
+                            </form>
+                        </td>
+                    </tr>
+                }
                 @if (splitting == e.Id)
                 {
                     var remaining = e.Amount - splitParts.Sum(p => p.Amount);
@@ -339,6 +387,32 @@
     /// <summary>Bulk vendor dropdown value meaning "remove the vendor".</summary>
     private const string NoVendorValue = "none";
 
+    // Set by the receipt upload endpoint when it redirects back here.
+    [SupplyParameterFromQuery] public int? ReceiptsFor { get; set; }
+    [SupplyParameterFromQuery] public int ReceiptsAdded { get; set; }
+    [SupplyParameterFromQuery] public string? ReceiptError { get; set; }
+
+    private int? receiptsOpen;
+    private string? receiptMessage;
+    private string? receiptError;
+    private bool withoutReceiptOnly;
+
+    private IEnumerable<Expense> Shown => withoutReceiptOnly ? expenses.Where(e => e.Receipts.Count == 0) : expenses;
+
+    private void ToggleReceipts(int expenseId)
+    {
+        receiptsOpen = receiptsOpen == expenseId ? null : expenseId;
+        receiptMessage = receiptError = null;
+    }
+
+    private async Task DeleteReceiptAsync(int receiptId)
+    {
+        await Receipts.DeleteAsync(receiptId);
+        receiptMessage = "Receipt removed.";
+        receiptError = null;
+        await LoadAsync();
+    }
+
     protected override async Task OnInitializedAsync()
     {
         today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
@@ -349,6 +423,14 @@
         properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
         vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
         recurringAdded = await Recurring.GenerateDueAsync();
+        if (ReceiptsFor is { } id && await db.Expenses.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id) is { } uploadedTo)
+        {
+            // Back from uploading receipts: show that expense's year with its receipts open.
+            year = uploadedTo.Date.Year;
+            receiptsOpen = id;
+            receiptMessage = ReceiptsAdded > 0 ? $"Attached {ReceiptsAdded} receipt{(ReceiptsAdded == 1 ? "" : "s")}." : null;
+            receiptError = ReceiptError;
+        }
         await LoadAsync();
     }
 
@@ -379,7 +461,7 @@
 
         await using var db = await DbFactory.CreateDbContextAsync();
         var query = db.Expenses.AsNoTracking()
-            .Include(e => e.Property).Include(e => e.Unit).Include(e => e.Vendor)
+            .Include(e => e.Property).Include(e => e.Unit).Include(e => e.Vendor).Include(e => e.Receipts)
             .Where(e => e.Date >= start && e.Date <= end);
         if (propertyFilter == SharedFilter)
         {
@@ -405,7 +487,9 @@
         await using var db = await DbFactory.CreateDbContextAsync();
         db.Expenses.Add(form);
         await db.SaveChangesAsync();
-        added = $"{form.Description}, {form.Amount:C} on {form.Date:d}.";
+        added = $"{form.Description}, {form.Amount:C} on {form.Date:d}. Attach a receipt below if you have one.";
+        receiptsOpen = form.Id;
+        receiptMessage = receiptError = null;
         form = NewForm();
         addPropertyChosen = false;
         error = null;
@@ -570,6 +654,7 @@
         // Keep the import record (so the bank row isn't re-imported) but unlink it from the expense.
         await db.ImportedTransactions.Where(t => t.ExpenseId == expenseId)
             .ExecuteUpdateAsync(u => u.SetProperty(t => t.ExpenseId, (int?)null).SetProperty(t => t.Kind, TransactionKind.Ignored));
+        await Receipts.DeleteFilesForExpenseAsync(expenseId);
         await db.Expenses.Where(e => e.Id == expenseId).ExecuteDeleteAsync();
         selected.Remove(expenseId);
         await LoadAsync();

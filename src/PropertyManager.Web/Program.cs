@@ -24,6 +24,7 @@ builder.Services.AddDbContextFactory<PropertyManagerDbContext>(options =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<VendorService>();
+builder.Services.AddScoped<ReceiptService>();
 builder.Services.AddScoped<PropertyManager.Core.Reports.ProfitAndLossPdf>();
 builder.Services.AddScoped<PropertyManager.Core.Reports.OperatingReports>();
 builder.Services.AddScoped<DashboardService>();
@@ -116,6 +117,39 @@ app.MapGet("/documents/{id:int}", async (int id, bool? download, IDbContextFacto
 });
 app.MapGet("/reports/{year:int}/profit-and-loss.pdf", async (int year, bool? detail, PropertyManager.Core.Reports.ProfitAndLossPdf pdf, CancellationToken ct) =>
     Results.File(await pdf.CreateAsync(year, detail == true, ct), "application/pdf", PropertyManager.Core.Reports.ProfitAndLossPdf.FileName(year)));
+
+app.MapPost("/expenses/{id:int}/receipts", async (int id, IFormFileCollection files, ReceiptService receipts, CancellationToken ct) =>
+{
+    var result = await receipts.AddAsync(id, files.Select(f => (f.FileName, f.Length, (Func<Stream>)f.OpenReadStream)), ct);
+    var query = $"receiptsFor={id}&receiptsAdded={result.Saved}";
+    if (result.Problems.Count > 0)
+    {
+        query += "&receiptError=" + Uri.EscapeDataString(string.Join(" ", result.Problems));
+    }
+    return Results.Redirect($"/expenses?{query}#expense-{id}");
+})
+.WithMetadata(new RequestSizeLimitAttribute(LeaseDocumentService.MaxFileBytes * LeaseDocumentService.MaxFilesPerUpload))
+.WithMetadata(new RequestFormLimitsAttribute { MultipartBodyLengthLimit = LeaseDocumentService.MaxFileBytes * LeaseDocumentService.MaxFilesPerUpload });
+
+app.MapGet("/receipts/{id:int}", async (int id, string? size, IDbContextFactory<PropertyManagerDbContext> dbFactory,
+    IDocumentStorage storage, HttpContext http, CancellationToken ct) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync(ct);
+    var receipt = await db.ExpenseReceipts.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
+    var (key, type) = size switch
+    {
+        "thumb" when receipt?.ThumbnailKey is { } k => (k, "image/jpeg"),
+        "preview" when receipt?.PreviewKey is { } k => (k, "image/jpeg"),
+        _ => (receipt?.StorageKey, receipt?.ContentType),
+    };
+    var stream = key is null ? null : await storage.OpenReadAsync(key, ct);
+    if (stream is null)
+    {
+        return Results.NotFound();
+    }
+    http.Response.Headers.XContentTypeOptions = "nosniff";
+    return Results.File(stream, type ?? "application/octet-stream");
+});
 
 // size: "thumb" (small JPEG), "preview" (JPEG up to 1600px), or omitted for the original file.
 app.MapGet("/text-attachments/{id:int}", async (int id, string? size, bool? download, IDbContextFactory<PropertyManagerDbContext> dbFactory,

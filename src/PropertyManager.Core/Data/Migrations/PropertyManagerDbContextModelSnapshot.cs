@@ -412,6 +412,57 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("Expenses");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.ExpenseReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ExpenseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreviewKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ThumbnailKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpenseId");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.ToTable("ExpenseReceipts");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.ImportedTransaction", b =>
                 {
                     b.Property<int>("Id")
@@ -1157,6 +1208,17 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Vendor");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.ExpenseReceipt", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Expense", "Expense")
+                        .WithMany("Receipts")
+                        .HasForeignKey("ExpenseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Expense");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.ImportedTransaction", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.BankAccount", "BankAccount")
@@ -1362,6 +1424,11 @@ namespace PropertyManager.Core.Data.Migrations
             modelBuilder.Entity("PropertyManager.Core.Entities.EmailMessage", b =>
                 {
                     b.Navigation("Attachments");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.Expense", b =>
+                {
+                    b.Navigation("Receipts");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Lease", b =>

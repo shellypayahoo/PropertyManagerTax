@@ -56,12 +56,12 @@ document.addEventListener('submit', async (event) => {
             return;
         }
 
-        // The server redirects back to the lease page with the result in the query string.
+        // The server redirects back to the page with the result in the query string.
         const target = new URL(response.url);
         if (target.pathname + target.search === location.pathname + location.search) {
             location.reload();
         } else {
-            location.href = target.pathname + target.search + '#documents';
+            location.href = target.pathname + target.search + (form.dataset.returnHash ?? '#documents');
         }
     } catch (error) {
         show(`Upload failed: ${error.message}. Check that the app is still running, then try again.`);

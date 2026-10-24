@@ -85,6 +85,8 @@ Costs of the whole rental business, such as software, cloud hosting, or accounti
 
 On the Expenses page, **Edit** changes any expense, and checking several expenses lets you change their property, category, or vendor at once.
 
+**Receipts**: click 📎 on an expense to attach receipts or invoices: photos (JPG, PNG, or iPhone HEIC; on a phone you can take the photo with the camera), PDFs, or Word files, up to 25 MB each. The button turns green and shows how many are attached; click it again to view or remove them. After adding an expense, its receipt box opens so you can attach one right away. Tick **Without a receipt only** to see which expenses still need one. Receipt text (PDF/Word) and photos are available to the **Ask** page, and files are kept in `App_Data/documents` with the other documents. When an expense is split, its receipts stay on the first part.
+
 **Split** divides one expense into parts, each with its own property, unit, category, and amount. **Divide across units** spreads a bill evenly over the units you tick (rounding pennies go to the last one), e.g. a cleaning crew that does three of the four units.
 
 ## Recurring expenses
