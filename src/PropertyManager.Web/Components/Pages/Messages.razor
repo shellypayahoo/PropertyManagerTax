@@ -64,10 +64,10 @@
                                         @(c.Name ?? Format(c.Handle))
                                     }
                                     @if (c.Name is not null) { <div class="small text-muted">@Format(c.Handle)</div> }
-                                    @if (c.Included && (c.TenantId is not null || c.VendorId is not null))
+                                    @* Only for former tenants and anyone with a date already set; others are set on the Tenants/Vendors pages. *@
+                                    @if (c.Included && KeepUntilFor(c) is var (tenant, vendor) && ((tenant?.KeepMessagesUntil ?? vendor?.KeepMessagesUntil) is not null
+                                        || (tenant is not null && MessageRetentionService.Suggest(tenant, Today) is not null)))
                                     {
-                                        var tenant = tenants.FirstOrDefault(t => t.Id == c.TenantId);
-                                        var vendor = vendors.FirstOrDefault(v => v.Id == c.VendorId);
                                         <KeepUntilEditor TenantId="c.TenantId" VendorId="c.TenantId is null ? c.VendorId : null" Name="@(tenant?.FullName ?? vendor?.Name ?? "")"
                                                          Current="tenant?.KeepMessagesUntil ?? vendor?.KeepMessagesUntil"
                                                          Suggested="tenant is null ? null : MessageRetentionService.Suggest(tenant, Today)"
@@ -150,6 +150,9 @@
     private bool needsFullDiskAccess;
 
     private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+
+    private (Tenant? Tenant, Vendor? Vendor) KeepUntilFor(MessageContact c) =>
+        (tenants.FirstOrDefault(t => t.Id == c.TenantId), c.TenantId is null ? vendors.FirstOrDefault(v => v.Id == c.VendorId) : null);
 
     private async Task RefreshAsync()
     {
