@@ -44,7 +44,7 @@ dotnet ef migrations add <Name> --project src/PropertyManager.Core --startup-pro
 
 ## Layout
 
-An architecture diagram (what runs where, where data is stored, and which cloud services are used) is in [docs/architecture.mmd](docs/architecture.mmd); GitHub shows it as a diagram.
+An architecture diagram (what runs where, where data is stored, and which cloud services are used) is in [docs/architecture.md](docs/architecture.md); GitHub draws it when you open the file.
 
 - `src/PropertyManager.Core`: entities, `PropertyManagerDbContext`, migrations, seed data, report services, imports, and the Ask assistant (`Assistant/`)
 - `src/PropertyManager.Web`: Blazor Server UI (`Components/Pages`)

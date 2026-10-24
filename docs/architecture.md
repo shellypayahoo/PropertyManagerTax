@@ -1,3 +1,8 @@
+# Architecture
+
+What runs where, where data is stored, and which cloud services the app uses.
+
+```mermaid
 flowchart LR
     subgraph Devices["Your devices"]
         MacBrowser["Browser on the Mac<br/>Safari / Edge"]
@@ -72,3 +77,4 @@ flowchart LR
     Assistant -.-> Anthropic
     Assistant -.-> Ollama
     Db ~~~ GitHub
+```
