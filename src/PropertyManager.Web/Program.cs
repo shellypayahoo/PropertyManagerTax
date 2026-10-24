@@ -44,6 +44,10 @@ builder.Services.AddScoped<PropertyManager.Core.Messaging.MessageRetentionServic
 // AI models for the Ask page. API keys belong in user secrets or environment variables (see README), not appsettings.json.
 builder.Services.Configure<AssistantOptions>(builder.Configuration.GetSection(AssistantOptions.Section));
 
+// appsettings.Local.json (not in git) holds an installation's own keys and settings; packaged installs use it in
+// place of user secrets.
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+
 // Settings changed in the app (Settings page, first-run setup) override appsettings.json.
 builder.Configuration.AddDatabaseSettings(builder.Configuration.GetConnectionString("PropertyManager"));
 builder.Services.AddScoped<SettingsService>();

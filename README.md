@@ -82,7 +82,32 @@ From then on, changes made on one computer don't appear on the other, so treat o
 - **iPhone (HEIC) photos uploaded on Windows:** the original is saved, but no JPEG copy is made (that uses a macOS tool), and Edge and Chrome can't show HEIC. Upload JPG/PNG photos on Windows, or upload HEIC photos from the Mac. Photos already converted on the Mac show fine.
 - Email, calendar, the Ask page, receipts, documents, rent, expenses, and reports work the same.
 
-## Use it from your phone
+## Install for someone else on Windows (no .NET needed)
+
+To give the app to an owner who isn't technical, build a package that includes .NET, so they install nothing else.
+
+**1. Build it** (on your Mac, from the repository root):
+
+```sh
+./scripts/package-windows.sh
+```
+
+This creates `dist/PropertyManager-Windows.zip` (about 70 MB) containing:
+
+- **Start Property Manager.cmd**: starts the app and opens it in the browser.
+- **README.txt**: plain instructions for the owner.
+- **app/**: the app with .NET included, and settings for a new owner (none of your properties or keys; email, calendar, the assistant, and text messages start off).
+
+**2. Install it on their computer:** copy the zip over (OneDrive, USB drive, email), right-click it → **Extract All**, and put the `PropertyManager-Windows` folder somewhere permanent, such as their Documents folder. Right-click **Start Property Manager** → **Show more options** → **Send to** → **Desktop (create shortcut)** for an icon.
+
+**3. First start:** double-click **Start Property Manager**. The app isn't signed, so Windows may show "Windows protected your PC": click **More info**, then **Run anyway**. A black window opens (keep it open while using the app; closing it stops the app) and then the browser shows the first-run setup.
+
+**4. Optional extras for them:** copy `app/appsettings.Local.example.json` to `app/appsettings.Local.json`, fill in their AI service key and/or email app registration ID (see **Ask** and **Email**), restart the app, and turn those on in **Settings**. That file holds their secrets, so it stays on their computer only.
+
+**Their data** is kept in **Documents\Property Manager** (the database and a `documents` folder), not in the app folder. Back up that folder. **To update** them, build a new package and replace the `PropertyManager-Windows` folder; their data and `appsettings.Local.json` (copy it into the new `app` folder) carry over.
+
+The app is reachable only on their computer (`http://localhost:5220`). To use it from their phone, see **Use it from your phone**; on Windows that means editing `ASPNETCORE_URLS` in the start file to `http://0.0.0.0:5220`.
+
 
 While the app runs on your Mac or Windows computer, your phone can open it over the same Wi-Fi:
 
@@ -105,7 +130,7 @@ The **Settings** page (bottom of the menu) changes the same things later, plus w
 
 ## Configuration
 
-Settings live in `src/PropertyManager.Web/appsettings.json`; the ones on the Settings page can also be changed there in the app, which takes precedence. Secrets (AI keys) never go in that file: set them with `dotnet user-secrets set "<setting>" "<value>" --project src/PropertyManager.Web` or as environment variables (use `__` for `:`, e.g. `Assistant__Providers__OpenAI__ApiKey`). Every setting below has a default that matches how the app works out of the box, so you only add what you want to change. [docs/appsettings.example.json](docs/appsettings.example.json) shows a complete example for a new installation.
+Settings live in `src/PropertyManager.Web/appsettings.json`; the ones on the Settings page can also be changed there in the app, which takes precedence. Secrets (AI keys) never go in that file: set them with `dotnet user-secrets set "<setting>" "<value>" --project src/PropertyManager.Web`, in an `appsettings.Local.json` next to it (not in git; used by packaged installs, where user secrets aren't read), or as environment variables (use `__` for `:`, e.g. `Assistant__Providers__OpenAI__ApiKey`). Every setting below has a default that matches how the app works out of the box, so you only add what you want to change. [docs/appsettings.example.json](docs/appsettings.example.json) shows a complete example for a new installation.
 
 | Section | Setting | Default | What it does |
 | --- | --- | --- | --- |

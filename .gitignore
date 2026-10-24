@@ -488,3 +488,8 @@ $RECYCLE.BIN/
 
 # Uploaded documents
 App_Data/
+
+# An installation's own keys and settings
+appsettings.Local.json
+# Packaged builds
+dist/

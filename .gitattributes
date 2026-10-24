@@ -1,0 +1,2 @@
+*.cmd text eol=crlf
+packaging/windows/README.txt text eol=crlf
