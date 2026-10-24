@@ -1,0 +1,74 @@
+flowchart LR
+    subgraph Devices["Your devices"]
+        MacBrowser["Browser on the Mac<br/>Safari / Edge"]
+        Phone["iPhone<br/>same Wi-Fi or Tailscale"]
+    end
+
+    subgraph Mac["Your Mac · dotnet run"]
+        subgraph Web["PropertyManager.Web · Blazor Server"]
+            Pages["Pages<br/>Dashboard · Properties · Tenants · Leases · Rent<br/>Expenses · Maintenance · Vendors · Import<br/>Messages · Email & calendar · Ask · Reports"]
+            Endpoints["File endpoints<br/>lease uploads · documents · text & email attachments<br/>P&L PDF download"]
+        end
+
+        subgraph Core["PropertyManager.Core · class library"]
+            Money["Money & reports<br/>RentSchedule · ReportService · OperatingReports<br/>RecurringExpense · ExpenseSplit · VendorService<br/>ProfitAndLossPdf · QuestPDF"]
+            Import["Bank & mortgage import<br/>BankCsvReader · TransactionClassifier · rules<br/>Mortgage CSV · Lakeview PDF · PdfPig"]
+            Messaging["Texts<br/>MessagesDatabaseReader · AddressBookReader<br/>TextMessageImportService · attachments<br/>MessageRetentionService · SipsImageConverter"]
+            EmailCal["Email & calendar<br/>EmailSignIn · MSAL · GraphMailSource<br/>EmailSyncService · CalendarSyncService · EventMatcher"]
+            Docs["Documents<br/>DocumentTextExtractor<br/>PDF and Word text"]
+            Assistant["Ask assistant<br/>AssistantService · AssistantTools<br/>ChatClientFactory · Microsoft.Extensions.AI"]
+        end
+
+        subgraph Storage["Data on the Mac · not in git"]
+            Db[("propertymanager.db<br/>SQLite via EF Core")]
+            Files[("App_Data/documents<br/>leases · attachments · previews")]
+            Secrets[["User secrets & Keychain<br/>API keys · email sign-in"]]
+        end
+
+        subgraph MacSources["macOS data · read-only copies"]
+            ChatDb[("~/Library/Messages<br/>chat.db + Attachments")]
+            Contacts[("Contacts<br/>AddressBook")]
+            Sips["sips<br/>HEIC to JPEG"]
+        end
+    end
+
+    subgraph Cloud["Cloud services"]
+        Graph["Microsoft Graph<br/>Hotmail mail & calendar<br/>Mail.Read · Calendars.Read"]
+        Entra["Microsoft sign-in<br/>app registration"]
+        Foundry["Azure AI Foundry<br/>gpt-5-mini · student sub"]
+        Anthropic["Anthropic API / Claude on Foundry<br/>optional"]
+        Ollama["Ollama<br/>optional, local"]
+        GitHub["GitHub<br/>PropertyManagerTax · code only"]
+    end
+
+    BankFiles[/"Bank CSVs · Rocket CSV<br/>Lakeview PDF · lease PDFs"/]
+
+    MacBrowser --> Pages
+    Phone --> Pages
+    MacBrowser --> Endpoints
+    Pages --> Money & Import & Messaging & EmailCal & Assistant
+    Endpoints --> Files
+    Endpoints --> Money
+    BankFiles --> Import
+
+    Money --> Db
+    Import --> Db
+    Import --> Docs
+    Messaging --> Db
+    Messaging --> Files
+    Messaging --> Docs
+    Messaging --> ChatDb
+    Messaging --> Contacts
+    Messaging --> Sips
+    EmailCal --> Db
+    EmailCal --> Files
+    EmailCal --> Docs
+    EmailCal --> Graph
+    EmailCal --> Entra
+    EmailCal -.-> Secrets
+    Assistant --> Db
+    Assistant -.-> Secrets
+    Assistant -->|"question + looked-up texts,<br/>emails, records, photos"| Foundry
+    Assistant -.-> Anthropic
+    Assistant -.-> Ollama
+    Db ~~~ GitHub
