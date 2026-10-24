@@ -5,7 +5,7 @@
 <p class="text-muted" style="max-width: 52rem">
     Money in and out each month: rent by the date received, and everything paid out by the date paid, including
     mortgage principal and escrow deposits (which the P&amp;L leaves out because they aren't deductible).
-    Months in the red list what was paid out; click any month to see its payments.
+    Click a month to see what was paid out; months in the red have a link to their payments.
 </p>
 <select class="form-select w-auto mb-3" @bind="propertyId" @bind:after="LoadAsync">
     <option value="0">All properties</option>
@@ -39,7 +39,13 @@
                         <td class="text-end">@Money(m.Expenses)</td>
                         <td class="text-end">@Money(m.LoanAndEscrow)</td>
                         <td class="text-end">@Money(m.TotalOut)</td>
-                        <td class="text-end fw-semibold @(m.Net < 0 ? "text-danger" : "")">@Money(m.Net)</td>
+                        <td class="text-end fw-semibold @(m.Net < 0 ? "text-danger" : "")">
+                            @Money(m.Net)
+                            @if (m.Net < 0)
+                            {
+                                <div><button class="btn btn-link btn-sm p-0 link-danger small" @onclick="() => ToggleAsync(m)" @onclick:stopPropagation>@(IsOpen(m) ? "Hide payments" : "See payments")</button></div>
+                            }
+                        </td>
                         <td>
                             @* Bar for the month's net, scaled to the largest month. *@
                             <div class="d-flex" style="height: .8rem">
@@ -123,11 +129,11 @@
         }
     }
 
-    // Months whose payments are listed: those in the red, plus any the owner clicks open (or minus any clicked closed).
+    // Months whose payments are listed (opened by clicking the month or its link).
     private readonly Dictionary<DateOnly, IReadOnlyList<CashFlowItem>> items = [];
     private readonly HashSet<DateOnly> toggled = [];
 
-    private bool IsOpen(CashFlowMonth m) => (m.Net < 0) != toggled.Contains(m.Month);
+    private bool IsOpen(CashFlowMonth m) => toggled.Contains(m.Month);
 
     private async Task LoadAsync()
     {
@@ -135,10 +141,6 @@
         months = await Reports.GetCashFlowAsync(Year, propertyId == 0 ? null : propertyId);
         items.Clear();
         toggled.Clear();
-        foreach (var m in months.Where(m => m.Net < 0))
-        {
-            items[m.Month] = await Reports.GetCashFlowItemsAsync(m.Month, propertyId == 0 ? null : propertyId);
-        }
     }
 
     private async Task ToggleAsync(CashFlowMonth m)
