@@ -4,6 +4,7 @@
 @inject ExpenseSplitService SplitService
 @inject RecurringExpenseService Recurring
 @inject ReceiptService Receipts
+@inject IOptions<FeatureOptions> Features
 
 <PageTitle>Expenses</PageTitle>
 
@@ -102,10 +103,13 @@
             }
         </select>
     </div>
-    <div class="col-auto form-check align-self-center ms-2">
-        <input class="form-check-input" type="checkbox" id="no-receipt" @bind="withoutReceiptOnly" />
-        <label class="form-check-label" for="no-receipt">Without a receipt only</label>
-    </div>
+    @if (Features.Value.Receipts)
+    {
+        <div class="col-auto form-check align-self-center ms-2">
+            <input class="form-check-input" type="checkbox" id="no-receipt" @bind="withoutReceiptOnly" />
+            <label class="form-check-label" for="no-receipt">Without a receipt only</label>
+        </div>
+    }
     <div class="col-auto ms-auto fs-5">Total: <strong>@Shown.Sum(e => e.Amount).ToString("C")</strong></div>
 </div>
 
@@ -219,8 +223,11 @@
                     <td>@e.PaidWith</td>
                     <td class="text-end">@e.Amount.ToString("C")</td>
                     <td class="text-nowrap">
-                        <button class="btn btn-sm @(e.Receipts.Count > 0 ? "btn-outline-success" : "btn-outline-secondary")" title="Receipts"
-                                @onclick="() => ToggleReceipts(e.Id)">📎@(e.Receipts.Count > 0 ? $" {e.Receipts.Count}" : "")</button>
+                        @if (Features.Value.Receipts)
+                        {
+                            <button class="btn btn-sm @(e.Receipts.Count > 0 ? "btn-outline-success" : "btn-outline-secondary")" title="Receipts"
+                                    @onclick="() => ToggleReceipts(e.Id)">📎@(e.Receipts.Count > 0 ? $" {e.Receipts.Count}" : "")</button>
+                        }
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(e)">Edit</button>
                         <button class="btn btn-sm btn-outline-secondary" title="Split into several categories, e.g. a mortgage payment" @onclick="() => StartSplit(e)">Split</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(e.Id)">Delete</button>
@@ -487,8 +494,8 @@
         await using var db = await DbFactory.CreateDbContextAsync();
         db.Expenses.Add(form);
         await db.SaveChangesAsync();
-        added = $"{form.Description}, {form.Amount:C} on {form.Date:d}. Attach a receipt below if you have one.";
-        receiptsOpen = form.Id;
+        added = $"{form.Description}, {form.Amount:C} on {form.Date:d}." + (Features.Value.Receipts ? " Attach a receipt below if you have one." : "");
+        receiptsOpen = Features.Value.Receipts ? form.Id : null;
         receiptMessage = receiptError = null;
         form = NewForm();
         addPropertyChosen = false;

@@ -1,5 +1,7 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using PropertyManager.Core.Configuration;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Entities;
 using PropertyManager.Core.Services;
@@ -13,7 +15,7 @@ namespace PropertyManager.Core.Reports;
 /// The annual profit and loss as a PDF for a tax preparer: the Schedule E summary by property, notes on shared and
 /// non-deductible amounts, and optionally every item behind each line.
 /// </summary>
-public class ProfitAndLossPdf(ReportService reports, IDbContextFactory<PropertyManagerDbContext> dbFactory, TimeProvider clock)
+public class ProfitAndLossPdf(ReportService reports, IDbContextFactory<PropertyManagerDbContext> dbFactory, TimeProvider clock, IOptions<BusinessOptions>? business = null)
 {
     private static readonly CultureInfo Us = CultureInfo.GetCultureInfo("en-US");
 
@@ -55,6 +57,10 @@ public class ProfitAndLossPdf(ReportService reports, IDbContextFactory<PropertyM
 
                 page.Header().PaddingBottom(10).Column(header =>
                 {
+                    if (business?.Value.Name is { Length: > 0 } name)
+                    {
+                        header.Item().Text(name).FontSize(11).FontColor(Colors.Grey.Darken2);
+                    }
                     header.Item().Text($"Rental Income and Expenses – Tax Year {year}").FontSize(16).SemiBold();
                     header.Item().Text($"Schedule E summary by property · Prepared {generated.ToString("MMMM d, yyyy", Us)}").FontColor(Colors.Grey.Darken1);
                 });

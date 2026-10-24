@@ -1,0 +1,20 @@
+@* Shows its content when a feature is on; otherwise a note (or nothing, with Quiet). *@
+@if (On)
+{
+    @ChildContent
+}
+else if (!Quiet)
+{
+    <FeatureOff Name="@Name" Setting="@Setting" />
+}
+
+@code {
+    [Parameter, EditorRequired] public bool On { get; set; }
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public string Setting { get; set; } = "";
+
+    /// <summary>Render nothing when off (for parts of a page).</summary>
+    [Parameter] public bool Quiet { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -25,6 +25,14 @@ public class AssistantService(IOptionsMonitor<AssistantOptions> options, Assista
 {
     private readonly Func<AssistantProviderOptions, IChatClient> createClient = clientFactory ?? ChatClientFactory.Create;
 
+    public bool AllowPhotosByDefault => options.CurrentValue.AllowPhotos;
+
+    /// <summary>The configured default provider, or else the first one that's set up.</summary>
+    public AssistantProviderOptions? DefaultProvider =>
+        Providers.FirstOrDefault(p => p.Name == options.CurrentValue.DefaultProvider)
+        ?? Providers.FirstOrDefault(p => p.IsConfigured)
+        ?? Providers.FirstOrDefault();
+
     public IReadOnlyList<AssistantProviderOptions> Providers =>
         options.CurrentValue.Providers.Select(p => { p.Value.Name = p.Key; return p.Value; }).ToList();
 

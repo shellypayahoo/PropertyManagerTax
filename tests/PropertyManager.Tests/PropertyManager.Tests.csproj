@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PropertyManager.Core\PropertyManager.Core.csproj" />
+    <ProjectReference Include="..\..\src\PropertyManager.Web\PropertyManager.Web.csproj" />
   </ItemGroup>
 
 </Project>

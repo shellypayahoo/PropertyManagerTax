@@ -1,6 +1,9 @@
+@inject IOptions<FeatureOptions> Features
+@inject IOptions<BusinessOptions> Business
+
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">Property Manager</a>
+        <a class="navbar-brand" href="">@(string.IsNullOrWhiteSpace(Business.Value.Name) ? "Property Manager" : Business.Value.Name)</a>
     </div>
 </div>
 
@@ -8,11 +11,11 @@
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="nav flex-column">
-        @foreach (var (href, label, icon) in Links)
+        @foreach (var (href, label, icon) in Links.Where(l => IsOn(l.Href)))
         {
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="@href" Match="@(href == "" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
-                    <span class="bi @icon" aria-hidden="true"></span> @label
+                    <span class="bi @icon" aria-hidden="true"></span> @LabelFor(href, label)
                 </NavLink>
             </div>
         }
@@ -20,6 +23,18 @@
 </div>
 
 @code {
+    // Pages for parts of the app turned off in "Features" are left out of the menu.
+    private bool IsOn(string href) => href switch
+    {
+        "messages" => Features.Value.TextMessages,
+        "email" => Features.Value.Email || Features.Value.Calendar,
+        "ask" => Features.Value.Assistant,
+        _ => true,
+    };
+
+    private string LabelFor(string href, string label) => href != "email" ? label
+        : Features.Value.Email && Features.Value.Calendar ? label : Features.Value.Email ? "Email" : "Calendar";
+
     private static readonly (string Href, string Label, string Icon)[] Links =
     [
         ("", "Dashboard", "bi-house-door-fill-nav-menu"),

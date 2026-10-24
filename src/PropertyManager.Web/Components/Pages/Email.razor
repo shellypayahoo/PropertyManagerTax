@@ -6,10 +6,11 @@
 @inject IMailSource Mail
 @inject EmailSyncService Sync
 @inject PropertyManager.Core.Calendar.CalendarSyncService CalendarSync
+@inject IOptions<FeatureOptions> Features
 
 <PageTitle>Email &amp; calendar</PageTitle>
 
-<h1>Email &amp; calendar</h1>
+<h1>@(Features.Value.Email && Features.Value.Calendar ? "Email & calendar" : Features.Value.Email ? "Email" : "Calendar")</h1>
 <p class="text-muted" style="max-width: 52rem">
     Emails with tenants and vendors, copied from the Hotmail / Outlook.com folders you choose (read-only; nothing in
     your mailbox is changed). PDF and Word attachments are read so the <a href="ask">Ask</a> page can search them;
@@ -17,6 +18,7 @@
     <a href="">Dashboard</a> and are suggested on <a href="maintenance">Maintenance</a> requests.
 </p>
 
+<FeatureGate On="Features.Value.Email || Features.Value.Calendar" Name="Email and calendar" Setting="Email and Features:Calendar">
 @if (!SignIn.IsConfigured)
 {
     <div class="alert alert-info" style="max-width: 52rem">
@@ -64,6 +66,7 @@ else
         </div>
     }
 
+    <FeatureGate On="Features.Value.Email" Quiet="true">
     <h2 class="h5">Folders</h2>
     @if (choosing)
     {
@@ -106,7 +109,9 @@ else
             <button class="btn btn-primary" disabled="@(busy || folders.Count == 0)" @onclick="SyncAsync">Get new emails</button>
         </div>
     }
+    </FeatureGate>
 
+    <FeatureGate On="Features.Value.Calendar" Quiet="true">
     <h2 class="h5 mt-4">Calendars</h2>
     @if (choosingCalendars)
     {
@@ -145,6 +150,7 @@ else
             <button class="btn btn-primary" disabled="@(busy || calendars.Count == 0 || needsSignInAgain)" @onclick="SyncCalendarsAsync">Get calendar events</button>
         </div>
     }
+    </FeatureGate>
 }
 
 @if (busy) { <p class="text-muted">Working… (the first sync of a large folder can take a few minutes)</p> }
@@ -155,7 +161,7 @@ else
     <div class="small text-warning-emphasis">@p</div>
 }
 
-@if (emailCount > 0)
+@if (emailCount > 0 && Features.Value.Email)
 {
     <h2 class="h5 mt-4">Emails (@emailCount)</h2>
     <input class="form-control form-control-sm mb-2" style="max-width: 24rem" placeholder="Search subject and text" @bind="search" @bind:after="LoadEmailsAsync" />
@@ -198,6 +204,7 @@ else
     </table>
     @if (emails.Count == Shown) { <p class="small text-muted">Showing the newest @Shown; search to narrow down.</p> }
 }
+</FeatureGate>
 
 @code {
     private const int Shown = 100;

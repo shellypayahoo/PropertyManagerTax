@@ -33,6 +33,15 @@ public static class ChatClientFactory
                     })
                 .AsIChatClient(),
             AssistantProviderType.Ollama => new OllamaApiClient(new Uri(provider.Endpoint ?? "http://localhost:11434"), provider.Model),
+            AssistantProviderType.OpenAI => new OpenAI.Chat.ChatClient(
+                    provider.Model,
+                    new ApiKeyCredential(string.IsNullOrWhiteSpace(provider.ApiKey) ? Environment.GetEnvironmentVariable("OPENAI_API_KEY")! : provider.ApiKey),
+                    new OpenAIClientOptions
+                    {
+                        Endpoint = string.IsNullOrWhiteSpace(provider.Endpoint) ? null : new Uri(provider.Endpoint),
+                        RetryPolicy = new ClientRetryPolicy(maxRetries: 6),
+                    })
+                .AsIChatClient(),
             _ => throw new NotSupportedException($"Unknown provider type {provider.Type}."),
         };
 

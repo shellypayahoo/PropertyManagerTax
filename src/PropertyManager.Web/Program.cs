@@ -2,12 +2,14 @@ using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PropertyManager.Core.Assistant;
+using PropertyManager.Core.Configuration;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Email;
 using PropertyManager.Core.Import;
 using PropertyManager.Core.Services;
 using PropertyManager.Core.Storage;
 using PropertyManager.Web.Components;
+using PropertyManager.Web.Configuration;
 
 // All amounts are US dollars, so format currency and dates as en-US regardless of the machine's locale.
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
@@ -41,6 +43,12 @@ builder.Services.AddScoped<PropertyManager.Core.Messaging.MessageRetentionServic
 
 // AI models for the Ask page. API keys belong in user secrets or environment variables (see README), not appsettings.json.
 builder.Services.Configure<AssistantOptions>(builder.Configuration.GetSection(AssistantOptions.Section));
+
+// Which parts of the app are on, business rules, and the starting portfolio (see "Configuration" in the README).
+builder.Services.Configure<FeatureOptions>(builder.Configuration.GetSection(FeatureOptions.Section));
+builder.Services.Configure<BusinessOptions>(builder.Configuration.GetSection(BusinessOptions.Section));
+var configurationProblems = ConfigurationCheck.Run(builder.Configuration);
+builder.Services.AddSingleton(configurationProblems);
 builder.Services.AddScoped<AssistantTools>();
 builder.Services.AddScoped<AssistantService>();
 
@@ -58,12 +66,25 @@ builder.Services.AddSingleton<IDocumentStorage>(new LocalDocumentStorage(
 
 var app = builder.Build();
 
+foreach (var problem in configurationProblems)
+{
+    if (problem.IsError)
+    {
+        app.Logger.LogError("Settings: {Problem}", problem.Message);
+    }
+    else
+    {
+        app.Logger.LogInformation("Settings: {Problem}", problem.Message);
+    }
+}
+
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<PropertyManagerDbContext>>();
     await using var db = await dbFactory.CreateDbContextAsync();
     await db.Database.MigrateAsync();
-    await DbSeeder.SeedAsync(db);
+    // Only an empty database is set up; an existing portfolio is never changed.
+    await DbSeeder.SeedAsync(db, app.Configuration.GetSection(SetupOptions.Section).Get<SetupOptions>()?.Properties ?? []);
     await scope.ServiceProvider.GetRequiredService<RecurringExpenseService>().GenerateDueAsync();
     // Documents uploaded before text reading existed are read once, so the Ask page can search them.
     await scope.ServiceProvider.GetRequiredService<LeaseDocumentService>().ReadMissingTextAsync();

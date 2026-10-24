@@ -118,10 +118,11 @@ public class OperatingReports(IDbContextFactory<PropertyManagerDbContext> dbFact
     }
 
     /// <summary>
-    /// Each lease that covers part of the year, month by month. Rent is due on the 1st; a month counts as late when it
-    /// was paid in full after the 1st plus <paramref name="graceDays"/>, or isn't paid in full yet and that day has passed.
+    /// Each lease that covers part of the year, month by month. Rent is due on <paramref name="dueDay"/>; a month counts as
+    /// late when it was paid in full after the due date plus <paramref name="graceDays"/>, or isn't paid in full yet and
+    /// that day has passed. Days late are counted from the due date.
     /// </summary>
-    public async Task<IReadOnlyList<RentCollectionRow>> GetRentCollectionAsync(int year, int graceDays = 5, CancellationToken ct = default)
+    public async Task<IReadOnlyList<RentCollectionRow>> GetRentCollectionAsync(int year, int graceDays = 5, CancellationToken ct = default, int dueDay = 1)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var leases = await db.Leases.AsNoTracking()
@@ -135,7 +136,7 @@ public class OperatingReports(IDbContextFactory<PropertyManagerDbContext> dbFact
             var months = Enumerable.Range(1, 12)
                 .Select(m => RentSchedule.ForMonth(lease, new DateOnly(year, m, 1), today))
                 .Where(r => r.Due > 0m || r.Payments.Count > 0)
-                .Select(r => new RentCollectionCell(r.Month, r.Due, r.Paid, r.Status, DaysLate(r, graceDays, today)))
+                .Select(r => new RentCollectionCell(r.Month, r.Due, r.Paid, r.Status, DaysLate(r, graceDays, Math.Clamp(dueDay, 1, 28), today)))
                 .ToList();
             if (months.Count > 0)
             {
@@ -145,13 +146,14 @@ public class OperatingReports(IDbContextFactory<PropertyManagerDbContext> dbFact
         return rows;
     }
 
-    private static int DaysLate(RentMonth r, int graceDays, DateOnly today)
+    private static int DaysLate(RentMonth r, int graceDays, int dueDay, DateOnly today)
     {
         if (r.Due == 0m)
         {
             return 0;
         }
-        var lateAfter = r.Month.AddDays(graceDays);
+        var dueOn = r.Month.AddDays(dueDay - 1);
+        var lateAfter = dueOn.AddDays(graceDays);
         // The day the month became paid in full, or today if it still isn't.
         DateOnly? paidInFull = null;
         var running = 0m;
@@ -165,7 +167,7 @@ public class OperatingReports(IDbContextFactory<PropertyManagerDbContext> dbFact
             }
         }
         var settled = paidInFull ?? today;
-        return settled > lateAfter ? settled.DayNumber - r.Month.DayNumber : 0;
+        return settled > lateAfter ? settled.DayNumber - dueOn.DayNumber : 0;
     }
 
     /// <summary>Spending per vendor between two dates, largest first; expenses without a vendor are grouped last.</summary>

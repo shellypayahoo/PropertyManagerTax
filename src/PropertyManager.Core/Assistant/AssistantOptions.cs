@@ -13,6 +13,9 @@ public enum AssistantProviderType
 
     /// <summary>A model running locally in Ollama; nothing leaves the Mac.</summary>
     Ollama,
+
+    /// <summary>An OpenAI model through the OpenAI API (or any OpenAI-compatible endpoint).</summary>
+    OpenAI,
 }
 
 /// <summary>One AI model the Ask page can use. Keys come from user secrets or environment variables, never source control.</summary>
@@ -43,6 +46,8 @@ public class AssistantProviderOptions
         AssistantProviderType.AnthropicFoundry => Missing((nameof(Resource), Resource), (nameof(ApiKey), ApiKey)),
         AssistantProviderType.AzureFoundry => Missing((nameof(Model), Model), (nameof(Endpoint), Endpoint), (nameof(ApiKey), ApiKey)),
         AssistantProviderType.Ollama => Missing((nameof(Model), Model)),
+        AssistantProviderType.OpenAI => [.. Missing((nameof(Model), Model)),
+            .. IsFilled(ApiKey) || IsFilled(Environment.GetEnvironmentVariable("OPENAI_API_KEY")) ? Array.Empty<string>() : [nameof(ApiKey)]],
         _ => ["Type"],
     };
 
@@ -54,6 +59,7 @@ public class AssistantProviderOptions
     {
         AssistantProviderType.Anthropic => "The texts and records needed to answer are sent to Anthropic.",
         AssistantProviderType.AnthropicFoundry or AssistantProviderType.AzureFoundry => "The texts and records needed to answer are sent to your Azure AI Foundry resource.",
+        AssistantProviderType.OpenAI => IsFilled(Endpoint) ? $"The texts and records needed to answer are sent to {Endpoint}." : "The texts and records needed to answer are sent to OpenAI.",
         _ => "This model runs on this Mac; nothing is sent elsewhere.",
     };
 
@@ -64,6 +70,12 @@ public class AssistantProviderOptions
 public class AssistantOptions
 {
     public const string Section = "Assistant";
+
+    /// <summary>The provider the Ask page starts on; when empty, the first one that's set up.</summary>
+    public string? DefaultProvider { get; set; }
+
+    /// <summary>Whether "Let it look at photos" starts ticked on the Ask page.</summary>
+    public bool AllowPhotos { get; set; } = true;
 
     /// <summary>Providers by name, so a key can be set as e.g. <c>Assistant:Providers:Claude:ApiKey</c>.</summary>
     public Dictionary<string, AssistantProviderOptions> Providers { get; set; } = [];

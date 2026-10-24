@@ -2,6 +2,7 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
 @inject PropertyPhotoService Photos
+@inject IOptions<FeatureOptions> Features
 
 <PageTitle>@(property?.Name ?? "Property")</PageTitle>
 
@@ -13,7 +14,7 @@ else
 {
     <p><a href="properties">← Properties</a></p>
     <div class="d-flex flex-wrap gap-4 align-items-start mb-3">
-        <div>
+        <div class="@(Features.Value.PropertyPhotos ? "" : "d-none")">
             @if (property.PhotoKey is not null)
             {
                 <a href="properties/@property.Id/photo?v=@photoVersion" target="_blank">
@@ -28,6 +29,7 @@ else
         <div class="flex-grow-1" style="min-width: 18rem">
             <h1>@property.Name</h1>
             <p class="text-muted">@property.FullAddress</p>
+            <FeatureGate On="Features.Value.PropertyPhotos" Quiet="true">
             @if (photoStatus is not null) { <div class="alert alert-success py-1 px-2 small">@photoStatus</div> }
             @if (photoError is not null) { <div class="alert alert-warning py-1 px-2 small">@photoError</div> }
 
@@ -50,6 +52,7 @@ else
             {
                 <button class="btn btn-link btn-sm p-0 mt-2 link-danger" @onclick="RemovePhotoAsync">Remove photo</button>
             }
+            </FeatureGate>
         </div>
     </div>
     @if (webPhotos is not null)

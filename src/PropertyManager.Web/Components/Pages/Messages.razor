@@ -4,6 +4,7 @@
 @inject TextMessageImportService Importer
 @inject TextMessageSearch Search
 @inject IConfiguration Configuration
+@inject IOptions<FeatureOptions> Features
 
 <PageTitle>Messages</PageTitle>
 
@@ -13,6 +14,7 @@
     conversations to bring in; everyone else's are never read. Your tenants and vendors are ticked automatically.
 </p>
 
+<FeatureGate On="Features.Value.TextMessages" Name="Text message import" Setting="TextMessages">
 <div class="d-flex flex-wrap gap-2 mb-2">
     <button class="btn btn-outline-primary" disabled="@busy" @onclick="ScanAsync">@(contacts.Count == 0 ? "Find contacts in Messages" : "Refresh contact list")</button>
     <button class="btn btn-primary" disabled="@(busy || contacts.All(c => !c.Included))" @onclick="ImportAsync">Import messages for ticked contacts</button>
@@ -132,6 +134,7 @@
         </div>
     </div>
 }
+</FeatureGate>
 
 @code {
     private List<MessageContact> contacts = [];

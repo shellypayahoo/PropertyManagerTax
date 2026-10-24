@@ -3,6 +3,8 @@ using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
+using PropertyManager.Core.Configuration;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Entities;
 using PropertyManager.Core.Messaging;
@@ -17,8 +19,12 @@ namespace PropertyManager.Core.Assistant;
 /// </summary>
 public class AssistantTools(
     IDbContextFactory<PropertyManagerDbContext> dbFactory, TextMessageSearch search, ReportService reports, TimeProvider? time = null,
-    IDocumentStorage? storage = null, IImageConverter? images = null)
+    IDocumentStorage? storage = null, IImageConverter? images = null, IOptions<FeatureOptions>? features = null)
 {
+    // Lookups for parts of the app turned off in "Features" aren't offered to the model.
+    private static readonly string[] TextTools = ["search_text_messages", "get_conversation", "list_text_contacts"];
+    private static readonly string[] EmailTools = ["search_emails", "read_email"];
+
     /// <summary>
     /// Asks the current AI model about a photo: (JPEG/PNG bytes, media type, question) → answer. Set by
     /// <see cref="AssistantService"/> for each question when photos are allowed; null means describe_photo isn't offered.
@@ -30,7 +36,18 @@ public class AssistantTools(
 
     private DateOnly Today => DateOnly.FromDateTime((time ?? TimeProvider.System).GetLocalNow().DateTime);
 
-    public IList<AITool> All() => PhotoDescriber is null ? Base() : [.. Base(), AIFunctionFactory.Create(DescribePhotoAsync, "describe_photo")];
+    public IList<AITool> All()
+    {
+        var on = features?.Value ?? new FeatureOptions();
+        var tools = Base()
+            .Where(t => (on.TextMessages || !TextTools.Contains(t.Name)) && (on.Email || !EmailTools.Contains(t.Name)))
+            .ToList();
+        if (PhotoDescriber is not null)
+        {
+            tools.Add(AIFunctionFactory.Create(DescribePhotoAsync, "describe_photo"));
+        }
+        return tools;
+    }
 
     private IList<AITool> Base() =>
     [

@@ -97,6 +97,26 @@ While the app runs on your Mac or Windows computer, your phone can open it over 
 
 The app has no sign-in, so anyone on your Wi-Fi who knows the address can open it while it runs this way; stop it with Ctrl+C when you're done. To reach it away from home, install [Tailscale](https://tailscale.com) on the computer and the phone and use the computer's Tailscale name or address instead.
 
+## Configuration
+
+Settings live in `src/PropertyManager.Web/appsettings.json`. Secrets (AI keys) never go in that file: set them with `dotnet user-secrets set "<setting>" "<value>" --project src/PropertyManager.Web` or as environment variables (use `__` for `:`, e.g. `Assistant__Providers__OpenAI__ApiKey`). Every setting below has a default that matches how the app works out of the box, so you only add what you want to change. [docs/appsettings.example.json](docs/appsettings.example.json) shows a complete example for a new installation.
+
+| Section | Setting | Default | What it does |
+| --- | --- | --- | --- |
+| `Features` | `TextMessages`, `Email`, `Calendar`, `Assistant`, `Receipts`, `PropertyPhotos` | `true` | `false` turns that part off: its page and menu item are hidden (or show a note), nothing is imported or synced for it, and the Ask assistant gets no lookups for it. Data already in the app stays. |
+| `Business` | `Name` | none | Shown in the menu and at the top of the P&L PDF. |
+| | `RentDueDay` | `1` | Day rent is due (1–28); the Rent collection report counts days late from it. |
+| | `LateAfterDays` | `5` | The Rent collection report's starting grace period. |
+| `Setup` | `Properties` | none | Properties (name, street, city, state, ZIP) and units (label, market rent) created when the app starts with an empty database. Ignored once any property exists, so it never changes an existing portfolio. |
+| `Assistant` | `DefaultProvider` | first one set up | Which provider the Ask page starts on. |
+| | `AllowPhotos` | `true` | Whether "Let it look at photos" starts ticked. |
+| | `Providers:<Name>` | four examples | `Type` (`AzureFoundry`, `OpenAI`, `Anthropic`, `AnthropicFoundry`, or `Ollama`), `Model`, and `Endpoint`/`Resource` where needed; `ApiKey` in secrets. `OpenAI` also reads `OPENAI_API_KEY`, and `Endpoint` lets it use any OpenAI-compatible service. Add as many as you like under any names. |
+| `Email` | `ClientId`, `Tenant`, `MyAddresses` | not set | Outlook.com / Hotmail sign-in (see **Email**). |
+| `ConnectionStrings` | `PropertyManager` | `Data Source=propertymanager.db` | The SQLite database file. |
+| `DocumentStorage` | `LocalPath` | `App_Data/documents` | Where uploaded and imported files are kept. |
+
+When the app starts it checks these settings. Mistakes, such as an unknown provider type, a `DefaultProvider` that isn't listed, or a rent due day of 31, are logged in the terminal and listed at the top of the Dashboard in plain words. Change settings while the app is stopped, then start it again.
+
 ## Tests
 
 ```sh

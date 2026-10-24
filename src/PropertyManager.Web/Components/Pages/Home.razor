@@ -1,9 +1,21 @@
 @page "/"
 @inject DashboardService Dashboard
+@inject IOptions<FeatureOptions> Features
+@inject IReadOnlyList<PropertyManager.Web.Configuration.ConfigurationProblem> SettingsProblems
 
 <PageTitle>Dashboard</PageTitle>
 
 <h1>Dashboard</h1>
+
+@if (SettingsProblems.Any(p => p.IsError))
+{
+    <div class="alert alert-warning" style="max-width: 60rem">
+        <strong>Some settings in appsettings.json need fixing:</strong>
+        <ul class="mb-0">
+            @foreach (var problem in SettingsProblems.Where(p => p.IsError)) { <li>@problem.Message</li> }
+        </ul>
+    </div>
+}
 
 @if (summary is null)
 {
@@ -30,7 +42,7 @@ else
     }
 
     <MaintenanceReminders />
-    <UpcomingAppointments />
+    @if (Features.Value.Calendar) { <UpcomingAppointments /> }
 }
 
 @code {

@@ -120,6 +120,15 @@ public sealed class OperatingReportsTests : IDisposable
     }
 
     [Fact]
+    public async Task RentCollection_CountsLatenessFromTheDueDay()
+    {
+        // Rent due on the 5th with no grace: February (paid in full on the 10th) is 5 days late; January (the 2nd) isn't.
+        var row = Assert.Single(await reports.GetRentCollectionAsync(2026, graceDays: 0, dueDay: 5));
+
+        Assert.Equal((0, 5), (row.Months[0].DaysLate, row.Months[1].DaysLate));
+    }
+
+    [Fact]
     public async Task VendorSpending_IsLargestFirst_WithUnassignedLast()
     {
         var vendors = await reports.GetVendorSpendingAsync(new(2026, 1, 1), new(2026, 12, 31));

@@ -1,0 +1,9 @@
+@* Shown on a page whose part of the app is turned off in the "Features" settings. *@
+<div class="alert alert-secondary" style="max-width: 52rem">
+    @Name is turned off. To use it, set <code>Features:@Setting</code> to <code>true</code> in <code>appsettings.json</code> (or remove that line) and restart the app.
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter, EditorRequired] public string Setting { get; set; } = "";
+}
