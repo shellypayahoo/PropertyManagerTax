@@ -28,6 +28,8 @@ public sealed class AssistantTests : IDisposable
         DbSeeder.SeedAsync(db).GetAwaiter().GetResult();
 
         var unit = db.Units.Include(u => u.Property).Single(u => u.Property!.Name.Contains("Taylor") && u.Label == "B");
+        (unit.Property!.PurchaseDate, unit.Property.PurchasePrice) = (new DateOnly(2019, 6, 15), 850_000m);
+        (unit.Bedrooms, unit.Bathrooms, unit.SquareFeet) = (1, 1m, 650);
         var tenant = new Tenant { FirstName = "Jane", LastName = "Sample", Phone = "(202) 555-1234" };
         var lease = new Lease { Unit = unit, Tenants = [tenant], StartDate = new(2026, 1, 1), MonthlyRent = 1000m };
         lease.Payments.Add(new RentPayment { Date = new(2026, 3, 1), ForMonth = new(2026, 3, 1), Amount = 1000m });
@@ -94,6 +96,9 @@ public sealed class AssistantTests : IDisposable
         Assert.Contains("April 2026:", rent);
         Assert.Contains("Upcoming", rent);
         Assert.Contains("Jane Sample, 2026-01-01 to month-to-month, rent $1,000.00", people);
+        Assert.Contains("Purchased 2019-06-15 (6 years 9 months ago) for $850,000.00", people);
+        Assert.Contains("Purchase date not recorded", people);
+        Assert.Contains("Unit B: market rent $1,000.00, 1 bed, 1 bath, 650 sq ft", people);
         Assert.Contains("Ace Plumbing (Plumber)", people);
     }
 

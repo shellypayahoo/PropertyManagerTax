@@ -122,7 +122,7 @@ public class AssistantTools(
         return text.ToString();
     }
 
-    [Description("Lists properties, units, current and past leases (tenants, dates, rent, deposit), tenant contact details, and vendors.")]
+    [Description("Lists properties (address, purchase date and price, how long owned, notes), units (market rent, bedrooms, bathrooms, square feet), current and past leases (tenants, dates, rent, deposit), tenant contact details, and vendors.")]
     public async Task<string> ListPropertiesAndTenantsAsync(CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
@@ -135,9 +135,22 @@ public class AssistantTools(
         foreach (var property in properties)
         {
             text.AppendLine($"Property: {property.Name} ({property.FullAddress})");
+            text.AppendLine(property.PurchaseDate is { } bought
+                ? $"  Purchased {bought:yyyy-MM-dd} ({Owned(bought)} ago){(property.PurchasePrice is { } price ? $" for {Money(price)}" : "")}"
+                : $"  Purchase date not recorded{(property.PurchasePrice is { } price2 ? $"; purchase price {Money(price2)}" : "")}");
+            if (!string.IsNullOrWhiteSpace(property.Notes))
+            {
+                text.AppendLine($"  Notes: {property.Notes}");
+            }
             foreach (var unit in property.Units.OrderBy(u => u.Label))
             {
-                text.AppendLine($"  Unit {unit.Label}: market rent {Money(unit.MarketRent)}");
+                var size = string.Join(", ", new[]
+                {
+                    unit.Bedrooms is { } beds ? $"{beds} bed" : null,
+                    unit.Bathrooms is { } baths ? $"{baths:0.#} bath" : null,
+                    unit.SquareFeet is { } sqft ? $"{sqft:N0} sq ft" : null,
+                }.OfType<string>());
+                text.AppendLine($"  Unit {unit.Label}: market rent {Money(unit.MarketRent)}{(size.Length > 0 ? $", {size}" : "")}");
                 foreach (var lease in unit.Leases.OrderByDescending(l => l.StartDate))
                 {
                     var state = lease.IsActiveOn(Today) ? "current" : lease.StartDate > Today ? "future" : "ended";
@@ -664,6 +677,16 @@ public class AssistantTools(
 
     private static string? WebImageType(string contentType) =>
         contentType.ToLowerInvariant() is "image/jpeg" or "image/png" or "image/gif" or "image/webp" ? contentType.ToLowerInvariant() : null;
+
+    /// <summary>How long since a date, e.g. "4 years 3 months".</summary>
+    private string Owned(DateOnly since)
+    {
+        var months = (Today.Year - since.Year) * 12 + Today.Month - since.Month - (Today.Day < since.Day ? 1 : 0);
+        var (years, rest) = (months / 12, months % 12);
+        return years == 0 ? $"{rest} month{(rest == 1 ? "" : "s")}"
+            : rest == 0 ? $"{years} year{(years == 1 ? "" : "s")}"
+            : $"{years} year{(years == 1 ? "" : "s")} {rest} month{(rest == 1 ? "" : "s")}";
+    }
 
     private static bool Contains(string? value, string part) => value?.Contains(part, StringComparison.OrdinalIgnoreCase) == true;
 
