@@ -19,7 +19,7 @@ namespace PropertyManager.Core.Assistant;
 /// </summary>
 public class AssistantTools(
     IDbContextFactory<PropertyManagerDbContext> dbFactory, TextMessageSearch search, ReportService reports, TimeProvider? time = null,
-    IDocumentStorage? storage = null, IImageConverter? images = null, IOptions<FeatureOptions>? features = null)
+    IDocumentStorage? storage = null, IImageConverter? images = null, IOptionsMonitor<FeatureOptions>? features = null)
 {
     // Lookups for parts of the app turned off in "Features" aren't offered to the model.
     private static readonly string[] TextTools = ["search_text_messages", "get_conversation", "list_text_contacts"];
@@ -38,7 +38,7 @@ public class AssistantTools(
 
     public IList<AITool> All()
     {
-        var on = features?.Value ?? new FeatureOptions();
+        var on = features?.CurrentValue ?? new FeatureOptions();
         var tools = Base()
             .Where(t => (on.TextMessages || !TextTools.Contains(t.Name)) && (on.Email || !EmailTools.Contains(t.Name)))
             .ToList();

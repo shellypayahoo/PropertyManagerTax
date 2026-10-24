@@ -25,6 +25,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<MessageContact> MessageContacts => Set<MessageContact>();
     public DbSet<TextAttachment> TextAttachments => Set<TextAttachment>();
     public DbSet<ExpenseReceipt> ExpenseReceipts => Set<ExpenseReceipt>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<EmailFolder> EmailFolders => Set<EmailFolder>();
     public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
     public DbSet<EmailAttachment> EmailAttachments => Set<EmailAttachment>();
@@ -209,6 +210,13 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.Property(c => c.EndsAt).HasConversion(new DateTimeOffsetToBinaryConverter());
             e.HasIndex(c => c.StartsAt);
             e.HasOne(c => c.CalendarSource).WithMany(s => s.Events).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AppSetting>(e =>
+        {
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(200);
+            e.Property(x => x.Value).HasMaxLength(2000);
         });
 
         modelBuilder.Entity<ExpenseReceipt>(e =>

@@ -101,7 +101,7 @@ public sealed class ConfigurationTests : IDisposable
     [Fact]
     public void Assistant_LeavesOutLookupsForFeaturesThatAreOff()
     {
-        var off = Options.Create(new FeatureOptions { TextMessages = false, Email = false });
+        var off = new Monitor<FeatureOptions>(new FeatureOptions { TextMessages = false, Email = false });
         var tools = new AssistantTools(dbFactory, new TextMessageSearch(dbFactory), new ReportService(dbFactory), features: off).All().Select(t => t.Name).ToList();
         var all = new AssistantTools(dbFactory, new TextMessageSearch(dbFactory), new ReportService(dbFactory)).All().Select(t => t.Name).ToList();
 
@@ -134,6 +134,13 @@ public sealed class ConfigurationTests : IDisposable
         Assert.NotNull(client.GetService<FunctionInvokingChatClient>());
         options.DefaultProvider = null;
         Assert.Equal("Local", service.DefaultProvider?.Name);
+    }
+
+    private sealed class Monitor<T>(T value) : IOptionsMonitor<T>
+    {
+        public T CurrentValue => value;
+        public T Get(string? name) => value;
+        public IDisposable? OnChange(Action<T, string?> listener) => null;
     }
 
     private sealed class StaticOptions(AssistantOptions value) : IOptionsMonitor<AssistantOptions>

@@ -6,11 +6,11 @@
 @inject IMailSource Mail
 @inject EmailSyncService Sync
 @inject PropertyManager.Core.Calendar.CalendarSyncService CalendarSync
-@inject IOptions<FeatureOptions> Features
+@inject IOptionsMonitor<FeatureOptions> Features
 
 <PageTitle>Email &amp; calendar</PageTitle>
 
-<h1>@(Features.Value.Email && Features.Value.Calendar ? "Email & calendar" : Features.Value.Email ? "Email" : "Calendar")</h1>
+<h1>@(Features.CurrentValue.Email && Features.CurrentValue.Calendar ? "Email & calendar" : Features.CurrentValue.Email ? "Email" : "Calendar")</h1>
 <p class="text-muted" style="max-width: 52rem">
     Emails with tenants and vendors, copied from the Hotmail / Outlook.com folders you choose (read-only; nothing in
     your mailbox is changed). PDF and Word attachments are read so the <a href="ask">Ask</a> page can search them;
@@ -18,7 +18,7 @@
     <a href="">Dashboard</a> and are suggested on <a href="maintenance">Maintenance</a> requests.
 </p>
 
-<FeatureGate On="Features.Value.Email || Features.Value.Calendar" Name="Email and calendar" Setting="Email and Features:Calendar">
+<FeatureGate On="Features.CurrentValue.Email || Features.CurrentValue.Calendar" Name="Email and calendar" Setting="Email and Features:Calendar">
 @if (!SignIn.IsConfigured)
 {
     <div class="alert alert-info" style="max-width: 52rem">
@@ -66,7 +66,7 @@ else
         </div>
     }
 
-    <FeatureGate On="Features.Value.Email" Quiet="true">
+    <FeatureGate On="Features.CurrentValue.Email" Quiet="true">
     <h2 class="h5">Folders</h2>
     @if (choosing)
     {
@@ -111,7 +111,7 @@ else
     }
     </FeatureGate>
 
-    <FeatureGate On="Features.Value.Calendar" Quiet="true">
+    <FeatureGate On="Features.CurrentValue.Calendar" Quiet="true">
     <h2 class="h5 mt-4">Calendars</h2>
     @if (choosingCalendars)
     {
@@ -161,7 +161,7 @@ else
     <div class="small text-warning-emphasis">@p</div>
 }
 
-@if (emailCount > 0 && Features.Value.Email)
+@if (emailCount > 0 && Features.CurrentValue.Email)
 {
     <h2 class="h5 mt-4">Emails (@emailCount)</h2>
     <input class="form-control form-control-sm mb-2" style="max-width: 24rem" placeholder="Search subject and text" @bind="search" @bind:after="LoadEmailsAsync" />

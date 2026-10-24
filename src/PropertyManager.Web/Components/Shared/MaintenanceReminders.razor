@@ -1,6 +1,6 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
-@inject IOptions<FeatureOptions> Features
+@inject IOptionsMonitor<FeatureOptions> Features
 
 @* Open Emergency, High, and Normal maintenance requests as reminders; Low priority is left on the Maintenance page. *@
 
@@ -17,7 +17,7 @@
                 <div class="card h-100 @border @(border.Length > 0 ? "border-2" : "")">
                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
                         <span class="fw-semibold d-flex align-items-center gap-2">
-                            @if (Features.Value.PropertyPhotos && unit.Property?.PhotoKey is not null)
+                            @if (Features.CurrentValue.PropertyPhotos && unit.Property?.PhotoKey is not null)
                             {
                                 <img src="properties/@unit.PropertyId/photo" alt="" class="rounded" style="width: 40px; height: 30px; object-fit: cover" />
                             }

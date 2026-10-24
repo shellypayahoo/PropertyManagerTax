@@ -1,12 +1,12 @@
 @page "/ask"
 @using PropertyManager.Core.Assistant
 @inject AssistantService Assistant
-@inject IOptions<FeatureOptions> Features
+@inject IOptionsMonitor<FeatureOptions> Features
 
 <PageTitle>Ask</PageTitle>
 
 <h1>Ask</h1>
-<FeatureGate On="Features.Value.Assistant" Name="The Ask page" Setting="Assistant">
+<FeatureGate On="Features.CurrentValue.Assistant" Name="The Ask page" Setting="Assistant">
 <p class="text-muted" style="max-width: 52rem">
     Ask questions about your texts with tenants and vendors, rent, expenses, leases, and maintenance, such as
     "When did the Taylor basement tenant first mention the leak?" or "What did I pay the HVAC company this year?"

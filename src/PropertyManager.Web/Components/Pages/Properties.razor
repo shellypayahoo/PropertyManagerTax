@@ -1,7 +1,7 @@
 @page "/properties"
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
-@inject IOptions<FeatureOptions> Features
+@inject IOptionsMonitor<FeatureOptions> Features
 
 <PageTitle>Properties</PageTitle>
 
@@ -9,13 +9,13 @@
 
 <table class="table align-middle">
     <thead>
-        <tr>@if (Features.Value.PropertyPhotos) { <th></th> }<th>Property</th><th>Address</th><th class="text-end">Units</th><th class="text-end">Occupied</th><th class="text-end">Market rent / mo</th></tr>
+        <tr>@if (Features.CurrentValue.PropertyPhotos) { <th></th> }<th>Property</th><th>Address</th><th class="text-end">Units</th><th class="text-end">Occupied</th><th class="text-end">Market rent / mo</th></tr>
     </thead>
     <tbody>
         @foreach (var p in properties)
         {
             <tr>
-                @if (Features.Value.PropertyPhotos)
+                @if (Features.CurrentValue.PropertyPhotos)
                 {
                 <td style="width: 96px">
                     <a href="properties/@p.Id">

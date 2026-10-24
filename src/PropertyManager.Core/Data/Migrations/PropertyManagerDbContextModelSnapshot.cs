@@ -32,6 +32,21 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("LeaseTenants");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.AppSetting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("AppSettings");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.BankAccount", b =>
                 {
                     b.Property<int>("Id")

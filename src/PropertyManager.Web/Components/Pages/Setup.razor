@@ -1,0 +1,198 @@
+@page "/setup"
+@using PropertyManager.Web.Configuration
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject SettingsService Settings
+@inject NavigationManager Navigation
+
+<PageTitle>Welcome</PageTitle>
+
+@if (alreadySetUp is null)
+{
+    <p><em>Loading…</em></p>
+}
+else if (alreadySetUp == true)
+{
+    <h1>You're set up</h1>
+    <p>Your properties are already in the app. Change your business details and which parts of the app are on in <a href="settings">Settings</a>.</p>
+}
+else
+{
+    <h1>Welcome to Property Manager</h1>
+    <p class="text-muted" style="max-width: 46rem">Three quick steps and you're ready. You can change all of this later in Settings.</p>
+
+    <div class="d-flex gap-2 mb-3">
+        @foreach (var (n, label) in new[] { (1, "Your business"), (2, "Your properties"), (3, "What to use") })
+        {
+            <span class="badge rounded-pill @(step == n ? "text-bg-primary" : step > n ? "text-bg-success" : "text-bg-light border")">@n. @label</span>
+        }
+    </div>
+
+    <div class="card" style="max-width: 52rem">
+        <div class="card-body">
+            @if (step == 1)
+            {
+                <h2 class="h5">Your business</h2>
+                <div class="mb-3">
+                    <label class="form-label" for="biz">Business name</label>
+                    <input id="biz" class="form-control" placeholder="e.g. Maple Street Rentals LLC, or your own name" @bind="businessName" @bind:event="oninput" />
+                </div>
+                <div class="row g-3 mb-2">
+                    <div class="col-sm-6">
+                        <label class="form-label" for="due">Rent is due on the</label>
+                        <select id="due" class="form-select" @bind="rentDueDay">
+                            @for (var d = 1; d <= 28; d++) { <option value="@d">@d@Suffix(d)</option> }
+                        </select>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="grace">Rent is late after</label>
+                        <select id="grace" class="form-select" @bind="lateAfterDays">
+                            @foreach (var d in new[] { 0, 3, 5, 7, 10 }) { <option value="@d">@(d == 0 ? "the due date" : $"{d} days")</option> }
+                        </select>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end">
+                    <button class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(businessName)" @onclick="() => step = 2">Next</button>
+                </div>
+            }
+            else if (step == 2)
+            {
+                <h2 class="h5">Your properties</h2>
+                <p class="small text-muted">Add each building you rent out and its units. A house rented as one home has one unit.</p>
+                @foreach (var p in properties)
+                {
+                    <div class="border rounded p-3 mb-3">
+                        <div class="row g-2">
+                            <div class="col-md-6"><label class="form-label small mb-0">Street address</label><input class="form-control" placeholder="123 Main St" @bind="p.Name" @bind:event="oninput" /></div>
+                            <div class="col-md-3"><label class="form-label small mb-0">City</label><input class="form-control" @bind="p.City" /></div>
+                            <div class="col-md-1"><label class="form-label small mb-0">State</label><input class="form-control" maxlength="2" @bind="p.State" /></div>
+                            <div class="col-md-2"><label class="form-label small mb-0">ZIP</label><input class="form-control" @bind="p.PostalCode" /></div>
+                        </div>
+                        <div class="mt-2 small fw-semibold">Units</div>
+                        @foreach (var u in p.Units)
+                        {
+                            <div class="d-flex gap-2 align-items-center mt-1">
+                                <input class="form-control form-control-sm" style="max-width: 10rem" placeholder="Unit (e.g. A, 1, Main)" @bind="u.Label" @bind:event="oninput" />
+                                <div class="input-group input-group-sm" style="max-width: 14rem">
+                                    <span class="input-group-text">Rent $</span>
+                                    <input type="number" min="0" step="50" class="form-control" @bind="u.MarketRent" />
+                                    <span class="input-group-text">/mo</span>
+                                </div>
+                                @if (p.Units.Count > 1) { <button class="btn btn-sm btn-link link-danger" @onclick="() => p.Units.Remove(u)">Remove</button> }
+                            </div>
+                        }
+                        <div class="d-flex gap-2 mt-2">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => p.Units.Add(new UnitSetup { Label = NextLabel(p) })">Add a unit</button>
+                            @if (properties.Count > 1) { <button class="btn btn-sm btn-link link-danger ms-auto" @onclick="() => properties.Remove(p)">Remove this property</button> }
+                        </div>
+                    </div>
+                }
+                <button class="btn btn-sm btn-outline-primary mb-3" @onclick="AddProperty">Add another property</button>
+                <div class="d-flex justify-content-between">
+                    <button class="btn btn-link" @onclick="() => step = 1">Back</button>
+                    <button class="btn btn-primary" disabled="@(!PropertiesValid)" @onclick="() => step = 3">Next</button>
+                </div>
+                @if (!PropertiesValid) { <div class="small text-muted text-end mt-1">Each property needs an address and each unit a name.</div> }
+            }
+            else
+            {
+                <h2 class="h5">What do you want to use?</h2>
+                <p class="small text-muted">Tick what you'd like. Parts marked "needs setup" also need a one-time setup by whoever installed the app for you; you can turn them on later.</p>
+                @foreach (var f in FeatureChoices)
+                {
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="f-@f.Key" checked="@features[f.Key]" disabled="@(!f.Available)"
+                               @onchange="e => features[f.Key] = (bool)e.Value!" />
+                        <label class="form-check-label" for="f-@f.Key">
+                            <strong>@f.Title</strong> <span class="text-muted">· @f.Description</span>
+                            @if (!f.Available) { <span class="badge text-bg-light border ms-1">needs a Mac</span> }
+                            else if (f.NeedsSetup) { <span class="badge text-bg-light border ms-1">needs setup</span> }
+                        </label>
+                    </div>
+                }
+                @if (error is not null) { <div class="alert alert-warning py-2">@error</div> }
+                <div class="d-flex justify-content-between mt-3">
+                    <button class="btn btn-link" @onclick="() => step = 2">Back</button>
+                    <button class="btn btn-success" disabled="@saving" @onclick="FinishAsync">@(saving ? "Saving…" : "Finish")</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool? alreadySetUp;
+    private int step = 1;
+    private string businessName = "";
+    private int rentDueDay = 1;
+    private int lateAfterDays = 5;
+    private readonly List<PropertySetup> properties = [];
+    private readonly Dictionary<string, bool> features = new()
+    {
+        ["TextMessages"] = OperatingSystem.IsMacOS(),
+        ["Email"] = false,
+        ["Calendar"] = false,
+        ["Assistant"] = false,
+        ["Receipts"] = true,
+        ["PropertyPhotos"] = true,
+    };
+    private bool saving;
+    private string? error;
+
+    private record FeatureChoice(string Key, string Title, string Description, bool Available = true, bool NeedsSetup = false);
+
+    private static readonly FeatureChoice[] FeatureChoices =
+    [
+        new("Receipts", "Receipts", "attach photos of receipts to your expenses"),
+        new("PropertyPhotos", "Property photos", "a picture of each house"),
+        new("Email", "Email", "bring in emails with your tenants from Outlook.com or Hotmail", NeedsSetup: true),
+        new("Calendar", "Calendar", "show your Outlook.com appointments on the Dashboard", NeedsSetup: true),
+        new("Assistant", "Ask (AI assistant)", "ask questions about your records in plain English", NeedsSetup: true),
+        new("TextMessages", "Text messages", "bring in texts with tenants from a Mac's Messages app", Available: OperatingSystem.IsMacOS()),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        alreadySetUp = await db.Properties.AnyAsync();
+        AddProperty();
+    }
+
+    private void AddProperty() =>
+        properties.Add(new PropertySetup { City = properties.LastOrDefault()?.City, State = properties.LastOrDefault()?.State, Units = [new UnitSetup { Label = "A" }] });
+
+    private static string NextLabel(PropertySetup p) =>
+        p.Units.All(u => u.Label.Length == 1 && char.IsLetter(u.Label[0])) ? ((char)('A' + p.Units.Count)).ToString() : (p.Units.Count + 1).ToString();
+
+    private bool PropertiesValid => properties.All(p => !string.IsNullOrWhiteSpace(p.Name) && p.Units.Count > 0 && p.Units.All(u => !string.IsNullOrWhiteSpace(u.Label)));
+
+    private async Task FinishAsync()
+    {
+        saving = true;
+        error = null;
+        try
+        {
+            var values = new Dictionary<string, string?>
+            {
+                ["Business:Name"] = businessName.Trim(),
+                ["Business:RentDueDay"] = rentDueDay.ToString(),
+                ["Business:LateAfterDays"] = lateAfterDays.ToString(),
+            };
+            foreach (var (key, on) in features)
+            {
+                values[$"Features:{key}"] = on ? "true" : "false";
+            }
+            await Settings.SaveAsync(values);
+            await using var db = await DbFactory.CreateDbContextAsync();
+            await DbSeeder.SeedAsync(db, properties);
+            // Reload the whole page so the menu reflects the chosen features.
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException)
+        {
+            error = $"Couldn't save: {ex.Message}";
+            saving = false;
+        }
+    }
+
+    private static string Suffix(int day) => (day % 100) switch { 11 or 12 or 13 => "th", _ => (day % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" } };
+}

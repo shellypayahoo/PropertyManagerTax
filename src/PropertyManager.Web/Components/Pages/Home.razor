@@ -1,6 +1,7 @@
 @page "/"
 @inject DashboardService Dashboard
-@inject IOptions<FeatureOptions> Features
+@inject NavigationManager Navigation
+@inject IOptionsMonitor<FeatureOptions> Features
 @inject IReadOnlyList<PropertyManager.Web.Configuration.ConfigurationProblem> SettingsProblems
 
 <PageTitle>Dashboard</PageTitle>
@@ -42,11 +43,19 @@ else
     }
 
     <MaintenanceReminders />
-    @if (Features.Value.Calendar) { <UpcomingAppointments /> }
+    @if (Features.CurrentValue.Calendar) { <UpcomingAppointments /> }
 }
 
 @code {
     private DashboardSummary? summary;
 
-    protected override async Task OnInitializedAsync() => summary = await Dashboard.GetSummaryAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        summary = await Dashboard.GetSummaryAsync();
+        if (summary.PropertyCount == 0)
+        {
+            // A brand-new installation: walk the owner through setup first.
+            Navigation.NavigateTo("setup");
+        }
+    }
 }

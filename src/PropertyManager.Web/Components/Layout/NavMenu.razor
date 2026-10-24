@@ -1,9 +1,9 @@
-@inject IOptions<FeatureOptions> Features
-@inject IOptions<BusinessOptions> Business
+@inject IOptionsMonitor<FeatureOptions> Features
+@inject IOptionsMonitor<BusinessOptions> Business
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">@(string.IsNullOrWhiteSpace(Business.Value.Name) ? "Property Manager" : Business.Value.Name)</a>
+        <a class="navbar-brand" href="">@(string.IsNullOrWhiteSpace(Business.CurrentValue.Name) ? "Property Manager" : Business.CurrentValue.Name)</a>
     </div>
 </div>
 
@@ -26,14 +26,14 @@
     // Pages for parts of the app turned off in "Features" are left out of the menu.
     private bool IsOn(string href) => href switch
     {
-        "messages" => Features.Value.TextMessages,
-        "email" => Features.Value.Email || Features.Value.Calendar,
-        "ask" => Features.Value.Assistant,
+        "messages" => Features.CurrentValue.TextMessages,
+        "email" => Features.CurrentValue.Email || Features.CurrentValue.Calendar,
+        "ask" => Features.CurrentValue.Assistant,
         _ => true,
     };
 
     private string LabelFor(string href, string label) => href != "email" ? label
-        : Features.Value.Email && Features.Value.Calendar ? label : Features.Value.Email ? "Email" : "Calendar";
+        : Features.CurrentValue.Email && Features.CurrentValue.Calendar ? label : Features.CurrentValue.Email ? "Email" : "Calendar";
 
     private static readonly (string Href, string Label, string Icon)[] Links =
     [
@@ -50,5 +50,6 @@
         ("email", "Email & calendar", "bi-list-nested-nav-menu"),
         ("ask", "Ask", "bi-list-nested-nav-menu"),
         ("reports", "Reports", "bi-list-nested-nav-menu"),
+        ("settings", "Settings", "bi-list-nested-nav-menu"),
     ];
 }

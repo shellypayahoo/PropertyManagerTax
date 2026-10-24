@@ -1,0 +1,191 @@
+@page "/settings"
+@using PropertyManager.Core.Assistant
+@using PropertyManager.Core.Email
+@using PropertyManager.Web.Configuration
+@inject SettingsService SavedSettings
+@inject IOptionsMonitor<FeatureOptions> Features
+@inject IOptionsMonitor<BusinessOptions> Business
+@inject IOptionsMonitor<EmailOptions> EmailSettings
+@inject AssistantService Assistant
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+
+<PageTitle>Settings</PageTitle>
+
+<h1>Settings</h1>
+<p class="text-muted" style="max-width: 52rem">
+    Changes here take effect right away. Things marked "needs setup" also need a one-time setup by whoever installed the app
+    (an AI service key or an email sign-in registration).
+</p>
+
+@if (status is not null) { <div class="alert alert-success py-2" style="max-width: 52rem">@status</div> }
+
+<div class="card mb-3" style="max-width: 52rem">
+    <div class="card-body">
+        <h2 class="h5">Your business</h2>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="biz">Business name</label>
+                <input id="biz" class="form-control" placeholder="Property Manager" @bind="businessName" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="due">Rent due on the</label>
+                <select id="due" class="form-select" @bind="rentDueDay">
+                    @for (var d = 1; d <= 28; d++) { <option value="@d">@d@Suffix(d)</option> }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="grace">Late after</label>
+                <select id="grace" class="form-select" @bind="lateAfterDays">
+                    @foreach (var d in new[] { 0, 3, 5, 7, 10 }.Append(lateAfterDays).Distinct().Order()) { <option value="@d">@(d == 0 ? "the due date" : $"{d} days")</option> }
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3" style="max-width: 52rem">
+    <div class="card-body">
+        <h2 class="h5">What to use</h2>
+        @foreach (var f in FeatureChoices)
+        {
+            var (ready, note) = Status(f.Key);
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="f-@f.Key" checked="@features[f.Key]" disabled="@(f.Key == "TextMessages" && !OperatingSystem.IsMacOS() && !features[f.Key])"
+                       @onchange="e => features[f.Key] = (bool)e.Value!" />
+                <label class="form-check-label" for="f-@f.Key">
+                    <strong>@f.Title</strong> <span class="text-muted">· @f.Description</span>
+                    @if (note is not null) { <span class="badge @(ready ? "text-bg-success" : "text-bg-light border") ms-1">@note</span> }
+                </label>
+            </div>
+        }
+    </div>
+</div>
+
+@if (features["Assistant"])
+{
+    <div class="card mb-3" style="max-width: 52rem">
+        <div class="card-body">
+            <h2 class="h5">Ask (AI assistant)</h2>
+            @if (!Assistant.Providers.Any(p => p.IsConfigured))
+            {
+                <p class="text-muted mb-0">No AI service is set up yet. Ask whoever installed the app to add one.</p>
+            }
+            else
+            {
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-6">
+                        <label class="form-label" for="model">Start the Ask page on</label>
+                        <select id="model" class="form-select" @bind="defaultProvider">
+                            <option value="">The first one that's set up</option>
+                            @foreach (var p in Assistant.Providers.Where(p => p.IsConfigured)) { <option value="@p.Name">@p.Name (@p.Model)</option> }
+                        </select>
+                    </div>
+                    <div class="col-md-6 form-check">
+                        <input class="form-check-input" type="checkbox" id="photos" @bind="allowPhotos" />
+                        <label class="form-check-label" for="photos">Let it look at photos (uses more of the AI service)</label>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<div class="d-flex gap-2 align-items-center" style="max-width: 52rem">
+    <button class="btn btn-primary" disabled="@saving" @onclick="SaveAsync">@(saving ? "Saving…" : "Save")</button>
+    @if (savedHere.Count > 0)
+    {
+        <button class="btn btn-link ms-auto" disabled="@saving" @onclick="ResetAsync" title="Forget the choices made on this page and use appsettings.json again">Undo all changes made here</button>
+    }
+</div>
+
+<p class="small text-muted mt-4" style="max-width: 52rem">
+    Your data is kept on this computer: the database file <code>@DatabaseFile</code> and the files folder <code>@(Configuration["DocumentStorage:LocalPath"] ?? "App_Data/documents")</code>
+    (paths without a folder are next to the app). Back them up together.
+</p>
+
+@code {
+    private string DatabaseFile =>
+        new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(Configuration.GetConnectionString("PropertyManager") ?? "").DataSource;
+
+    private string businessName = "";
+    private int rentDueDay;
+    private int lateAfterDays;
+    private string defaultProvider = "";
+    private bool allowPhotos;
+    private Dictionary<string, bool> features = [];
+    private IReadOnlyDictionary<string, string?> savedHere = new Dictionary<string, string?>();
+    private bool saving;
+    private string? status;
+
+    private record FeatureChoice(string Key, string Title, string Description);
+
+    private static readonly FeatureChoice[] FeatureChoices =
+    [
+        new("Receipts", "Receipts", "attach receipts to expenses"),
+        new("PropertyPhotos", "Property photos", "a picture of each house"),
+        new("Email", "Email", "emails with tenants from Outlook.com or Hotmail"),
+        new("Calendar", "Calendar", "Outlook.com appointments on the Dashboard and Maintenance"),
+        new("Assistant", "Ask (AI assistant)", "questions about your records in plain English"),
+        new("TextMessages", "Text messages", "texts with tenants from a Mac's Messages app"),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var f = Features.CurrentValue;
+        features = new()
+        {
+            ["Receipts"] = f.Receipts, ["PropertyPhotos"] = f.PropertyPhotos, ["Email"] = f.Email,
+            ["Calendar"] = f.Calendar, ["Assistant"] = f.Assistant, ["TextMessages"] = f.TextMessages,
+        };
+        var b = Business.CurrentValue;
+        (businessName, rentDueDay, lateAfterDays) = (b.Name ?? "", Math.Clamp(b.RentDueDay, 1, 28), Math.Clamp(b.LateAfterDays, 0, 31));
+        defaultProvider = Configuration["Assistant:DefaultProvider"] ?? "";
+        allowPhotos = Assistant.AllowPhotosByDefault;
+        savedHere = await SavedSettings.GetSavedAsync();
+    }
+
+    /// <summary>Whether a feature is ready to use, with a short note when it isn't (or needs a Mac).</summary>
+    private (bool Ready, string? Note) Status(string key) => key switch
+    {
+        "Email" or "Calendar" => EmailSettings.CurrentValue.IsConfigured ? (true, "set up") : (false, "needs setup"),
+        "Assistant" => Assistant.Providers.Where(p => p.IsConfigured).Select(p => p.Name).ToList() is { Count: > 0 } ready
+            ? (true, "set up: " + string.Join(", ", ready))
+            : (false, "needs setup"),
+        "TextMessages" => OperatingSystem.IsMacOS() ? (true, null) : (false, "needs a Mac"),
+        _ => (true, null),
+    };
+
+    private async Task SaveAsync()
+    {
+        saving = true;
+        var values = new Dictionary<string, string?>
+        {
+            ["Business:Name"] = string.IsNullOrWhiteSpace(businessName) ? null : businessName.Trim(),
+            ["Business:RentDueDay"] = rentDueDay.ToString(),
+            ["Business:LateAfterDays"] = lateAfterDays.ToString(),
+            ["Assistant:DefaultProvider"] = string.IsNullOrEmpty(defaultProvider) ? null : defaultProvider,
+            ["Assistant:AllowPhotos"] = allowPhotos ? "true" : "false",
+        };
+        foreach (var (key, on) in features)
+        {
+            values[$"Features:{key}"] = on ? "true" : "false";
+        }
+        await SavedSettings.SaveAsync(values);
+        // Reload the page so the menu shows the parts that are on.
+        Navigation.NavigateTo("/settings?saved=1", forceLoad: true);
+    }
+
+    private async Task ResetAsync()
+    {
+        saving = true;
+        await SavedSettings.SaveAsync(savedHere.Keys.ToDictionary(k => k, _ => (string?)null));
+        Navigation.NavigateTo("/settings?saved=1", forceLoad: true);
+    }
+
+    [SupplyParameterFromQuery] public int Saved { get; set; }
+
+    protected override void OnParametersSet() => status = Saved == 1 ? "Settings saved." : null;
+
+    private static string Suffix(int day) => (day % 100) switch { 11 or 12 or 13 => "th", _ => (day % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" } };
+}

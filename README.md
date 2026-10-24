@@ -4,7 +4,7 @@ Property management code that generates tax reports and keeps track of expenses 
 
 A Blazor (ASP.NET Core, .NET 10) app for managing rental properties: units, tenants, leases, rent payments, expenses, maintenance requests, vendors, bank imports, and an annual profit and loss report laid out by IRS Schedule E line.
 
-Data is stored in a local SQLite file (`src/PropertyManager.Web/propertymanager.db`) with EF Core. On first run the database is created and seeded with:
+Data is stored in a local SQLite file (`src/PropertyManager.Web/propertymanager.db`) with EF Core. On first run the database is created and a short setup asks for the business name, the properties and units, and which parts of the app to use (see **First-run setup and Settings**). The owner's portfolio:
 
 | Property | Unit | Market rent |
 | --- | --- | --- |
@@ -68,7 +68,7 @@ Then sign in once on **Email & calendar**. On Windows the email sign-in is kept 
 
 ### Your data
 
-A new copy on Windows starts with an empty database (just the four units). The two computers don't sync, so to use your existing data:
+A new copy on Windows starts with an empty database and the first-run setup. The two computers don't sync, so to use your existing data instead:
 
 1. Stop the app on the Mac.
 2. Copy `src/PropertyManager.Web/propertymanager.db` and the `src/PropertyManager.Web/App_Data` folder (lease files, receipts, attachments, photos) from the Mac into the same places on Windows, replacing what's there.
@@ -97,9 +97,15 @@ While the app runs on your Mac or Windows computer, your phone can open it over 
 
 The app has no sign-in, so anyone on your Wi-Fi who knows the address can open it while it runs this way; stop it with Ctrl+C when you're done. To reach it away from home, install [Tailscale](https://tailscale.com) on the computer and the phone and use the computer's Tailscale name or address instead.
 
+## First-run setup and Settings
+
+When the app starts with no properties, it opens a three-step **setup**: the business name and when rent is due and late; each property's address and units with their monthly rent; and which parts of the app to use (receipts, property photos, email, calendar, the Ask assistant, and, on a Mac, text messages). No files need editing.
+
+The **Settings** page (bottom of the menu) changes the same things later, plus which AI model the Ask page starts on and whether it can look at photos. It shows whether email, calendar, and the assistant are set up; their keys and IDs (see **Ask** and **Email**) are still added by whoever installs the app. Choices made in the app are saved in the database and override `appsettings.json`; **Undo all changes made here** goes back to the file's values.
+
 ## Configuration
 
-Settings live in `src/PropertyManager.Web/appsettings.json`. Secrets (AI keys) never go in that file: set them with `dotnet user-secrets set "<setting>" "<value>" --project src/PropertyManager.Web` or as environment variables (use `__` for `:`, e.g. `Assistant__Providers__OpenAI__ApiKey`). Every setting below has a default that matches how the app works out of the box, so you only add what you want to change. [docs/appsettings.example.json](docs/appsettings.example.json) shows a complete example for a new installation.
+Settings live in `src/PropertyManager.Web/appsettings.json`; the ones on the Settings page can also be changed there in the app, which takes precedence. Secrets (AI keys) never go in that file: set them with `dotnet user-secrets set "<setting>" "<value>" --project src/PropertyManager.Web` or as environment variables (use `__` for `:`, e.g. `Assistant__Providers__OpenAI__ApiKey`). Every setting below has a default that matches how the app works out of the box, so you only add what you want to change. [docs/appsettings.example.json](docs/appsettings.example.json) shows a complete example for a new installation.
 
 | Section | Setting | Default | What it does |
 | --- | --- | --- | --- |
@@ -107,7 +113,7 @@ Settings live in `src/PropertyManager.Web/appsettings.json`. Secrets (AI keys) n
 | `Business` | `Name` | none | Shown in the menu and at the top of the P&L PDF. |
 | | `RentDueDay` | `1` | Day rent is due (1–28); the Rent collection report counts days late from it. |
 | | `LateAfterDays` | `5` | The Rent collection report's starting grace period. |
-| `Setup` | `Properties` | none | Properties (name, street, city, state, ZIP) and units (label, market rent) created when the app starts with an empty database. Ignored once any property exists, so it never changes an existing portfolio. |
+| `Setup` | `Properties` | none | Properties (name, street, city, state, ZIP) and units (label, market rent) created when the app starts with an empty database, skipping the first-run setup's property step. Ignored once any property exists, so it never changes an existing portfolio. |
 | `Assistant` | `DefaultProvider` | first one set up | Which provider the Ask page starts on. |
 | | `AllowPhotos` | `true` | Whether "Let it look at photos" starts ticked. |
 | | `Providers:<Name>` | four examples | `Type` (`AzureFoundry`, `OpenAI`, `Anthropic`, `AnthropicFoundry`, or `Ollama`), `Model`, and `Endpoint`/`Resource` where needed; `ApiKey` in secrets. `OpenAI` also reads `OPENAI_API_KEY`, and `Endpoint` lets it use any OpenAI-compatible service. Add as many as you like under any names. |

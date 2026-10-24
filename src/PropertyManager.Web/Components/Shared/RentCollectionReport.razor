@@ -1,6 +1,6 @@
 @using PropertyManager.Core.Reports
 @inject OperatingReports Reports
-@inject IOptions<BusinessOptions> Business
+@inject IOptionsMonitor<BusinessOptions> Business
 
 <p class="text-muted" style="max-width: 52rem">
     Rent for each lease, month by month. Rent is due on the @DueDay@Suffix(DueDay); a month is <span class="badge text-bg-warning">late</span>
@@ -9,7 +9,7 @@
 <div class="d-flex align-items-center gap-2 mb-3">
     <label class="form-label mb-0" for="grace">Grace period</label>
     <select id="grace" class="form-select form-select-sm w-auto" @bind="graceDays" @bind:after="LoadAsync">
-        @foreach (var d in new[] { 0, 3, 5, 7, 10, Business.Value.LateAfterDays }.Distinct().Order())
+        @foreach (var d in new[] { 0, 3, 5, 7, 10, Business.CurrentValue.LateAfterDays }.Distinct().Order())
         {
             <option value="@d">@(d == 0 ? $"none (late after the {DueDay}{Suffix(DueDay)})" : $"{d} days (late after the {DueDay + d}{Suffix(DueDay + d)})")</option>
         }
@@ -92,7 +92,7 @@
     private IReadOnlyList<RentCollectionRow>? rows;
     private int graceDays = -1;
 
-    private int DueDay => Math.Clamp(Business.Value.RentDueDay, 1, 28);
+    private int DueDay => Math.Clamp(Business.CurrentValue.RentDueDay, 1, 28);
     private int loadedYear;
 
     protected override async Task OnParametersSetAsync()
@@ -108,7 +108,7 @@
         loadedYear = Year;
         if (graceDays < 0)
         {
-            graceDays = Math.Clamp(Business.Value.LateAfterDays, 0, 31);
+            graceDays = Math.Clamp(Business.CurrentValue.LateAfterDays, 0, 31);
         }
         rows = await Reports.GetRentCollectionAsync(Year, graceDays, dueDay: DueDay);
     }

@@ -4,7 +4,7 @@
 @inject ExpenseSplitService SplitService
 @inject RecurringExpenseService Recurring
 @inject ReceiptService Receipts
-@inject IOptions<FeatureOptions> Features
+@inject IOptionsMonitor<FeatureOptions> Features
 
 <PageTitle>Expenses</PageTitle>
 
@@ -103,7 +103,7 @@
             }
         </select>
     </div>
-    @if (Features.Value.Receipts)
+    @if (Features.CurrentValue.Receipts)
     {
         <div class="col-auto form-check align-self-center ms-2">
             <input class="form-check-input" type="checkbox" id="no-receipt" @bind="withoutReceiptOnly" />
@@ -223,7 +223,7 @@
                     <td>@e.PaidWith</td>
                     <td class="text-end">@e.Amount.ToString("C")</td>
                     <td class="text-nowrap">
-                        @if (Features.Value.Receipts)
+                        @if (Features.CurrentValue.Receipts)
                         {
                             <button class="btn btn-sm @(e.Receipts.Count > 0 ? "btn-outline-success" : "btn-outline-secondary")" title="Receipts"
                                     @onclick="() => ToggleReceipts(e.Id)">📎@(e.Receipts.Count > 0 ? $" {e.Receipts.Count}" : "")</button>
@@ -494,8 +494,8 @@
         await using var db = await DbFactory.CreateDbContextAsync();
         db.Expenses.Add(form);
         await db.SaveChangesAsync();
-        added = $"{form.Description}, {form.Amount:C} on {form.Date:d}." + (Features.Value.Receipts ? " Attach a receipt below if you have one." : "");
-        receiptsOpen = Features.Value.Receipts ? form.Id : null;
+        added = $"{form.Description}, {form.Amount:C} on {form.Date:d}." + (Features.CurrentValue.Receipts ? " Attach a receipt below if you have one." : "");
+        receiptsOpen = Features.CurrentValue.Receipts ? form.Id : null;
         receiptMessage = receiptError = null;
         form = NewForm();
         addPropertyChosen = false;

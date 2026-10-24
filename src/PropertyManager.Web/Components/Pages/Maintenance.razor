@@ -2,7 +2,7 @@
 @using PropertyManager.Core.Calendar
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
-@inject IOptions<FeatureOptions> Features
+@inject IOptionsMonitor<FeatureOptions> Features
 
 <PageTitle>Maintenance</PageTitle>
 
@@ -217,7 +217,7 @@
 
         // Appointments that could be the visit for an open request, other than ones already linked to a request.
         var open = requests.Where(r => r.IsOpen && r.CalendarEventId is null).ToList();
-        if (Features.Value.Calendar && open.Count > 0 && await db.CalendarEvents.AnyAsync())
+        if (Features.CurrentValue.Calendar && open.Count > 0 && await db.CalendarEvents.AnyAsync())
         {
             var from = new DateTimeOffset(open.Min(r => r.ReportedOn).AddDays(-4).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
             var linked = requests.Where(r => r.CalendarEventId is not null).Select(r => r.CalendarEventId!.Value).ToHashSet();

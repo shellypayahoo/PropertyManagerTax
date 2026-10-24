@@ -44,6 +44,10 @@ builder.Services.AddScoped<PropertyManager.Core.Messaging.MessageRetentionServic
 // AI models for the Ask page. API keys belong in user secrets or environment variables (see README), not appsettings.json.
 builder.Services.Configure<AssistantOptions>(builder.Configuration.GetSection(AssistantOptions.Section));
 
+// Settings changed in the app (Settings page, first-run setup) override appsettings.json.
+builder.Configuration.AddDatabaseSettings(builder.Configuration.GetConnectionString("PropertyManager"));
+builder.Services.AddScoped<SettingsService>();
+
 // Which parts of the app are on, business rules, and the starting portfolio (see "Configuration" in the README).
 builder.Services.Configure<FeatureOptions>(builder.Configuration.GetSection(FeatureOptions.Section));
 builder.Services.Configure<BusinessOptions>(builder.Configuration.GetSection(BusinessOptions.Section));
@@ -83,6 +87,8 @@ await using (var scope = app.Services.CreateAsyncScope())
     var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<PropertyManagerDbContext>>();
     await using var db = await dbFactory.CreateDbContextAsync();
     await db.Database.MigrateAsync();
+    // Pick up settings saved in the app now that the table surely exists.
+    ((IConfigurationRoot)app.Configuration).Reload();
     // Only an empty database is set up; an existing portfolio is never changed.
     await DbSeeder.SeedAsync(db, app.Configuration.GetSection(SetupOptions.Section).Get<SetupOptions>()?.Properties ?? []);
     await scope.ServiceProvider.GetRequiredService<RecurringExpenseService>().GenerateDueAsync();
