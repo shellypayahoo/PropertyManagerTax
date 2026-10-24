@@ -7,6 +7,50 @@
 
 <h1>Maintenance</h1>
 
+<div class="card mb-3">
+    <div class="card-body">
+        <h2 class="h5">New request</h2>
+<EditForm Model="form" OnValidSubmit="AddAsync" FormName="maintenance" class="row g-2 align-items-end">
+    <div class="col-md-3">
+        <label class="form-label">Unit</label>
+        <InputSelect @bind-Value="form.UnitId" class="form-select">
+            <option value="0">Select…</option>
+            @foreach (var u in units)
+            {
+                <option value="@u.Id">@u.DisplayName</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-3"><label class="form-label">Issue</label><InputText @bind-Value="form.Title" class="form-control" /></div>
+    <div class="col-md-2">
+        <label class="form-label">Priority</label>
+        <InputSelect @bind-Value="form.Priority" class="form-select">
+            @foreach (var p in Enum.GetValues<MaintenancePriority>())
+            {
+                <option value="@p">@p</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-2"><label class="form-label">Reported</label><InputDate @bind-Value="form.ReportedOn" class="form-control" /></div>
+    <div class="col-md-2">
+        <label class="form-label">Vendor</label>
+        <InputSelect @bind-Value="form.VendorId" class="form-select">
+            <option value="">—</option>
+            @foreach (var v in vendors)
+            {
+                <option value="@v.Id">@v.Name</option>
+            }
+        </InputSelect>
+    </div>
+    <div class="col-md-10"><InputTextArea @bind-Value="form.Description" class="form-control" rows="1" placeholder="Details" /></div>
+    <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Add</button></div>
+</EditForm>
+<FormError Message="@error" />
+        @if (status is not null) { <div class="alert alert-success py-1 px-2 mt-2 mb-0 small">@status</div> }
+        <p class="small text-muted mt-2 mb-0">To record what a repair cost, add an expense on the <a href="expenses">Expenses</a> page.</p>
+    </div>
+</div>
+
 <div class="form-check mb-2">
     <input class="form-check-input" type="checkbox" id="showClosed" @bind="showClosed" />
     <label class="form-check-label" for="showClosed">Show completed and cancelled</label>
@@ -14,7 +58,7 @@
 
 <table class="table align-middle">
     <thead>
-        <tr><th>Reported</th><th>Unit</th><th>Issue</th><th>Priority</th><th>Vendor</th><th>Status</th><th class="text-end">Cost</th></tr>
+        <tr><th>Reported</th><th>Unit</th><th>Issue</th><th>Priority</th><th>Vendor</th><th>Status</th><th class="text-end">Cost</th><th></th></tr>
     </thead>
     <tbody>
         @foreach (var m in requests.Where(r => showClosed || r.IsOpen))
@@ -68,39 +112,66 @@
                     else if (m.ScheduledFor is { } when) { <div class="small text-muted">Scheduled @when.ToString("d")</div> }
                 </td>
                 <td class="text-end">@(m.Expenses.Count == 0 ? "" : m.Expenses.Sum(e => e.Amount).ToString("C"))</td>
+                <td class="text-nowrap text-end"><button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(m)">Edit</button></td>
             </tr>
+            @if (editing?.Id == m.Id)
+            {
+                <tr class="table-light">
+                    <td colspan="8">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Unit</label>
+                                <select class="form-select form-select-sm" @bind="editing.UnitId">
+                                    @foreach (var u in units) { <option value="@u.Id">@u.DisplayName</option> }
+                                </select>
+                            </div>
+                            <div class="col-md-5"><label class="form-label small mb-0">Issue</label><input class="form-control form-control-sm" @bind="editing.Title" /></div>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-0">Priority</label>
+                                <select class="form-select form-select-sm" @bind="editing.Priority">
+                                    @foreach (var p in Enum.GetValues<MaintenancePriority>()) { <option value="@p">@p</option> }
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-0">Status</label>
+                                <select class="form-select form-select-sm" @bind="editing.Status">
+                                    @foreach (var st in Enum.GetValues<MaintenanceStatus>()) { <option value="@st">@st</option> }
+                                </select>
+                            </div>
+                            <div class="col-md-2"><label class="form-label small mb-0">Reported</label><input type="date" class="form-control form-control-sm" @bind="editing.ReportedOn" /></div>
+                            <div class="col-md-2"><label class="form-label small mb-0">Scheduled for</label><input type="date" class="form-control form-control-sm" @bind="editing.ScheduledFor" /></div>
+                            <div class="col-md-2"><label class="form-label small mb-0">Completed on</label><input type="date" class="form-control form-control-sm" @bind="editing.CompletedOn" disabled="@(editing.Status != MaintenanceStatus.Completed)" /></div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0">Vendor</label>
+                                <select class="form-select form-select-sm" @bind="editing.VendorId">
+                                    <option value="">—</option>
+                                    @foreach (var v in vendors) { <option value="@v.Id">@v.Name</option> }
+                                </select>
+                            </div>
+                            <div class="col-12"><label class="form-label small mb-0">Details</label><textarea class="form-control form-control-sm" rows="2" @bind="editing.Description"></textarea></div>
+                            <div class="col-12 d-flex flex-wrap align-items-center gap-2">
+                                <button class="btn btn-sm btn-primary" @onclick="SaveEditAsync">Save</button>
+                                <button class="btn btn-sm btn-link" @onclick="() => editing = null">Cancel</button>
+                                @if (confirmDelete)
+                                {
+                                    <span class="small ms-auto">Delete this request?@(m.Expenses.Count > 0 ? $" Its {m.Expenses.Count} expense(s) are kept." : "")</span>
+                                    <button class="btn btn-sm btn-danger" @onclick="DeleteAsync">Delete</button>
+                                    <button class="btn btn-sm btn-link" @onclick="() => confirmDelete = false">Keep</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-danger ms-auto" @onclick="() => confirmDelete = true">Delete…</button>
+                                }
+                            </div>
+                            <FormError Message="@editError" />
+                        </div>
+                    </td>
+                </tr>
+            }
         }
     </tbody>
 </table>
 
-<h2 class="h4 mt-4">New request</h2>
-<EditForm Model="form" OnValidSubmit="AddAsync" FormName="maintenance" class="row g-2 align-items-end">
-    <div class="col-md-3">
-        <label class="form-label">Unit</label>
-        <InputSelect @bind-Value="form.UnitId" class="form-select">
-            <option value="0">Select…</option>
-            @foreach (var u in units)
-            {
-                <option value="@u.Id">@u.DisplayName</option>
-            }
-        </InputSelect>
-    </div>
-    <div class="col-md-3"><label class="form-label">Issue</label><InputText @bind-Value="form.Title" class="form-control" /></div>
-    <div class="col-md-2">
-        <label class="form-label">Priority</label>
-        <InputSelect @bind-Value="form.Priority" class="form-select">
-            @foreach (var p in Enum.GetValues<MaintenancePriority>())
-            {
-                <option value="@p">@p</option>
-            }
-        </InputSelect>
-    </div>
-    <div class="col-md-2"><label class="form-label">Reported</label><InputDate @bind-Value="form.ReportedOn" class="form-control" /></div>
-    <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Add</button></div>
-    <div class="col-12"><InputTextArea @bind-Value="form.Description" class="form-control" rows="2" placeholder="Details" /></div>
-</EditForm>
-<FormError Message="@error" />
-<p class="small text-muted mt-2">To record what a repair cost, add an expense on the <a href="expenses">Expenses</a> page.</p>
 
 @code {
     private List<MaintenanceRequest> requests = [];
@@ -109,6 +180,10 @@
     private MaintenanceRequest form = new();
     private bool showClosed;
     private string? error;
+    private string? status;
+    private MaintenanceRequest? editing;
+    private bool confirmDelete;
+    private string? editError;
     private DateOnly today;
     private List<CalendarEvent> calendarEvents = [];
     private readonly HashSet<(int RequestId, int EventId)> dismissed = [];
@@ -156,14 +231,63 @@
         if (form.UnitId == 0 || string.IsNullOrWhiteSpace(form.Title))
         {
             error = "Select a unit and describe the issue.";
+            status = null;
             return;
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
         db.MaintenanceRequests.Add(form);
         await db.SaveChangesAsync();
+        status = $"Added \"{form.Title}\".";
         form = NewForm();
         error = null;
+        await LoadAsync();
+    }
+
+    private void StartEdit(MaintenanceRequest m)
+    {
+        confirmDelete = false;
+        editError = null;
+        editing = new MaintenanceRequest
+        {
+            Id = m.Id, UnitId = m.UnitId, Title = m.Title, Description = m.Description, Priority = m.Priority, Status = m.Status,
+            ReportedOn = m.ReportedOn, ScheduledFor = m.ScheduledFor, CompletedOn = m.CompletedOn, VendorId = m.VendorId,
+        };
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (string.IsNullOrWhiteSpace(editing!.Title))
+        {
+            editError = "Describe the issue.";
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var request = await db.MaintenanceRequests.FindAsync(editing.Id);
+        if (request is not null)
+        {
+            request.UnitId = editing.UnitId;
+            request.Title = editing.Title.Trim();
+            request.Description = string.IsNullOrWhiteSpace(editing.Description) ? null : editing.Description.Trim();
+            request.Priority = editing.Priority;
+            request.Status = editing.Status;
+            request.ReportedOn = editing.ReportedOn;
+            request.ScheduledFor = editing.ScheduledFor;
+            request.CompletedOn = editing.Status == MaintenanceStatus.Completed ? editing.CompletedOn ?? today : null;
+            request.VendorId = editing.VendorId;
+            await db.SaveChangesAsync();
+        }
+        editing = null;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // Expenses for the request are kept (their link is cleared).
+        await db.Expenses.Where(e => e.MaintenanceRequestId == editing!.Id).ExecuteUpdateAsync(u => u.SetProperty(e => e.MaintenanceRequestId, (int?)null));
+        await db.MaintenanceRequests.Where(r => r.Id == editing!.Id).ExecuteDeleteAsync();
+        editing = null;
         await LoadAsync();
     }
 
