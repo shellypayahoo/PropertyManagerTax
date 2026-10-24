@@ -28,7 +28,8 @@ public class AssistantService(IOptionsMonitor<AssistantOptions> options, Assista
     public IReadOnlyList<AssistantProviderOptions> Providers =>
         options.CurrentValue.Providers.Select(p => { p.Value.Name = p.Key; return p.Value; }).ToList();
 
-    public async Task<AssistantReply> AskAsync(AssistantConversation conversation, string providerName, string question, CancellationToken ct = default)
+    /// <param name="allowPhotos">Whether the assistant may look at photos (each one it looks at is an extra request with the image).</param>
+    public async Task<AssistantReply> AskAsync(AssistantConversation conversation, string providerName, string question, CancellationToken ct = default, bool allowPhotos = false)
     {
         var provider = Providers.FirstOrDefault(p => p.Name == providerName)
             ?? throw new InvalidOperationException($"No AI model named \"{providerName}\" is set up.");
@@ -52,9 +53,9 @@ public class AssistantService(IOptionsMonitor<AssistantOptions> options, Assista
 
         var userMessage = new ChatMessage(ChatRole.User, question);
         List<ChatMessage> messages = [new(ChatRole.System, SystemPrompt(DateTime.Now)), .. conversation.History, userMessage];
-        var chatOptions = new ChatOptions { Tools = tools.All() };
-
         using var client = createClient(provider);
+        tools.PhotoDescriber = allowPhotos ? (bytes, mediaType, ask, token) => DescribePhotoAsync(client, bytes, mediaType, ask, token) : null;
+        var chatOptions = new ChatOptions { Tools = tools.All() };
         ChatResponse response;
         using (conversation.FallbackState.Use())
         {
@@ -83,13 +84,27 @@ public class AssistantService(IOptionsMonitor<AssistantOptions> options, Assista
         return new AssistantReply(text, lookups, declined, provider.Name);
     }
 
+    /// <summary>A separate request to the same model with just the photo and the question, so it works with any provider.</summary>
+    private static async Task<string> DescribePhotoAsync(IChatClient client, byte[] bytes, string mediaType, string question, CancellationToken ct)
+    {
+        List<ChatMessage> messages =
+        [
+            new(ChatRole.System, "You look at photos for the owner of rental properties. Answer the question about the photo plainly and specifically: what it shows, any damage or condition issues, and any readable text, amounts, or dates. Say so if the photo doesn't show what's asked."),
+            new(ChatRole.User, [new TextContent(question), new DataContent(bytes, mediaType)]),
+        ];
+        var response = await client.GetResponseAsync(messages, new ChatOptions(), ct);
+        return response.FinishReason == ChatFinishReason.ContentFilter || string.IsNullOrWhiteSpace(response.Text)
+            ? "(the model didn't describe this photo)"
+            : response.Text;
+    }
+
     private static string Describe(IDictionary<string, object?>? arguments) =>
         arguments is null ? "" : string.Join(", ", arguments.Where(a => a.Value is not null && a.Value.ToString() != "").Select(a => $"{a.Key}: {a.Value}"));
 
     public static string SystemPrompt(DateTime now) => $"""
         You help the owner of four rental units in Washington, DC answer questions about their rental business. Today is {now:dddd, MMMM d, yyyy}.
 
-        You can look things up with the tools: text messages and emails exchanged with tenants and vendors, the contacts those messages are with, uploaded lease documents and email attachments (signed leases, addenda, inspection reports), properties, units, leases and tenants, rent payments, expenses, maintenance requests, and the annual Schedule E profit and loss. Look things up rather than guessing, and make as many lookups as the question needs. Message search matches every word given, so search for one or two distinctive words, try other wordings (for example "leak", "water", "drip") if the first search finds nothing, and read the surrounding conversation with get_conversation when context matters.
+        You can look things up with the tools: text messages and emails exchanged with tenants and vendors (with the photos and files sent in them), the contacts those messages are with, uploaded lease documents and email attachments (signed leases, addenda, inspection reports), properties, units, leases and tenants, rent payments, expenses, maintenance requests, and the annual Schedule E profit and loss. Look things up rather than guessing, and make as many lookups as the question needs. Message search matches every word given, so search for one or two distinctive words, try other wordings (for example "leak", "water", "drip") if the first search finds nothing, and read the surrounding conversation with get_conversation when context matters.
 
         For questions about lease terms or rules (pets, late fees, repairs, utilities, notice periods), search the uploaded documents and read the relevant part. When an answer relies on a document, name the file and page and quote the key wording briefly. The lease records hold only dates, rent, and deposit; the documents hold the actual terms.
 

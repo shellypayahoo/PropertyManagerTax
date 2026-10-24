@@ -158,6 +158,57 @@ public sealed class AssistantTests : IDisposable
     }
 
     [Fact]
+    public async Task Ask_WithPhotosAllowed_DescribesATextedPhoto()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "pm-photo-" + Guid.NewGuid().ToString("N"));
+        var storage = new PropertyManager.Core.Storage.LocalDocumentStorage(root);
+        int photoId;
+        await using (var db = dbFactory.CreateDbContext())
+        {
+            var message = await db.TextMessages.SingleAsync(m => m.Guid == "1");
+            var attachment = new TextAttachment
+            {
+                TextMessageId = message.Id, Guid = "ATT-1", FileName = "IMG_0001.HEIC", ContentType = "image/heic", SizeBytes = 4,
+                Status = TextAttachmentStatus.Saved, StorageKey = await storage.SaveAsync(new MemoryStream([1, 2, 3, 4]), "IMG_0001.HEIC"),
+                PreviewKey = await storage.SaveAsync(new MemoryStream([0xFF, 0xD8, 0xFF]), "IMG_0001.jpg"),
+            };
+            db.TextAttachments.Add(attachment);
+            await db.SaveChangesAsync();
+            photoId = attachment.Id;
+        }
+        var photoTools = new AssistantTools(dbFactory, new TextMessageSearch(dbFactory), new ReportService(dbFactory), null, storage);
+        Assert.Contains($"[photo IMG_0001.HEIC (attachment T{photoId})]", await photoTools.SearchTextMessagesAsync("leak"));
+
+        var model = new ScriptedChatClient(
+            _ => new ChatResponse(new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call1", "describe_photo", new Dictionary<string, object?> { ["attachmentId"] = $"T{photoId}", ["question"] = "How bad is the leak?" })])),
+            photo =>
+            {
+                var image = photo.SelectMany(m => m.Contents).OfType<DataContent>().Single();
+                Assert.Equal(("image/jpeg", 3), (image.MediaType, image.Data.Length));
+                Assert.Contains("How bad is the leak?", photo.Last().Text);
+                return new ChatResponse(new ChatMessage(ChatRole.Assistant, "Water pooled under the sink."));
+            },
+            final =>
+            {
+                Assert.Contains("Water pooled under the sink.", final.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Single().Result?.ToString());
+                return new ChatResponse(new ChatMessage(ChatRole.Assistant, "The photo shows water pooled under the sink."));
+            });
+        var options = new AssistantOptions { Providers = { ["Fake"] = new() { Type = AssistantProviderType.Ollama, Model = "fake" } } };
+        var service = new AssistantService(new StaticOptions(options), photoTools, _ => new ChatClientBuilder(model).UseFunctionInvocation().Build());
+
+        var reply = await service.AskAsync(new AssistantConversation(), "Fake", "How bad was the leak in Jane's photo?", allowPhotos: true);
+
+        Assert.Equal("The photo shows water pooled under the sink.", reply.Text);
+        Assert.Equal("describe_photo", reply.Lookups.Single().Tool);
+        var plain = new AssistantService(new StaticOptions(options), photoTools,
+            _ => new ScriptedChatClient(_ => new ChatResponse(new ChatMessage(ChatRole.Assistant, "ok"))));
+        await plain.AskAsync(new AssistantConversation(), "Fake", "Again", allowPhotos: false);
+        Assert.Null(photoTools.PhotoDescriber);
+        Assert.DoesNotContain(photoTools.All(), t => t.Name == "describe_photo");
+        Directory.Delete(root, recursive: true);
+    }
+
+    [Fact]
     public async Task Ask_DeclinedAnswer_IsReportedAndNotKept()
     {
         var model = new ScriptedChatClient(_ => new ChatResponse(new ChatMessage(ChatRole.Assistant, "")) { FinishReason = ChatFinishReason.ContentFilter });
@@ -274,7 +325,8 @@ public sealed class AssistantTests : IDisposable
         {
             var list = messages.ToList();
             Received.Add(list);
-            return Task.FromResult(responses[next++](list));
+            // Once the script runs out, keep answering with the last response.
+            return Task.FromResult(responses[Math.Min(next++, responses.Length - 1)](list));
         }
 
         public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>

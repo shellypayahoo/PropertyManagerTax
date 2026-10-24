@@ -32,6 +32,7 @@ builder.Services.AddScoped<MortgageImportService>();
 builder.Services.AddScoped<LeaseDocumentService>();
 builder.Services.AddScoped<ExpenseSplitService>();
 builder.Services.AddScoped<RecurringExpenseService>();
+builder.Services.AddSingleton<PropertyManager.Core.Messaging.IImageConverter, PropertyManager.Core.Messaging.SipsImageConverter>();
 builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageImportService>();
 builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageSearch>();
 
@@ -114,6 +115,31 @@ app.MapGet("/documents/{id:int}", async (int id, bool? download, IDbContextFacto
 });
 app.MapGet("/reports/{year:int}/profit-and-loss.pdf", async (int year, bool? detail, PropertyManager.Core.Reports.ProfitAndLossPdf pdf, CancellationToken ct) =>
     Results.File(await pdf.CreateAsync(year, detail == true, ct), "application/pdf", PropertyManager.Core.Reports.ProfitAndLossPdf.FileName(year)));
+
+// size: "thumb" (small JPEG), "preview" (JPEG up to 1600px), or omitted for the original file.
+app.MapGet("/text-attachments/{id:int}", async (int id, string? size, bool? download, IDbContextFactory<PropertyManagerDbContext> dbFactory,
+    IDocumentStorage storage, HttpContext http, CancellationToken ct) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync(ct);
+    var attachment = await db.TextAttachments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+    var (key, type) = size switch
+    {
+        "thumb" when attachment?.ThumbnailKey is { } k => (k, "image/jpeg"),
+        "preview" when attachment?.PreviewKey is { } k => (k, "image/jpeg"),
+        _ => (attachment?.StorageKey, attachment?.ContentType),
+    };
+    var stream = key is null ? null : await storage.OpenReadAsync(key, ct);
+    if (stream is null)
+    {
+        return Results.NotFound();
+    }
+
+    http.Response.Headers.XContentTypeOptions = "nosniff";
+    http.Response.Headers.CacheControl = "private, max-age=86400";
+    return download == true
+        ? Results.File(stream, attachment!.ContentType, attachment.FileName)
+        : Results.File(stream, type ?? "application/octet-stream", enableRangeProcessing: true);
+});
 
 app.MapGet("/email-attachments/{id:int}", async (int id, bool? download, IDbContextFactory<PropertyManagerDbContext> dbFactory,
     IDocumentStorage storage, HttpContext http, CancellationToken ct) =>

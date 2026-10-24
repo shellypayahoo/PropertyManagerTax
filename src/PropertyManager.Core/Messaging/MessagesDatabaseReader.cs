@@ -10,6 +10,9 @@ public record MessagesHandleStats(string Handle, int MessageCount, DateTimeOffse
 public record MessagesRow(
     long RowId, string Guid, long ChatId, string? SenderHandle, bool IsFromMe, DateTimeOffset SentAt, string Text, int AttachmentCount);
 
+/// <summary>A file sent with a message. <see cref="Path"/> is where Messages keeps it on this Mac (it may not be downloaded).</summary>
+public record MessagesAttachment(long MessageRowId, string Guid, string? Path, string FileName, string? MimeType, long TotalBytes);
+
 /// <summary>
 /// Reads conversations from a copy of the Messages database (<c>~/Library/Messages/chat.db</c>). Never opens the live
 /// file: Messages keeps it open and recent messages may still be in the write-ahead log, so the database and its
@@ -164,6 +167,64 @@ public sealed class MessagesDatabaseReader : IDisposable
                 attachments));
         }
         return rows;
+    }
+
+    /// <summary>
+    /// Files attached to the given messages, skipping stickers and the link-preview payloads Messages stores as
+    /// attachments. A leading "~" in the stored path is expanded to the home folder.
+    /// </summary>
+    public IReadOnlyList<MessagesAttachment> ReadAttachments(IReadOnlyCollection<long> messageRowIds)
+    {
+        var attachments = new List<MessagesAttachment>();
+        if (messageRowIds.Count == 0)
+        {
+            return attachments;
+        }
+
+        var hasStickerColumn = false;
+        using (var columns = connection.CreateCommand())
+        {
+            columns.CommandText = "SELECT name FROM pragma_table_info('attachment')";
+            using var reader = columns.ExecuteReader();
+            while (reader.Read())
+            {
+                hasStickerColumn |= reader.GetString(0) == "is_sticker";
+            }
+        }
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        foreach (var batch in messageRowIds.Chunk(500))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"""
+                SELECT maj.message_id, a.guid, a.filename, a.transfer_name, a.mime_type, a.total_bytes
+                FROM message_attachment_join maj
+                JOIN attachment a ON a.ROWID = maj.attachment_id
+                WHERE maj.message_id IN ({string.Join(',', batch)}){(hasStickerColumn ? " AND COALESCE(a.is_sticker, 0) = 0" : "")}
+                """;
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var path = reader.IsDBNull(2) ? null : reader.GetString(2);
+                if (path?.EndsWith(".pluginPayloadAttachment", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    continue;
+                }
+                if (path is not null && path.StartsWith("~/", StringComparison.Ordinal))
+                {
+                    path = System.IO.Path.Combine(home, path[2..]);
+                }
+                var name = reader.IsDBNull(3) || reader.GetString(3).Length == 0 ? System.IO.Path.GetFileName(path) ?? "attachment" : reader.GetString(3);
+                attachments.Add(new MessagesAttachment(
+                    reader.GetInt64(0),
+                    reader.GetString(1),
+                    path,
+                    name,
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.IsDBNull(5) ? 0 : reader.GetInt64(5)));
+            }
+        }
+        return attachments;
     }
 
     public static DateTimeOffset ToDate(long appleTime) =>

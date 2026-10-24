@@ -52,7 +52,7 @@ public sealed class DocumentTextTests : IDisposable
         }
     }
 
-    private static byte[] Pdf(params string[][] pages)
+    internal static byte[] Pdf(params string[][] pages)
     {
         var builder = new PdfDocumentBuilder();
         var font = builder.AddStandard14Font(Standard14Font.Helvetica);

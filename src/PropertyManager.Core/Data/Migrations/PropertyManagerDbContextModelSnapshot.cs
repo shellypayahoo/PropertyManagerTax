@@ -837,6 +837,63 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("Tenants");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.TextAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Guid")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreviewKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TextMessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ThumbnailKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Guid")
+                        .IsUnique();
+
+                    b.HasIndex("TextMessageId");
+
+                    b.ToTable("TextAttachments");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.TextMessage", b =>
                 {
                     b.Property<int>("Id")
@@ -1247,6 +1304,17 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Lease");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.TextAttachment", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.TextMessage", "TextMessage")
+                        .WithMany("Attachments")
+                        .HasForeignKey("TextMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TextMessage");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.TextMessage", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.Tenant", "Tenant")
@@ -1312,6 +1380,11 @@ namespace PropertyManager.Core.Data.Migrations
             modelBuilder.Entity("PropertyManager.Core.Entities.RecurringExpense", b =>
                 {
                     b.Navigation("Targets");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.TextMessage", b =>
+                {
+                    b.Navigation("Attachments");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Unit", b =>

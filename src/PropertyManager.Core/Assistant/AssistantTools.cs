@@ -7,6 +7,7 @@ using PropertyManager.Core.Data;
 using PropertyManager.Core.Entities;
 using PropertyManager.Core.Messaging;
 using PropertyManager.Core.Services;
+using PropertyManager.Core.Storage;
 
 namespace PropertyManager.Core.Assistant;
 
@@ -14,14 +15,24 @@ namespace PropertyManager.Core.Assistant;
 /// Read-only functions the assistant can call to look things up. Each returns plain text, one item per line,
 /// so any model can read it. Nothing here changes data.
 /// </summary>
-public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactory, TextMessageSearch search, ReportService reports, TimeProvider? time = null)
+public class AssistantTools(
+    IDbContextFactory<PropertyManagerDbContext> dbFactory, TextMessageSearch search, ReportService reports, TimeProvider? time = null,
+    IDocumentStorage? storage = null, IImageConverter? images = null)
 {
+    /// <summary>
+    /// Asks the current AI model about a photo: (JPEG/PNG bytes, media type, question) → answer. Set by
+    /// <see cref="AssistantService"/> for each question when photos are allowed; null means describe_photo isn't offered.
+    /// </summary>
+    public Func<byte[], string, string, CancellationToken, Task<string>>? PhotoDescriber { get; set; }
+
     private const int MaxMessages = 150;
     private static readonly CultureInfo Us = CultureInfo.GetCultureInfo("en-US");
 
     private DateOnly Today => DateOnly.FromDateTime((time ?? TimeProvider.System).GetLocalNow().DateTime);
 
-    public IList<AITool> All() =>
+    public IList<AITool> All() => PhotoDescriber is null ? Base() : [.. Base(), AIFunctionFactory.Create(DescribePhotoAsync, "describe_photo")];
+
+    private IList<AITool> Base() =>
     [
         AIFunctionFactory.Create(SearchTextMessagesAsync, "search_text_messages"),
         AIFunctionFactory.Create(GetConversationAsync, "get_conversation"),
@@ -335,7 +346,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
             """;
     }
 
-    [Description("Lists documents: files uploaded to leases (signed leases, addenda, inspection reports) and files attached to imported emails. Shows id, file name, where it's from, date, and whether its text can be read. Photos and scanned PDFs have no readable text.")]
+    [Description("Lists documents: files uploaded to leases (signed leases, addenda, inspection reports) and files attached to imported emails and texts. Shows id, file name, where it's from, date, and whether its text can be read. Photos and scanned PDFs have no readable text.")]
     public async Task<string> ListDocumentsAsync(CancellationToken ct = default)
     {
         var documents = await LoadDocumentsAsync(ct);
@@ -354,7 +365,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         return text.ToString();
     }
 
-    [Description("Searches the text of documents: files uploaded to leases and PDF/Word files attached to emails. Every word must appear somewhere in a document (case-insensitive). Returns matching documents with short excerpts around the words, each with its page and character position; use read_document to read more.")]
+    [Description("Searches the text of documents: files uploaded to leases and PDF/Word files attached to emails and texts. Every word must appear somewhere in a document (case-insensitive). Returns matching documents with short excerpts around the words, each with its page and character position; use read_document to read more.")]
     public async Task<string> SearchDocumentsAsync(
         [Description("Words to look for, e.g. \"pets\" or \"late fee\".")] string query,
         [Description("Optional: only documents whose lease or email matches this tenant, sender, unit, or property (e.g. \"Taylor\").")] string? lease = null,
@@ -388,7 +399,7 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
 
     [Description("Reads the text of one document, 12,000 characters at a time. PDF pages are marked [Page N].")]
     public async Task<string> ReadDocumentAsync(
-        [Description("The document id from list_documents, search_documents, or an email's attachments, e.g. \"L3\" or \"E12\".")] string documentId,
+        [Description("The document id from list_documents, search_documents, or an email's attachments, e.g. \"L3\", \"E12\", or \"T7\".")] string documentId,
         [Description("Character position to start reading from (default 0, the beginning).")] int fromCharacter = 0,
         CancellationToken ct = default)
     {
@@ -422,6 +433,11 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
             .Include(a => a.EmailMessage).ThenInclude(m => m!.Tenant)
             .Include(a => a.EmailMessage).ThenInclude(m => m!.Vendor)
             .ToListAsync(ct);
+        var textFiles = await db.TextAttachments.AsNoTracking()
+            .Include(a => a.TextMessage)
+            .Where(a => a.Status == TextAttachmentStatus.Saved && !a.ContentType.StartsWith("image/") && !a.ContentType.StartsWith("video/"))
+            .ToListAsync(ct);
+        var names = await db.MessageContacts.AsNoTracking().Where(c => c.Name != null).ToDictionaryAsync(c => c.Handle, c => c.Name!, ct);
 
         return leaseDocuments
             .OrderBy(d => d.Lease?.Unit?.DisplayName).ThenBy(d => d.UploadedAt.UtcTicks)
@@ -429,6 +445,11 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
             .Concat(attachments
                 .OrderBy(a => a.EmailMessage!.SentAt.UtcTicks)
                 .Select(a => new DocumentInfo("E" + a.Id, a.FileName, EmailLabel(a.EmailMessage!), a.EmailMessage!.SentAt, a.ContentType, a.Text)))
+            .Concat(textFiles
+                .OrderBy(a => a.TextMessage!.SentAt.UtcTicks)
+                .Select(a => new DocumentInfo("T" + a.Id, a.FileName,
+                    $"sent by text {(a.TextMessage!.IsFromMe ? "from Me to" : "from")} {names.GetValueOrDefault(a.TextMessage.ContactHandle) ?? a.TextMessage.ContactHandle}, {a.TextMessage.SentAt.ToLocalTime():yyyy-MM-dd}",
+                    a.TextMessage.SentAt, a.ContentType, a.Text)))
             .ToList();
     }
 
@@ -515,11 +536,100 @@ public class AssistantTools(IDbContextFactory<PropertyManagerDbContext> dbFactor
         {
             var sender = m.IsFromMe ? "Me" : Name(m.SenderHandle ?? m.ContactHandle);
             var chat = m.IsGroupChat ? $" (group chat with {Name(m.ContactHandle)})" : m.IsFromMe ? $" (to {Name(m.ContactHandle)})" : "";
-            var attachments = m.AttachmentCount > 0 ? $" [{m.AttachmentCount} attachment(s)]" : "";
+            var attachments = m.Attachments.Count > 0
+                ? " [" + string.Join("; ", m.Attachments.Select(Describe)) + "]"
+                : m.AttachmentCount > 0 ? $" [{m.AttachmentCount} attachment(s)]" : "";
             text.AppendLine($"[{m.SentAt.ToLocalTime().ToString("yyyy-MM-dd ddd h:mm tt", Us)}] {sender}{chat}: {m.Text}{attachments}");
         }
         return text.ToString();
     }
+
+    private static string Describe(TextAttachment a) => a.Status switch
+    {
+        TextAttachmentStatus.NotOnMac => $"{a.FileName}, not downloaded",
+        TextAttachmentStatus.TooLarge => $"{a.FileName}, too large to copy",
+        _ when a.IsImage => $"photo {a.FileName} (attachment T{a.Id})",
+        _ when a.IsVideo => $"video {a.FileName}",
+        _ => $"file {a.FileName} (document T{a.Id})",
+    };
+
+    [Description("Looks at a photo sent by text (id \"T…\") or email (id \"E…\") and answers a question about it, e.g. what damage it shows or what a document in it says. Use when a message's text doesn't say enough and the photo matters to the question.")]
+    public async Task<string> DescribePhotoAsync(
+        [Description("The photo's attachment id from a message, e.g. \"T12\" or \"E5\".")] string attachmentId,
+        [Description("What to find out from the photo, in the context of the owner's question.")] string question,
+        CancellationToken ct = default)
+    {
+        if (PhotoDescriber is null || storage is null)
+        {
+            return "Looking at photos is turned off.";
+        }
+        var id = attachmentId.Trim().TrimStart('#').ToUpperInvariant();
+        if (id.Length < 2 || !int.TryParse(id[1..], out var number))
+        {
+            return $"\"{attachmentId}\" isn't a photo id; use the T… or E… id shown with the message.";
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        (byte[] Bytes, string Type)? photo = null;
+        string label;
+        if (id[0] == 'T' && await db.TextAttachments.AsNoTracking().Include(a => a.TextMessage).FirstOrDefaultAsync(a => a.Id == number, ct) is { IsImage: true } text)
+        {
+            label = $"{text.FileName}, texted{(text.TextMessage!.IsFromMe ? " by Me" : "")} on {text.TextMessage.SentAt.ToLocalTime().ToString("yyyy-MM-dd", Us)}";
+            photo = text.PreviewKey is { } preview ? (await ReadAsync(preview, ct), "image/jpeg")
+                : text.StorageKey is { } original && WebImageType(text.ContentType) is { } type ? (await ReadAsync(original, ct), type)
+                : null;
+        }
+        else if (id[0] == 'E' && await db.EmailAttachments.AsNoTracking().Include(a => a.EmailMessage).FirstOrDefaultAsync(a => a.Id == number, ct) is { } email
+            && email.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            label = $"{email.FileName}, emailed on {email.EmailMessage!.SentAt.ToLocalTime().ToString("yyyy-MM-dd", Us)} (subject \"{email.EmailMessage.Subject}\")";
+            photo = await EmailPhotoAsync(email, ct);
+        }
+        else
+        {
+            return $"There's no photo {attachmentId}.";
+        }
+
+        if (photo is not { } p)
+        {
+            return $"{label}: this picture's format can't be sent to the model (it can be opened in the app).";
+        }
+        return $"{label}: {await PhotoDescriber(p.Bytes, p.Type, question, ct)}";
+    }
+
+    private async Task<byte[]> ReadAsync(string key, CancellationToken ct)
+    {
+        await using var stream = await storage!.OpenReadAsync(key, ct) ?? throw new FileNotFoundException("The photo file is missing.");
+        using var copy = new MemoryStream();
+        await stream.CopyToAsync(copy, ct);
+        return copy.ToArray();
+    }
+
+    /// <summary>An emailed picture, converted to a JPEG of at most 1600 pixels when the converter is available.</summary>
+    private async Task<(byte[], string)?> EmailPhotoAsync(EmailAttachment email, CancellationToken ct)
+    {
+        var bytes = await ReadAsync(email.StorageKey, ct);
+        if (images is not null)
+        {
+            var temp = Path.Combine(Path.GetTempPath(), $"pm-photo-{Guid.NewGuid():N}{Path.GetExtension(email.FileName)}");
+            try
+            {
+                await File.WriteAllBytesAsync(temp, bytes, ct);
+                if (await images.ToJpegAsync(temp, TextMessageImportService.PreviewPixels, ct) is { } jpeg)
+                {
+                    return (jpeg, "image/jpeg");
+                }
+            }
+            finally
+            {
+                File.Delete(temp);
+            }
+        }
+        return WebImageType(email.ContentType) is { } type ? (bytes, type) : null;
+    }
+
+    private static string? WebImageType(string contentType) =>
+        contentType.ToLowerInvariant() is "image/jpeg" or "image/png" or "image/gif" or "image/webp" ? contentType.ToLowerInvariant() : null;
 
     private static bool Contains(string? value, string part) => value?.Contains(part, StringComparison.OrdinalIgnoreCase) == true;
 

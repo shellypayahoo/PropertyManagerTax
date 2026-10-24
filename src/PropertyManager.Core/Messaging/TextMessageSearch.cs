@@ -11,7 +11,7 @@ public class TextMessageSearch(IDbContextFactory<PropertyManagerDbContext> dbFac
         string? query, string? contactHandle = null, DateTimeOffset? from = null, DateTimeOffset? to = null, int limit = 200, CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var messages = db.TextMessages.AsNoTracking().Include(m => m.Tenant).Include(m => m.Vendor).AsQueryable();
+        var messages = db.TextMessages.AsNoTracking().Include(m => m.Tenant).Include(m => m.Vendor).Include(m => m.Attachments).AsQueryable();
         if (contactHandle is not null)
         {
             messages = messages.Where(m => m.ContactHandle == contactHandle);

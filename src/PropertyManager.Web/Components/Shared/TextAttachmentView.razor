@@ -1,0 +1,39 @@
+@* One photo, video, or file in a text conversation. *@
+
+@if (Attachment.Status != TextAttachmentStatus.Saved)
+{
+    <span class="small fst-italic @(OnDark ? "text-white-50" : "text-muted")">
+        📎 @Attachment.FileName @(Attachment.Status == TextAttachmentStatus.NotOnMac ? "(not downloaded to this Mac)" : $"(too large to copy, {Size})")
+    </span>
+}
+else if (Attachment.IsImage)
+{
+    var full = Attachment.PreviewKey is not null ? $"text-attachments/{Attachment.Id}?size=preview" : $"text-attachments/{Attachment.Id}";
+    var thumb = Attachment.ThumbnailKey is not null ? $"text-attachments/{Attachment.Id}?size=thumb" : full;
+    <a href="@full" target="_blank" title="@Attachment.FileName">
+        <img src="@thumb" alt="@Attachment.FileName" loading="lazy" class="rounded border" style="max-width: 180px; max-height: 180px; object-fit: cover" />
+    </a>
+}
+else if (Attachment.IsVideo)
+{
+    <video src="text-attachments/@Attachment.Id" controls preload="metadata" class="rounded" style="max-width: 260px; max-height: 200px"></video>
+}
+else
+{
+    <a href="text-attachments/@Attachment.Id" target="_blank" class="small @(OnDark ? "link-light" : "")">📄 @Attachment.FileName</a>
+    <span class="small @(OnDark ? "text-white-50" : "text-muted")">@Size</span>
+}
+
+@code {
+    [Parameter, EditorRequired] public TextAttachment Attachment { get; set; } = default!;
+
+    /// <summary>True inside your own (blue) message bubbles.</summary>
+    [Parameter] public bool OnDark { get; set; }
+
+    private string Size => Attachment.SizeBytes switch
+    {
+        >= 1024 * 1024 => $"{Attachment.SizeBytes / 1024d / 1024d:0.#} MB",
+        >= 1024 => $"{Attachment.SizeBytes / 1024d:0} KB",
+        _ => $"{Attachment.SizeBytes} bytes",
+    };
+}

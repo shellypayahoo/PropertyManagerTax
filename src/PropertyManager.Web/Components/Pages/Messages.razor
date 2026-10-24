@@ -94,7 +94,8 @@
                 {
                     <p class="small text-muted mb-0">@(imported == 0 ? "Nothing imported yet: tick contacts, then click Import." : "No messages match.")</p>
                 }
-                @foreach (var m in results)
+                @* Newest first. *@
+                @foreach (var m in results.OrderByDescending(m => m.SentAt))
                 {
                     <div class="d-flex @(m.IsFromMe ? "justify-content-end" : "") mb-2">
                         <div class="rounded-3 px-3 py-2 @(m.IsFromMe ? "bg-primary text-white" : "bg-body border")" style="max-width: 80%">
@@ -102,7 +103,19 @@
                                 @(m.IsFromMe ? "You" : WhoSent(m)) · @m.SentAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")@(m.IsGroupChat ? " · group" : "")
                             </div>
                             @if (m.Text.Length > 0) { <div style="white-space: pre-wrap">@m.Text</div> }
-                            @if (m.AttachmentCount > 0) { <div class="small fst-italic">📎 @m.AttachmentCount attachment@(m.AttachmentCount == 1 ? "" : "s")</div> }
+                            @if (m.Attachments.Count > 0)
+                            {
+                                <div class="d-flex flex-wrap gap-2 mt-1">
+                                    @foreach (var a in m.Attachments)
+                                    {
+                                        <TextAttachmentView Attachment="a" OnDark="m.IsFromMe" />
+                                    }
+                                </div>
+                            }
+                            else if (m.AttachmentCount > 0)
+                            {
+                                <div class="small fst-italic">📎 @m.AttachmentCount attachment@(m.AttachmentCount == 1 ? "" : "s") (import again to copy)</div>
+                            }
                         </div>
                     </div>
                 }
@@ -195,7 +208,11 @@
     private Task ImportAsync() => RunAsync(async () =>
     {
         var s = await Importer.ImportAsync(MessagesPath);
-        return $"Imported {s.MessagesAdded} new messages from {s.ChatsMatched} conversations with {s.ContactsIncluded} ticked contacts.";
+        var files = s.AttachmentsSaved + s.AttachmentsNotOnMac + s.AttachmentsTooLarge == 0 ? ""
+            : $" Saved {s.AttachmentsSaved} photo(s) and file(s)"
+              + (s.AttachmentsNotOnMac > 0 ? $"; {s.AttachmentsNotOnMac} aren't downloaded to this Mac yet (open the conversation in Messages, then import again)" : "")
+              + (s.AttachmentsTooLarge > 0 ? $"; {s.AttachmentsTooLarge} too large to copy" : "") + ".";
+        return $"Imported {s.MessagesAdded} new messages from {s.ChatsMatched} conversations with {s.ContactsIncluded} ticked contacts.{files}";
     });
 
     private async Task SetIncludedAsync(MessageContact c, bool included)

@@ -23,6 +23,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<RecurringExpenseRun> RecurringExpenseRuns => Set<RecurringExpenseRun>();
     public DbSet<TextMessage> TextMessages => Set<TextMessage>();
     public DbSet<MessageContact> MessageContacts => Set<MessageContact>();
+    public DbSet<TextAttachment> TextAttachments => Set<TextAttachment>();
     public DbSet<EmailFolder> EmailFolders => Set<EmailFolder>();
     public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
     public DbSet<EmailAttachment> EmailAttachments => Set<EmailAttachment>();
@@ -207,6 +208,21 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.Property(c => c.EndsAt).HasConversion(new DateTimeOffsetToBinaryConverter());
             e.HasIndex(c => c.StartsAt);
             e.HasOne(c => c.CalendarSource).WithMany(s => s.Events).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TextAttachment>(e =>
+        {
+            e.Property(a => a.Guid).HasMaxLength(100).IsRequired();
+            e.HasIndex(a => a.Guid).IsUnique();
+            e.Property(a => a.FileName).HasMaxLength(255).IsRequired();
+            e.Property(a => a.ContentType).HasMaxLength(100).IsRequired();
+            e.Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(a => a.StorageKey).HasMaxLength(100);
+            e.Property(a => a.PreviewKey).HasMaxLength(100);
+            e.Property(a => a.ThumbnailKey).HasMaxLength(100);
+            e.Ignore(a => a.IsImage);
+            e.Ignore(a => a.IsVideo);
+            e.HasOne(a => a.TextMessage).WithMany(m => m.Attachments).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<MessageContact>(e =>

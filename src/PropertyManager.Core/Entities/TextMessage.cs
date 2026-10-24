@@ -31,4 +31,6 @@ public class TextMessage
     public Tenant? Tenant { get; set; }
     public int? VendorId { get; set; }
     public Vendor? Vendor { get; set; }
+
+    public List<TextAttachment> Attachments { get; set; } = [];
 }

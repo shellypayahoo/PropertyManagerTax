@@ -122,7 +122,9 @@ The **Messages** page brings in text conversations from the Mac's Messages app (
 2. Tick the people whose conversations you want. Tenants and vendors (matched by the phone or email on their Tenants/Vendors page) are ticked automatically; everyone else starts unticked. Use the **Is** column to link a contact to a tenant or vendor.
 3. **Import messages for ticked contacts** copies those conversations into the app. Run it again any time to pick up new texts; messages already imported are skipped. Unticking someone removes their messages from the app.
 
-The app reads a copy of `~/Library/Messages/chat.db` (and the Contacts databases under `~/Library/Application Support/AddressBook`); it never changes Messages or Contacts. macOS protects these folders, so give **Full Disk Access** to Terminal (or whatever you start the app from) in System Settings → Privacy & Security. Tapback reactions and group-chat events are skipped; attachments are noted but not copied. Paths can be overridden with `Messages:DatabasePath` and `Messages:AddressBookFolder` in `appsettings.json`.
+The app reads a copy of `~/Library/Messages/chat.db` (and the Contacts databases under `~/Library/Application Support/AddressBook`); it never changes Messages or Contacts. macOS protects these folders, so give **Full Disk Access** to Terminal (or whatever you start the app from) in System Settings → Privacy & Security. Tapback reactions and group-chat events are skipped.
+
+Photos, videos, and files sent in those conversations are copied too (up to 50 MB each; stickers and link previews are skipped) and shown in the conversation, newest messages first: tap a photo to open it full size. iPhone photos are HEIC, so the app also saves a JPEG copy (using macOS's built-in `sips`) that every browser can show, plus a thumbnail. PDFs and Word files have their text read so the **Ask** page can search them. With Messages in iCloud and **Optimize Mac Storage** on, older attachments may only be in iCloud; those are marked "not downloaded to this Mac" and copied on a later import once you open the conversation in Messages so it downloads them. Messages imported before attachment support get their attachments on the next import. Paths can be overridden with `Messages:DatabasePath` and `Messages:AddressBookFolder` in `appsettings.json`.
 
 ## Email
 
@@ -199,6 +201,7 @@ For Ollama, install it, run `ollama pull llama3.1` (or another model that suppor
 Notes:
 
 - Each question is billed by the provider you choose. Questions that read many texts cost more.
+- With **Let it look at photos** ticked, the assistant can look at photos sent by text or email when a message's text isn't enough (for example "what did the leak look like?"). Each photo is a separate request with the image to the same model, which uses noticeably more of your rate limit; untick it to keep questions to text only.
 - Azure deployments have a tokens-per-minute limit (student subscriptions' are small). If the page says the limit was reached, wait a minute or raise the deployment's rate limit in Azure AI Foundry (Deployments → the model → Edit). The app already waits and retries a few times before giving up, and only questions and answers (not earlier lookups) are re-sent with follow-up questions.
 - If Claude declines to answer a request, it's automatically retried once on Claude Opus 4.8, and that conversation stays on Opus 4.8. If both decline, the page says so.
 - Rent, expenses, leases, tenants, maintenance, and documents are looked up when you ask, so new entries and uploads show up right away. New texts need **Import messages for ticked contacts** on the Messages page first, and new emails need **Get new emails** on the Email page.

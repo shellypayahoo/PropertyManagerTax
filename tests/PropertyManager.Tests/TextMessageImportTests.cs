@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Entities;
 using PropertyManager.Core.Messaging;
+using PropertyManager.Core.Storage;
 
 namespace PropertyManager.Tests;
 
@@ -19,13 +20,15 @@ public sealed class TextMessageImportTests : IDisposable
     private readonly TestDbContextFactory dbFactory;
     private readonly TextMessageImportService service;
     private readonly int tenantId;
+    private readonly LocalDocumentStorage storage;
+    private readonly FakeImages images = new();
 
     public TextMessageImportTests()
     {
         Directory.CreateDirectory(folder);
         chatDb = Path.Combine(folder, "chat.db");
         addressBookFolder = Path.Combine(folder, "AddressBook");
-        CreateMessagesDatabase(chatDb);
+        CreateMessagesDatabase(chatDb, folder);
         CreateAddressBook(Path.Combine(addressBookFolder, "Sources", "ABC", "AddressBook-v22.abcddb"));
 
         connection.Open();
@@ -36,7 +39,8 @@ public sealed class TextMessageImportTests : IDisposable
         db.Tenants.Add(tenant);
         db.SaveChanges();
         tenantId = tenant.Id;
-        service = new TextMessageImportService(dbFactory);
+        storage = new LocalDocumentStorage(Path.Combine(folder, "storage"));
+        service = new TextMessageImportService(dbFactory, storage, images);
     }
 
     public void Dispose()
@@ -57,8 +61,13 @@ public sealed class TextMessageImportTests : IDisposable
 
     private static long AppleNanos(DateTime utc) => (long)(utc - new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds * 1_000_000_000;
 
-    private static void CreateMessagesDatabase(string path)
+    private static void CreateMessagesDatabase(string path, string folder)
     {
+        // The photo sent with message 4, where Messages keeps attachments.
+        var photo = Path.Combine(folder, "Attachments", "ab", "01", "IMG_0001.HEIC");
+        Directory.CreateDirectory(Path.GetDirectoryName(photo)!);
+        File.WriteAllBytes(photo, [1, 2, 3, 4]);
+
         using var c = new SqliteConnection($"Data Source={path};Pooling=False");
         c.Open();
         var cmd = c.CreateCommand();
@@ -70,6 +79,7 @@ public sealed class TextMessageImportTests : IDisposable
                                   is_from_me INTEGER, date INTEGER, associated_message_type INTEGER, item_type INTEGER);
             CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER, message_date INTEGER);
             CREATE TABLE message_attachment_join (message_id INTEGER, attachment_id INTEGER);
+            CREATE TABLE attachment (ROWID INTEGER PRIMARY KEY, guid TEXT, filename TEXT, mime_type TEXT, transfer_name TEXT, total_bytes INTEGER, is_sticker INTEGER);
             INSERT INTO handle VALUES (1, '+12025551234', 'iMessage'), (2, '+12025551234', 'SMS'), (3, '+12025559999', 'iMessage');
             INSERT INTO chat VALUES (1, 'iMessage;-;+12025551234', '+12025551234', 45),
                                     (2, 'iMessage;-;+12025559999', '+12025559999', 45),
@@ -77,6 +87,10 @@ public sealed class TextMessageImportTests : IDisposable
             INSERT INTO chat_handle_join VALUES (1, 1), (2, 3), (3, 1), (3, 3);
             """;
         cmd.ExecuteNonQuery();
+        var a = c.CreateCommand();
+        a.CommandText = "INSERT INTO attachment VALUES (40, 'ATT-40', $path, 'image/heic', 'IMG_0001.HEIC', 4, 0)";
+        a.Parameters.AddWithValue("$path", photo);
+        a.ExecuteNonQuery();
 
         void Message(int id, int chat, string? text, byte[]? body, int handle, bool fromMe, DateTime when, int reaction = 0, int attachments = 0)
         {
@@ -188,6 +202,114 @@ public sealed class TextMessageImportTests : IDisposable
         await using var check = dbFactory.CreateDbContext();
         Assert.Equal(0, await check.TextMessages.CountAsync(m => m.ContactHandle == "2025559999"));
         Assert.Equal(5, await check.TextMessages.CountAsync());
+    }
+
+    /// <summary>Adds a message from Jane with attachments to the sample Messages database.</summary>
+    private void AddMessageWithAttachments(int id, params (string Guid, string? FileName, string? Mime, byte[]? Content, bool Sticker)[] files)
+    {
+        using var c = new SqliteConnection($"Data Source={chatDb};Pooling=False");
+        c.Open();
+        var m = c.CreateCommand();
+        m.CommandText = $"INSERT INTO message VALUES ({id}, 'GUID-{id}', 'Here you go', NULL, 1, 0, {AppleNanos(new DateTime(2026, 7, 1, 9, 0, 0, DateTimeKind.Utc))}, 0, 0); INSERT INTO chat_message_join VALUES (1, {id}, 0);";
+        m.ExecuteNonQuery();
+        for (var i = 0; i < files.Length; i++)
+        {
+            var (guid, name, mime, content, sticker) = files[i];
+            var path = name is null ? null : Path.Combine(folder, "Attachments", guid, name);
+            if (content is not null)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllBytes(path!, content);
+            }
+            var a = c.CreateCommand();
+            a.CommandText = $"INSERT INTO attachment VALUES ({id * 10 + i}, $guid, $path, $mime, $name, {content?.Length ?? 0}, {(sticker ? 1 : 0)}); INSERT INTO message_attachment_join VALUES ({id}, {id * 10 + i});";
+            a.Parameters.AddWithValue("$guid", guid);
+            a.Parameters.AddWithValue("$path", (object?)path ?? DBNull.Value);
+            a.Parameters.AddWithValue("$mime", (object?)mime ?? DBNull.Value);
+            a.Parameters.AddWithValue("$name", (object?)name ?? DBNull.Value);
+            a.ExecuteNonQuery();
+        }
+    }
+
+    [Fact]
+    public async Task Import_CopiesPhotosWithPreviews_ReadsPdfs_AndSkipsStickersAndLinkPreviews()
+    {
+        await service.ScanContactsAsync(chatDb, addressBookFolder);
+        var pdf = DocumentTextTests.Pdf(["Invoice: $180 for the faucet"]);
+        AddMessageWithAttachments(8,
+            ("ATT-PDF", "invoice.pdf", "application/pdf", pdf, false),
+            ("ATT-LINK", "ABC.pluginPayloadAttachment", null, [9], false),
+            ("ATT-STICKER", "sticker.png", "image/png", [9], true));
+
+        var summary = await service.ImportAsync(chatDb);
+
+        Assert.Equal((2, 0, 0), (summary.AttachmentsSaved, summary.AttachmentsNotOnMac, summary.AttachmentsTooLarge));
+        await using var db = dbFactory.CreateDbContext();
+        var attachments = await db.TextAttachments.Include(x => x.TextMessage).OrderBy(x => x.FileName).ToListAsync();
+        Assert.Equal(["IMG_0001.HEIC", "invoice.pdf"], attachments.Select(x => x.FileName));
+        var photo = attachments[0];
+        Assert.Equal(("image/heic", TextAttachmentStatus.Saved, 4L), (photo.ContentType, photo.Status, photo.SizeBytes));
+        Assert.NotNull(photo.PreviewKey);
+        Assert.NotNull(photo.ThumbnailKey);
+        Assert.Equal([TextMessageImportService.PreviewPixels, TextMessageImportService.ThumbnailPixels], images.Sizes);
+        Assert.Contains("$180 for the faucet", attachments[1].Text);
+        Assert.Equal("Here you go", attachments[1].TextMessage!.Text);
+        await using var original = await storage.OpenReadAsync(photo.StorageKey!);
+        Assert.Equal(4, original!.Length);
+    }
+
+    [Fact]
+    public async Task Import_RetriesFilesNotYetOnTheMac_AndSkipsLargeOnes()
+    {
+        await service.ScanContactsAsync(chatDb, addressBookFolder);
+        AddMessageWithAttachments(8, ("ATT-CLOUD", "video.mov", "video/quicktime", null, false), ("ATT-BIG", "big.mov", "video/quicktime", new byte[2000], false));
+
+        var first = await service.ImportAsync(chatDb, maxAttachmentBytes: 1000);
+        var cloud = Path.Combine(folder, "Attachments", "ATT-CLOUD", "video.mov");
+        Directory.CreateDirectory(Path.GetDirectoryName(cloud)!);
+        File.WriteAllBytes(cloud, [5, 6, 7]);
+        var second = await service.ImportAsync(chatDb, maxAttachmentBytes: 1000);
+        var third = await service.ImportAsync(chatDb, maxAttachmentBytes: 1000);
+
+        Assert.Equal((1, 1, 1), (first.AttachmentsSaved, first.AttachmentsNotOnMac, first.AttachmentsTooLarge));
+        Assert.Equal((1, 0, 0), (second.AttachmentsSaved, second.AttachmentsNotOnMac, second.AttachmentsTooLarge));
+        Assert.Equal((0, 0, 0), (third.AttachmentsSaved, third.AttachmentsNotOnMac, third.AttachmentsTooLarge));
+        await using var db = dbFactory.CreateDbContext();
+        Assert.Equal(TextAttachmentStatus.Saved, (await db.TextAttachments.SingleAsync(x => x.Guid == "ATT-CLOUD")).Status);
+        Assert.Equal((TextAttachmentStatus.TooLarge, 2000L, (string?)null), await db.TextAttachments.Where(x => x.Guid == "ATT-BIG").Select(x => ValueTuple.Create(x.Status, x.SizeBytes, x.StorageKey)).SingleAsync());
+        Assert.Null((await db.TextAttachments.SingleAsync(x => x.Guid == "ATT-CLOUD")).PreviewKey);
+    }
+
+    [Fact]
+    public async Task ExcludingAContact_DeletesTheirAttachmentFiles()
+    {
+        await service.ScanContactsAsync(chatDb, addressBookFolder);
+        await service.ImportAsync(chatDb);
+        int janeId;
+        await using (var db = dbFactory.CreateDbContext())
+        {
+            janeId = (await db.MessageContacts.SingleAsync(c => c.Handle == "2025551234")).Id;
+            Assert.Equal(1, await db.TextAttachments.CountAsync());
+        }
+        Assert.Equal(3, Directory.GetFiles(Path.Combine(folder, "storage"), "*", SearchOption.AllDirectories).Length);
+
+        await service.SetIncludedAsync(janeId, false);
+
+        await using var check = dbFactory.CreateDbContext();
+        Assert.Equal(0, await check.TextAttachments.CountAsync());
+        Assert.Empty(Directory.GetFiles(Path.Combine(folder, "storage"), "*", SearchOption.AllDirectories));
+    }
+
+    /// <summary>Stands in for sips: returns a tiny "JPEG" and records the sizes asked for.</summary>
+    private sealed class FakeImages : IImageConverter
+    {
+        public List<int> Sizes { get; } = [];
+
+        public Task<byte[]?> ToJpegAsync(string sourcePath, int maxPixels, CancellationToken ct = default)
+        {
+            Sizes.Add(maxPixels);
+            return Task.FromResult<byte[]?>([0xFF, 0xD8, 0xFF]);
+        }
     }
 
     [Theory]
