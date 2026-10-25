@@ -30,6 +30,10 @@
                         {
                             <span class="text-success">✓ All clear</span>
                         }
+                        @if (lowByUnit.GetValueOrDefault(unit.Id) is > 0 and var low)
+                        {
+                            <div class="small text-muted mt-1"><a href="maintenance" class="link-secondary">+ @low low priority</a></div>
+                        }
                         @foreach (var m in open)
                         {
                             var age = today.DayNumber - m.ReportedOn.DayNumber;
@@ -60,6 +64,7 @@
 @code {
     private List<MaintenanceRequest>? requests;
     private List<Unit> units = [];
+    private Dictionary<int, int> lowByUnit = [];
     private DateOnly today;
 
     protected override async Task OnInitializedAsync()
@@ -67,6 +72,10 @@
         today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
         await using var db = await DbFactory.CreateDbContextAsync();
         units = await db.Units.AsNoTracking().Include(u => u.Property).OrderBy(u => u.Property!.Name).ThenBy(u => u.Label).ToListAsync();
+        lowByUnit = (await db.MaintenanceRequests.AsNoTracking()
+                .Where(m => m.Status != MaintenanceStatus.Completed && m.Status != MaintenanceStatus.Cancelled && m.Priority == MaintenancePriority.Low)
+                .Select(m => m.UnitId).ToListAsync())
+            .GroupBy(id => id).ToDictionary(g => g.Key, g => g.Count());
         requests = (await db.MaintenanceRequests.AsNoTracking()
                 .Include(m => m.Unit).ThenInclude(u => u!.Property)
                 .Include(m => m.Vendor)

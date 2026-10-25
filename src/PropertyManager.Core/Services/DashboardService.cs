@@ -11,6 +11,7 @@ public record DashboardSummary(
     decimal MonthlyLeaseRent,
     decimal MonthlyMarketRent,
     int OpenMaintenanceCount,
+    int OpenLowPriorityMaintenanceCount,
     decimal ExpensesYearToDate,
     int LeasesPaidThisMonth,
     int LeasesDueThisMonth);
@@ -33,9 +34,11 @@ public class DashboardService(IDbContextFactory<PropertyManagerDbContext> dbFact
             .ToList();
         var activeLeases = units.Select(u => u.ActiveLease(today)).OfType<Entities.Lease>().ToList();
 
-        var openMaintenance = await db.MaintenanceRequests.AsNoTracking()
-            .Select(m => m.Status)
-            .ToListAsync(ct);
+        var openMaintenance = (await db.MaintenanceRequests.AsNoTracking()
+                .Select(m => new { m.Status, m.Priority })
+                .ToListAsync(ct))
+            .Where(m => m.Status is not (Entities.MaintenanceStatus.Completed or Entities.MaintenanceStatus.Cancelled))
+            .ToList();
 
         var ytdExpenses = await db.Expenses.AsNoTracking()
             .Where(e => e.Date >= yearStart && e.Date <= today)
@@ -48,7 +51,9 @@ public class DashboardService(IDbContextFactory<PropertyManagerDbContext> dbFact
             OccupiedUnitCount: activeLeases.Count,
             MonthlyLeaseRent: activeLeases.Sum(l => l.MonthlyRent),
             MonthlyMarketRent: units.Sum(u => u.MarketRent),
-            OpenMaintenanceCount: openMaintenance.Count(s => s is not (Entities.MaintenanceStatus.Completed or Entities.MaintenanceStatus.Cancelled)),
+            // Urgent and normal ones, as listed in the Dashboard's unit cards; low priority is counted separately.
+            OpenMaintenanceCount: openMaintenance.Count(m => m.Priority != Entities.MaintenancePriority.Low),
+            OpenLowPriorityMaintenanceCount: openMaintenance.Count(m => m.Priority == Entities.MaintenancePriority.Low),
             ExpensesYearToDate: ytdExpenses.Where(e => e.Category.IsDeductible()).Sum(e => e.Amount),
             LeasesPaidThisMonth: rentThisMonth.Count(r => r.Status == RentStatus.Paid),
             LeasesDueThisMonth: rentThisMonth.Count);

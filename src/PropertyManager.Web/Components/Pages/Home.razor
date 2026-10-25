@@ -30,7 +30,8 @@ else
         <StatCard Label="Units occupied" Value="@($"{summary.OccupiedUnitCount} / {summary.UnitCount}")" />
         <StatCard Label="Monthly rent under lease" Value="@summary.MonthlyLeaseRent.ToString("C0")"
                   Detail="@($"Market rent: {summary.MonthlyMarketRent:C0}")" />
-        <StatCard Label="Open maintenance" Value="@summary.OpenMaintenanceCount.ToString()" Href="maintenance" />
+        <StatCard Label="Open maintenance" Value="@summary.OpenMaintenanceCount.ToString()" Href="maintenance"
+                  Detail="@(summary.OpenLowPriorityMaintenanceCount > 0 ? $"+ {summary.OpenLowPriorityMaintenanceCount} low priority" : null)" />
         <StatCard Label="Expenses year to date" Value="@summary.ExpensesYearToDate.ToString("C0")" Href="expenses" />
     </div>
 
