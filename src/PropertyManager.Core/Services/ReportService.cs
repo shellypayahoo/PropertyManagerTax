@@ -14,7 +14,9 @@ public record PropertyProfitAndLoss(
     decimal ScheduledRent,
     IReadOnlyList<CategoryTotal> Expenses,
     decimal SharedExpenses,
-    IReadOnlyList<CategoryTotal> NotDeductible)
+    IReadOnlyList<CategoryTotal> NotDeductible,
+    DateOnly From = default,
+    DateOnly To = default)
 {
     public decimal TotalExpenses => Expenses.Sum(e => e.Amount);
     public decimal NetIncome => RentReceived - TotalExpenses;
@@ -36,12 +38,17 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
     /// Builds a Schedule E–style profit and loss statement for each property in a tax year.
     /// Income is rent actually received; scheduled rent from leases is included for comparison.
     /// </summary>
-    public async Task<IReadOnlyList<PropertyProfitAndLoss>> GetAnnualProfitAndLossAsync(int year, CancellationToken ct = default)
+    public Task<IReadOnlyList<PropertyProfitAndLoss>> GetAnnualProfitAndLossAsync(int year, CancellationToken ct = default) =>
+        GetProfitAndLossAsync(new DateOnly(year, 1, 1), new DateOnly(year, 12, 31), ct);
+
+    /// <summary>
+    /// The same statement for any period, such as a quarter or the last three quarters (both dates included).
+    /// Scheduled rent counts every month the period touches.
+    /// </summary>
+    public async Task<IReadOnlyList<PropertyProfitAndLoss>> GetProfitAndLossAsync(DateOnly from, DateOnly to, CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
 
-        var yearStart = new DateOnly(year, 1, 1);
-        var yearEnd = new DateOnly(year, 12, 31);
 
         var properties = await db.Properties
             .AsNoTracking()
@@ -52,12 +59,12 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
         // SQLite stores decimals as TEXT and cannot SUM them, so aggregate in memory.
         var expenses = await db.Expenses
             .AsNoTracking()
-            .Where(e => e.Date >= yearStart && e.Date <= yearEnd)
+            .Where(e => e.Date >= from && e.Date <= to)
             .ToListAsync(ct);
 
         var payments = await db.RentPayments
             .AsNoTracking()
-            .Where(r => r.Date >= yearStart && r.Date <= yearEnd)
+            .Where(r => r.Date >= from && r.Date <= to)
             .Select(r => new { r.Amount, r.Lease!.Unit!.PropertyId })
             .ToListAsync(ct);
 
@@ -73,9 +80,9 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
                 return new PropertyProfitAndLoss(
                     p.Id,
                     p.Name,
-                    year,
+                    to.Year,
                     payments.Where(r => r.PropertyId == p.Id).Sum(r => r.Amount),
-                    p.Units.SelectMany(u => u.Leases).Sum(l => ScheduledRent(l, yearStart, yearEnd)),
+                    p.Units.SelectMany(u => u.Leases).Sum(l => ScheduledRent(l, from, to)),
                     all
                         .Where(e => e.Category.IsDeductible())
                         .GroupBy(e => e.Category)
@@ -88,24 +95,28 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
                         .GroupBy(e => e.Category)
                         .OrderBy(g => g.Key)
                         .Select(g => new CategoryTotal(g.Key, g.Sum(e => e.Amount)))
-                        .ToList());
+                        .ToList(),
+                    from,
+                    to);
             })
             .ToList();
     }
 
     /// <summary>The expenses in a category (or, when <paramref name="category"/> is null, the rent received) behind a report cell.</summary>
-    public async Task<ReportDetail> GetDetailAsync(int year, ExpenseCategory? category, int? propertyId, CancellationToken ct = default)
+    public Task<ReportDetail> GetDetailAsync(int year, ExpenseCategory? category, int? propertyId, CancellationToken ct = default) =>
+        GetDetailAsync(new DateOnly(year, 1, 1), new DateOnly(year, 12, 31), category, propertyId, ct);
+
+    /// <summary>The items behind a report cell for any period (both dates included).</summary>
+    public async Task<ReportDetail> GetDetailAsync(DateOnly from, DateOnly to, ExpenseCategory? category, int? propertyId, CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var yearStart = new DateOnly(year, 1, 1);
-        var yearEnd = new DateOnly(year, 12, 31);
 
         if (category is null)
         {
             var payments = (await db.RentPayments.AsNoTracking()
                     .Include(r => r.Lease!).ThenInclude(l => l.Tenants)
                     .Include(r => r.Lease!).ThenInclude(l => l.Unit!).ThenInclude(u => u.Property)
-                    .Where(r => r.Date >= yearStart && r.Date <= yearEnd)
+                    .Where(r => r.Date >= from && r.Date <= to)
                     .ToListAsync(ct))
                 .Where(r => propertyId is null || r.Lease!.Unit!.PropertyId == propertyId)
                 .OrderBy(r => r.Date)
@@ -122,7 +133,7 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
 
         var expenses = await db.Expenses.AsNoTracking()
             .Include(e => e.Property).Include(e => e.Unit).Include(e => e.Vendor)
-            .Where(e => e.Date >= yearStart && e.Date <= yearEnd && e.Category == category)
+            .Where(e => e.Date >= from && e.Date <= to && e.Category == category)
             .ToListAsync(ct);
 
         static ReportDetailLine Line(Expense e) => new(

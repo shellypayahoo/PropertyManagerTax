@@ -344,7 +344,9 @@ The **Reports** page has tabs next to **Profit & loss**, each for the chosen yea
 
 ## PDF for your accountant
 
-On **Reports**, pick the year and click **Download PDF** to get `Rental P&L <year>.pdf`: the property addresses, the Schedule E summary by property (rents received, expenses by line, total expenses, net income), and notes on shared expenses split by unit count, mortgage principal and escrow deposits left out, and depreciation. With **Include every item behind each line** ticked (the default), it's followed by an itemized list for each line (date, property, description, vendor or how paid, amount) with totals that match the summary. Losses are shown in parentheses.
+On **Reports → Profit & loss**, the **Period** choice shows the P&L for the full year, year to date, one quarter (Q1–Q4 of the selected year), the **last 3 completed quarters** (on Oct 26, 2026 that's Jan 1 – Sep 30, 2026), or any **custom dates**. The table, the item lists behind each line, and the PDF all use the chosen period; scheduled rent counts every month the period touches. The Ask page can answer for a period too ("what was my net income for the first three quarters?").
+
+On **Reports**, pick the year (or period) and click **Download PDF** to get `Rental P&L <year>.pdf` (or `Rental P&L <from> to <to>.pdf` for another period, titled with its dates): the property addresses, the Schedule E summary by property (rents received, expenses by line, total expenses, net income), and notes on shared expenses split by unit count, mortgage principal and escrow deposits left out, and depreciation. With **Include every item behind each line** ticked (the default), it's followed by an itemized list for each line (date, property, description, vendor or how paid, amount) with totals that match the summary. Losses are shown in parentheses.
 
 PDFs are made with [QuestPDF](https://www.questpdf.com) under its free Community license (individuals and businesses with under $1M in annual revenue).
 

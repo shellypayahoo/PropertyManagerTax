@@ -147,8 +147,14 @@ app.MapGet("/documents/{id:int}", async (int id, bool? download, IDbContextFacto
         ? Results.File(stream, document!.ContentType, document.FileName)
         : Results.File(stream, document!.ContentType);
 });
-app.MapGet("/reports/{year:int}/profit-and-loss.pdf", async (int year, bool? detail, PropertyManager.Core.Reports.ProfitAndLossPdf pdf, CancellationToken ct) =>
-    Results.File(await pdf.CreateAsync(year, detail == true, ct), "application/pdf", PropertyManager.Core.Reports.ProfitAndLossPdf.FileName(year)));
+// A calendar year, or any period with ?from=yyyy-MM-dd&to=yyyy-MM-dd.
+app.MapGet("/reports/{year:int}/profit-and-loss.pdf", async (int year, bool? detail, DateOnly? from, DateOnly? to, PropertyManager.Core.Reports.ProfitAndLossPdf pdf, CancellationToken ct) =>
+{
+    var period = from is { } f && to is { } t && f <= t
+        ? new PropertyManager.Core.Reports.ReportPeriod(f, t)
+        : PropertyManager.Core.Reports.ReportPeriod.Year(year);
+    return Results.File(await pdf.CreateAsync(period, detail == true, ct), "application/pdf", PropertyManager.Core.Reports.ProfitAndLossPdf.FileName(period));
+});
 
 app.MapPost("/properties/{id:int}/photo", async (int id, IFormFileCollection files, PropertyPhotoService photos, CancellationToken ct) =>
 {

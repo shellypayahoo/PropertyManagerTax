@@ -1,4 +1,5 @@
 @page "/reports"
+@using PropertyManager.Core.Reports
 @inject ReportService ReportService
 @inject TimeProvider Clock
 
@@ -43,8 +44,26 @@ else
     Click a line name or an amount to see the items behind it.
 </p>
 
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <label class="form-label mb-0" for="period">Period</label>
+    <select id="period" class="form-select w-auto" @bind="periodKind" @bind:after="LoadAsync">
+        <option value="year">Full year @year</option>
+        <option value="ytd">Year to date (@year)</option>
+        @for (var q = 1; q <= 4; q++) { <option value="q@(q)">Q@(q) @year</option> }
+        <option value="last3">Last 3 completed quarters</option>
+        <option value="custom">Custom dates…</option>
+    </select>
+    @if (periodKind == "custom")
+    {
+        <input type="date" class="form-control w-auto" @bind="customFrom" @bind:after="LoadAsync" aria-label="From" />
+        <span>to</span>
+        <input type="date" class="form-control w-auto" @bind="customTo" @bind:after="LoadAsync" aria-label="To" />
+    }
+    <span class="text-muted">@(Period.From > Period.To ? "The start date is after the end date." : $"Showing {Period.Label}")</span>
+</div>
+
 <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
-    <a class="btn btn-outline-primary" href="reports/@year/profit-and-loss.pdf@(includeDetail ? "?detail=true" : "")" target="_blank">Download PDF</a>
+    <a class="btn btn-outline-primary" href="@PdfLink" target="_blank">Download PDF</a>
     <div class="form-check">
         <input class="form-check-input" type="checkbox" id="pdf-detail" @bind="includeDetail" />
         <label class="form-check-label" for="pdf-detail">Include every item behind each line</label>
@@ -149,6 +168,24 @@ else
     private IReadOnlyList<PropertyProfitAndLoss>? statements;
     private int year;
     private int currentYear;
+    private DateOnly today;
+    private string periodKind = "year";
+    private DateOnly customFrom;
+    private DateOnly customTo;
+
+    /// <summary>The P&amp;L period chosen on the P&amp;L tab; the year selector sets the year for the year and quarter choices.</summary>
+    private ReportPeriod Period => periodKind switch
+    {
+        "ytd" => new ReportPeriod(new DateOnly(year, 1, 1), year == today.Year ? today : new DateOnly(year, today.Month, Math.Min(today.Day, DateTime.DaysInMonth(year, today.Month)))),
+        "q1" or "q2" or "q3" or "q4" => ReportPeriod.Quarter(year, periodKind[1] - '0'),
+        "last3" => ReportPeriod.LastCompletedQuarters(today, 3),
+        "custom" => new ReportPeriod(customFrom, customTo),
+        _ => ReportPeriod.Year(year),
+    };
+
+    private string PdfLink =>
+        $"reports/{Period.To.Year}/profit-and-loss.pdf?detail={(includeDetail ? "true" : "false")}"
+        + (Period.IsCalendarYear ? "" : $"&from={Period.From:yyyy-MM-dd}&to={Period.To:yyyy-MM-dd}");
     private bool includeDetail = true;
     private string tab = "pnl";
 
@@ -160,14 +197,16 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        currentYear = Clock.GetLocalNow().Year;
+        today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        currentYear = today.Year;
         year = currentYear;
+        (customFrom, customTo) = (new DateOnly(currentYear, 1, 1), today);
         await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
-        statements = await ReportService.GetAnnualProfitAndLossAsync(year);
+        statements = Period.From > Period.To ? [] : await ReportService.GetProfitAndLossAsync(Period.From, Period.To);
         open = null;
     }
 
@@ -187,12 +226,12 @@ else
         }
         open = key;
         detail = null;
-        detail = await ReportService.GetDetailAsync(year, category, propertyId);
+        detail = await ReportService.GetDetailAsync(Period.From, Period.To, category, propertyId);
     }
 
     private string DetailTitle(DetailKey key) =>
         $"{(key.Category is { } c ? c.DisplayName() : "Rents received")} – " +
-        $"{(key.PropertyId is { } id ? statements!.First(s => s.PropertyId == id).PropertyName : "all properties")}, {year}";
+        $"{(key.PropertyId is { } id ? statements!.First(s => s.PropertyId == id).PropertyName : "all properties")}, {Period.Label}";
 
     private static string Amount(PropertyProfitAndLoss s, ExpenseCategory c) =>
         s.Expenses.FirstOrDefault(e => e.Category == c)?.Amount.ToString("C") ?? "";

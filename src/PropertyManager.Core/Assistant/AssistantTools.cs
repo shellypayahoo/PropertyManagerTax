@@ -270,13 +270,18 @@ public class AssistantTools(
         return text.ToString();
     }
 
-    [Description("The Schedule E profit and loss for a tax year, per property: rent received, scheduled rent, deductible expenses by Schedule E line (shared expenses already split by unit count), net income, and non-deductible amounts such as mortgage principal.")]
+    [Description("The Schedule E profit and loss per property for a tax year or any period (a quarter, the last three quarters, year to date): rent received, scheduled rent, deductible expenses by Schedule E line (shared expenses already split by unit count), net income, and non-deductible amounts such as mortgage principal.")]
     public async Task<string> GetProfitAndLossAsync(
-        [Description("Tax year, e.g. 2026.")] int year,
+        [Description("Tax year, e.g. 2026. Ignored when fromDate and toDate are given.")] int year,
+        [Description("Optional period start, yyyy-MM-dd (e.g. 2026-01-01 for the first of three quarters).")] string? fromDate = null,
+        [Description("Optional period end, yyyy-MM-dd (inclusive, e.g. 2026-09-30).")] string? toDate = null,
         CancellationToken ct = default)
     {
-        var report = await reports.GetAnnualProfitAndLossAsync(year, ct);
-        var text = new StringBuilder($"Profit and loss for {year}:\n");
+        var period = ParseDate(fromDate) is { } from && ParseDate(toDate) is { } to && from <= to
+            ? new Reports.ReportPeriod(from, to)
+            : Reports.ReportPeriod.Year(year);
+        var report = await reports.GetProfitAndLossAsync(period.From, period.To, ct);
+        var text = new StringBuilder($"Profit and loss for {(period.IsCalendarYear ? period.From.Year.ToString(Us) : $"{period.From:yyyy-MM-dd} through {period.To:yyyy-MM-dd}")}:\n");
         foreach (var p in report)
         {
             text.AppendLine($"{p.PropertyName}: rent received {Money(p.RentReceived)} (scheduled {Money(p.ScheduledRent)}), expenses {Money(p.TotalExpenses)}, net {Money(p.NetIncome)}");

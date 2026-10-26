@@ -25,11 +25,18 @@ public class ProfitAndLossPdf(ReportService reports, IDbContextFactory<PropertyM
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
-    public static string FileName(int year) => $"Rental P&L {year}.pdf";
+    public static string FileName(int year) => FileName(ReportPeriod.Year(year));
 
-    public async Task<byte[]> CreateAsync(int year, bool includeDetail, CancellationToken ct = default)
+    public static string FileName(ReportPeriod period) =>
+        period.IsCalendarYear ? $"Rental P&L {period.From.Year}.pdf" : $"Rental P&L {period.From:yyyy-MM-dd} to {period.To:yyyy-MM-dd}.pdf";
+
+    public Task<byte[]> CreateAsync(int year, bool includeDetail, CancellationToken ct = default) =>
+        CreateAsync(ReportPeriod.Year(year), includeDetail, ct);
+
+    public async Task<byte[]> CreateAsync(ReportPeriod period, bool includeDetail, CancellationToken ct = default)
     {
-        var statements = await reports.GetAnnualProfitAndLossAsync(year, ct);
+        var year = period.To.Year;
+        var statements = await reports.GetProfitAndLossAsync(period.From, period.To, ct);
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var properties = await db.Properties.AsNoTracking().Include(p => p.Units).ToDictionaryAsync(p => p.Id, ct);
 
@@ -38,11 +45,11 @@ public class ProfitAndLossPdf(ReportService reports, IDbContextFactory<PropertyM
         var details = new List<(string Title, ReportDetail Detail, string PartyHeader)>();
         if (includeDetail)
         {
-            details.Add(("Line 3 – Rents received", await reports.GetDetailAsync(year, null, null, ct), "How paid"));
+            details.Add(("Line 3 – Rents received", await reports.GetDetailAsync(period.From, period.To, null, null, ct), "How paid"));
             foreach (var category in categories.Concat(notDeductible))
             {
                 var title = category.ScheduleELine() is { } line ? $"Line {line} – {category.DisplayName()}" : category.DisplayName();
-                details.Add((title, await reports.GetDetailAsync(year, category, null, ct), "Vendor"));
+                details.Add((title, await reports.GetDetailAsync(period.From, period.To, category, null, ct), "Vendor"));
             }
         }
 
@@ -61,8 +68,12 @@ public class ProfitAndLossPdf(ReportService reports, IDbContextFactory<PropertyM
                     {
                         header.Item().Text(name).FontSize(11).FontColor(Colors.Grey.Darken2);
                     }
-                    header.Item().Text($"Rental Income and Expenses – Tax Year {year}").FontSize(16).SemiBold();
-                    header.Item().Text($"Schedule E summary by property · Prepared {generated.ToString("MMMM d, yyyy", Us)}").FontColor(Colors.Grey.Darken1);
+                    header.Item().Text(period.IsCalendarYear
+                        ? $"Rental Income and Expenses – Tax Year {year}"
+                        : $"Rental Income and Expenses – {period.Label}").FontSize(16).SemiBold();
+                    header.Item().Text($"Schedule E summary by property"
+                        + (period.IsCalendarYear ? "" : $" · {period.From.ToString("MMMM d, yyyy", Us)} through {period.To.ToString("MMMM d, yyyy", Us)}")
+                        + $" · Prepared {generated.ToString("MMMM d, yyyy", Us)}").FontColor(Colors.Grey.Darken1);
                 });
 
                 page.Content().Column(content =>
@@ -80,7 +91,7 @@ public class ProfitAndLossPdf(ReportService reports, IDbContextFactory<PropertyM
 
                 page.Footer().Row(row =>
                 {
-                    row.RelativeItem().Text($"Tax year {year}").FontColor(Colors.Grey.Darken1);
+                    row.RelativeItem().Text(period.IsCalendarYear ? $"Tax year {year}" : period.Label).FontColor(Colors.Grey.Darken1);
                     row.RelativeItem().AlignRight().Text(t =>
                     {
                         t.DefaultTextStyle(s => s.FontColor(Colors.Grey.Darken1));
