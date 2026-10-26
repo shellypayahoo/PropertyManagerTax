@@ -36,6 +36,14 @@ public class AssistantProviderOptions
 
     public string? ApiKey { get; set; }
 
+    /// <summary>
+    /// For AzureFoundry and OpenAI: "Responses" (the default; needed for tools with newer reasoning models) or
+    /// "ChatCompletions" for services that only offer the older chat completions API.
+    /// </summary>
+    public string? Api { get; set; }
+
+    public bool UsesChatCompletions => string.Equals(Api, "ChatCompletions", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Whether enough settings are filled in to try this provider.</summary>
     public bool IsConfigured => MissingSettings.Count == 0;
 

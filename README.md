@@ -141,7 +141,7 @@ Settings live in `src/PropertyManager.Web/appsettings.json`; the ones on the Set
 | `Setup` | `Properties` | none | Properties (name, street, city, state, ZIP) and units (label, market rent) created when the app starts with an empty database, skipping the first-run setup's property step. Ignored once any property exists, so it never changes an existing portfolio. |
 | `Assistant` | `DefaultProvider` | first one set up | Which provider the Ask page starts on. |
 | | `AllowPhotos` | `true` | Whether "Let it look at photos" starts ticked. |
-| | `Providers:<Name>` | four examples | `Type` (`AzureFoundry`, `OpenAI`, `Anthropic`, `AnthropicFoundry`, or `Ollama`), `Model`, and `Endpoint`/`Resource` where needed; `ApiKey` in secrets. `OpenAI` also reads `OPENAI_API_KEY`, and `Endpoint` lets it use any OpenAI-compatible service. Add as many as you like under any names. |
+| | `Providers:<Name>` | four examples | `Type` (`AzureFoundry`, `OpenAI`, `Anthropic`, `AnthropicFoundry`, or `Ollama`), `Model`, and `Endpoint`/`Resource` where needed; `ApiKey` in secrets. `OpenAI` also reads `OPENAI_API_KEY`, and `Endpoint` lets it use any OpenAI-compatible service. `AzureFoundry` and `OpenAI` use OpenAI's Responses API (`/openai/v1/responses` on Azure), which newer reasoning models need for the assistant's lookups; set `"Api": "ChatCompletions"` for a service that only offers the older chat completions API. Add as many as you like under any names. |
 | `Email` | `ClientId`, `Tenant`, `MyAddresses` | not set | Outlook.com / Hotmail sign-in (see **Email**). |
 | `ConnectionStrings` | `PropertyManager` | `Data Source=propertymanager.db` | The SQLite database file. |
 | `DocumentStorage` | `LocalPath` | `App_Data/documents` | Where uploaded and imported files are kept. |

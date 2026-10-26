@@ -268,6 +268,50 @@ public sealed class AssistantTests : IDisposable
             ChatClientFactory.FoundryEndpoint("https://myres.services.ai.azure.com/api/projects/rentals").ToString());
 
     [Fact]
+    public async Task AzureFoundry_UsesTheResponsesApi_WithTools()
+    {
+        var handler = new RecordingHandler
+        {
+            Reply = """
+                {"id":"resp_1","object":"response","created_at":1767225600,"status":"completed","model":"gpt-6.1-sol",
+                 "output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant",
+                            "content":[{"type":"output_text","text":"Hello from Foundry","annotations":[]}]}],
+                 "parallel_tool_calls":true,"tool_choice":"auto","tools":[]}
+                """,
+        };
+        var provider = new AssistantProviderOptions
+        {
+            Type = AssistantProviderType.AzureFoundry, Model = "gpt-6.1-sol", ApiKey = "k",
+            Endpoint = "https://myres.services.ai.azure.com/openai/v1/responses",
+        };
+        using var client = ChatClientFactory.Create(provider, new HttpClient(handler));
+
+        var response = await client.GetResponseAsync("Hi", new ChatOptions { Tools = [AIFunctionFactory.Create(() => "x", "list_text_contacts")] });
+
+        Assert.Equal("Hello from Foundry", response.Text);
+        Assert.Equal("https://myres.services.ai.azure.com/openai/v1/responses", handler.Url?.ToString());
+        Assert.Contains("\"model\":\"gpt-6.1-sol\"", handler.Body);
+        Assert.Contains("list_text_contacts", handler.Body);
+        Assert.DoesNotContain("reasoning_effort", handler.Body);
+    }
+
+    [Fact]
+    public async Task AzureFoundry_CanStillUseChatCompletions()
+    {
+        var handler = new RecordingHandler();
+        var provider = new AssistantProviderOptions
+        {
+            Type = AssistantProviderType.AzureFoundry, Model = "gpt-5-mini", ApiKey = "k", Api = "ChatCompletions",
+            Endpoint = "https://myres.cognitiveservices.azure.com/",
+        };
+        using var client = ChatClientFactory.Create(provider, new HttpClient(handler));
+
+        await Assert.ThrowsAnyAsync<Exception>(() => client.GetResponseAsync("Hi"));
+
+        Assert.Equal("https://myres.cognitiveservices.azure.com/openai/v1/chat/completions", handler.Url?.ToString());
+    }
+
+    [Fact]
     public async Task AzureFoundry_PostsToTheV1ChatCompletionsUrl()
     {
         var handler = new RecordingHandler();
@@ -288,11 +332,16 @@ public sealed class AssistantTests : IDisposable
         public Uri? Url { get; private set; }
         public string Body { get; private set; } = "";
 
+        /// <summary>JSON to answer with; null answers 404.</summary>
+        public string? Reply { get; init; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Url = request.RequestUri;
             Body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound) { Content = new StringContent("{}") };
+            return Reply is null
+                ? new HttpResponseMessage(System.Net.HttpStatusCode.NotFound) { Content = new StringContent("{}") }
+                : new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(Reply, System.Text.Encoding.UTF8, "application/json") };
         }
     }
 

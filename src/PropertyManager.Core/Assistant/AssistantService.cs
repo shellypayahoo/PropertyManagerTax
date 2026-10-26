@@ -23,7 +23,7 @@ public class AssistantConversation
 
 public class AssistantService(IOptionsMonitor<AssistantOptions> options, AssistantTools tools, Func<AssistantProviderOptions, IChatClient>? clientFactory = null)
 {
-    private readonly Func<AssistantProviderOptions, IChatClient> createClient = clientFactory ?? ChatClientFactory.Create;
+    private readonly Func<AssistantProviderOptions, IChatClient> createClient = clientFactory ?? (p => ChatClientFactory.Create(p));
 
     public bool AllowPhotosByDefault => options.CurrentValue.AllowPhotos;
 
