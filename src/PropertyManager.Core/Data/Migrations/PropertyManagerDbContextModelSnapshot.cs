@@ -144,6 +144,73 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("BankAccounts");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.BusinessDocument", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("KeepFromAssistant")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreviewKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PropertyId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ThumbnailKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UploadedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.ToTable("BusinessDocuments");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.CalendarEvent", b =>
                 {
                     b.Property<int>("Id")
@@ -1152,6 +1219,16 @@ namespace PropertyManager.Core.Data.Migrations
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.BankAccount", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.BusinessDocument", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.Property", "Property")
                         .WithMany()

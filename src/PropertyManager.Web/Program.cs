@@ -5,6 +5,7 @@ using PropertyManager.Core.Assistant;
 using PropertyManager.Core.Configuration;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Email;
+using PropertyManager.Core.Entities;
 using PropertyManager.Core.Import;
 using PropertyManager.Core.Services;
 using PropertyManager.Core.Storage;
@@ -27,6 +28,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<VendorService>();
 builder.Services.AddScoped<ReceiptService>();
+builder.Services.AddScoped<BusinessDocumentService>();
 builder.Services.AddHttpClient<PropertyPhotoService>(c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<PropertyManager.Core.Reports.ProfitAndLossPdf>();
 builder.Services.AddScoped<PropertyManager.Core.Reports.OperatingReports>();
@@ -201,6 +203,51 @@ app.MapPost("/expenses/{id:int}/receipts", async (int id, IFormFileCollection fi
 })
 .WithMetadata(new RequestSizeLimitAttribute(LeaseDocumentService.MaxFileBytes * LeaseDocumentService.MaxFilesPerUpload))
 .WithMetadata(new RequestFormLimitsAttribute { MultipartBodyLengthLimit = LeaseDocumentService.MaxFileBytes * LeaseDocumentService.MaxFilesPerUpload });
+
+// Business documents (Documents page), uploaded with a form post like lease documents.
+app.MapPost("/business-documents", async (IFormCollection form, BusinessDocumentService documents, CancellationToken ct) =>
+{
+    var kind = Enum.TryParse<BusinessDocumentKind>(form["kind"], out var k) ? k : BusinessDocumentKind.Other;
+    var propertyId = int.TryParse(form["propertyId"], out var p) ? p : (int?)null;
+    var year = int.TryParse(form["year"], out var y) ? y : (int?)null;
+    var info = new BusinessDocumentInfo(kind, form["description"], propertyId, year, form["keepFromAssistant"] == "true");
+    var result = await documents.AddAsync(info, form.Files.Select(f => (f.FileName, f.Length, (Func<Stream>)f.OpenReadStream)), ct);
+    var query = $"uploaded={result.Saved}";
+    if (form.Files.Count == 0)
+    {
+        query += "&uploadError=" + Uri.EscapeDataString("Choose a file first.");
+    }
+    else if (result.Problems.Count > 0)
+    {
+        query += "&uploadError=" + Uri.EscapeDataString(string.Join(" ", result.Problems));
+    }
+    return Results.Redirect($"/documents?{query}");
+})
+.WithMetadata(new RequestSizeLimitAttribute(LeaseDocumentService.MaxFileBytes * LeaseDocumentService.MaxFilesPerUpload))
+.WithMetadata(new RequestFormLimitsAttribute { MultipartBodyLengthLimit = LeaseDocumentService.MaxFileBytes * LeaseDocumentService.MaxFilesPerUpload });
+
+// size: "thumb" (small JPEG), "preview" (JPEG up to 1600px), or omitted for the original file.
+app.MapGet("/business-documents/{id:int}", async (int id, string? size, bool? download, IDbContextFactory<PropertyManagerDbContext> dbFactory,
+    IDocumentStorage storage, HttpContext http, CancellationToken ct) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync(ct);
+    var document = await db.BusinessDocuments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct);
+    var (key, type) = size switch
+    {
+        "thumb" when document?.ThumbnailKey is { } t => (t, "image/jpeg"),
+        "preview" when document?.PreviewKey is { } v => (v, "image/jpeg"),
+        _ => (document?.StorageKey, document?.ContentType),
+    };
+    var stream = key is null ? null : await storage.OpenReadAsync(key, ct);
+    if (stream is null)
+    {
+        return Results.NotFound();
+    }
+    http.Response.Headers.XContentTypeOptions = "nosniff";
+    return download == true
+        ? Results.File(stream, document!.ContentType, document.FileName)
+        : Results.File(stream, type ?? "application/octet-stream");
+});
 
 app.MapGet("/receipts/{id:int}", async (int id, string? size, IDbContextFactory<PropertyManagerDbContext> dbFactory,
     IDocumentStorage storage, HttpContext http, CancellationToken ct) =>

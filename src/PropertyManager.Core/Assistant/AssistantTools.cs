@@ -382,13 +382,13 @@ public class AssistantTools(
             """;
     }
 
-    [Description("Lists documents: files uploaded to leases (signed leases, addenda, inspection reports) and files attached to imported emails and texts, and expense receipts. Shows id, file name, where it's from, date, and whether its text can be read. Photos and scanned PDFs have no readable text.")]
+    [Description("Lists documents: business documents (LLC papers, tax returns and forms, insurance, deeds and closing papers, loan papers, bank statements), files uploaded to leases (signed leases, addenda, inspection reports), files attached to imported emails and texts, and expense receipts. Shows id, file name, where it's from, date, and whether its text can be read. Photos and scanned PDFs have no readable text.")]
     public async Task<string> ListDocumentsAsync(CancellationToken ct = default)
     {
         var documents = await LoadDocumentsAsync(ct);
         if (documents.Count == 0)
         {
-            return "No documents have been uploaded (open a lease on the Leases page to upload) or imported with emails.";
+            return "No documents have been uploaded (Documents page, or a lease on the Leases page) or imported with emails.";
         }
         var text = new StringBuilder();
         foreach (var d in documents)
@@ -401,10 +401,10 @@ public class AssistantTools(
         return text.ToString();
     }
 
-    [Description("Searches the text of documents: files uploaded to leases and PDF/Word files attached to emails and texts, and expense receipts. Every word must appear somewhere in a document (case-insensitive). Returns matching documents with short excerpts around the words, each with its page and character position; use read_document to read more.")]
+    [Description("Searches the text of documents: business documents (LLC, tax, insurance, closing, loan papers), files uploaded to leases, PDF/Word files attached to emails and texts, and expense receipts. Every word must appear somewhere in a document (case-insensitive). Returns matching documents with short excerpts around the words, each with its page and character position; use read_document to read more.")]
     public async Task<string> SearchDocumentsAsync(
         [Description("Words to look for, e.g. \"pets\" or \"late fee\".")] string query,
-        [Description("Optional: only documents whose lease or email matches this tenant, sender, unit, or property (e.g. \"Taylor\").")] string? lease = null,
+        [Description("Optional: only documents whose description, lease, or email matches this text: a tenant, sender, unit, property, document type, or year (e.g. \"Taylor\", \"insurance\", or \"2025\").")] string? lease = null,
         CancellationToken ct = default)
     {
         var words = (query ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -435,7 +435,7 @@ public class AssistantTools(
 
     [Description("Reads the text of one document, 12,000 characters at a time. PDF pages are marked [Page N].")]
     public async Task<string> ReadDocumentAsync(
-        [Description("The document id from list_documents, search_documents, or an email's attachments, e.g. \"L3\", \"E12\", or \"T7\".")] string documentId,
+        [Description("The document id from list_documents, search_documents, or an email's attachments, e.g. \"B2\", \"L3\", \"E12\", or \"T7\".")] string documentId,
         [Description("Character position to start reading from (default 0, the beginning).")] int fromCharacter = 0,
         CancellationToken ct = default)
     {
@@ -455,7 +455,10 @@ public class AssistantTools(
         return $"Document {d.Id}: {d.FileName} ({d.Source}), characters {start}-{end} of {d.Text.Length}:\n{d.Text[start..end]}{more}";
     }
 
-    /// <summary>A lease document ("L" + id) or email attachment ("E" + id), described for the assistant.</summary>
+    /// <summary>
+    /// A business document ("B" + id), lease document ("L"), email attachment ("E"), text attachment ("T"), or receipt
+    /// ("R"), described for the assistant. Business documents the owner keeps from the Ask page are left out.
+    /// </summary>
     private record DocumentInfo(string Id, string FileName, string Source, DateTimeOffset Date, string ContentType, string? Text);
 
     private async Task<List<DocumentInfo>> LoadDocumentsAsync(CancellationToken ct)
@@ -474,14 +477,20 @@ public class AssistantTools(
             .Where(a => a.Status == TextAttachmentStatus.Saved && !a.ContentType.StartsWith("image/") && !a.ContentType.StartsWith("video/"))
             .ToListAsync(ct);
         var names = await db.MessageContacts.AsNoTracking().Where(c => c.Name != null).ToDictionaryAsync(c => c.Handle, c => c.Name!, ct);
+        var business = await db.BusinessDocuments.AsNoTracking().Include(d => d.Property)
+            .Where(d => !d.KeepFromAssistant)
+            .ToListAsync(ct);
         var receipts = await db.ExpenseReceipts.AsNoTracking()
             .Include(r => r.Expense).ThenInclude(e => e!.Property)
             .Include(r => r.Expense).ThenInclude(e => e!.Vendor)
             .ToListAsync(ct);
 
-        return leaseDocuments
+        return business
+            .OrderBy(d => d.Kind).ThenBy(d => d.Year).ThenBy(d => d.UploadedAt.UtcTicks)
+            .Select(d => new DocumentInfo("B" + d.Id, d.FileName, BusinessLabel(d), d.UploadedAt, d.ContentType, d.Text))
+            .Concat(leaseDocuments
             .OrderBy(d => d.Lease?.Unit?.DisplayName).ThenBy(d => d.UploadedAt.UtcTicks)
-            .Select(d => new DocumentInfo("L" + d.Id, d.FileName, LeaseLabel(d.Lease), d.UploadedAt, d.ContentType, d.Text))
+            .Select(d => new DocumentInfo("L" + d.Id, d.FileName, LeaseLabel(d.Lease), d.UploadedAt, d.ContentType, d.Text)))
             .Concat(attachments
                 .OrderBy(a => a.EmailMessage!.SentAt.UtcTicks)
                 .Select(a => new DocumentInfo("E" + a.Id, a.FileName, EmailLabel(a.EmailMessage!), a.EmailMessage!.SentAt, a.ContentType, a.Text)))
@@ -503,6 +512,9 @@ public class AssistantTools(
         var who = m.Tenant?.FullName ?? m.Vendor?.Name ?? (m.IsFromMe ? m.To : m.FromDisplay);
         return $"attached to email #{m.Id} \"{m.Subject}\" {(m.IsFromMe ? "from Me to" : "from")} {who}, {m.SentAt.ToLocalTime():yyyy-MM-dd}";
     }
+
+    private static string BusinessLabel(BusinessDocument d) =>
+        $"business document: {d.Kind.DisplayName()}, \"{d.Description}\", {(d.Property?.Name ?? "whole business")}{(d.Year is { } y ? $", year {y}" : "")}";
 
     private static string LeaseLabel(Lease? lease) =>
         lease is null ? "no lease" : $"lease file, {lease.Unit?.DisplayName}, lease #{lease.Id} with {lease.TenantNames}, {lease.StartDate:yyyy-MM-dd} to {(lease.EndDate is { } e ? e.ToString("yyyy-MM-dd") : "month-to-month")}";
@@ -598,7 +610,7 @@ public class AssistantTools(
         _ => $"file {a.FileName} (document T{a.Id})",
     };
 
-    [Description("Looks at a photo sent by text (id \"T…\") or email (id \"E…\"), or a receipt photo (id \"R…\"), and answers a question about it, e.g. what damage it shows or what a document in it says. Use when a message's text doesn't say enough and the photo matters to the question.")]
+    [Description("Looks at a photo sent by text (id \"T…\") or email (id \"E…\"), a receipt photo (id \"R…\"), or a photographed business document (id \"B…\"), and answers a question about it, e.g. what damage it shows or what a document in it says. Use when a message's text doesn't say enough and the photo matters to the question.")]
     public async Task<string> DescribePhotoAsync(
         [Description("The photo's attachment id from a message, e.g. \"T12\" or \"E5\".")] string attachmentId,
         [Description("What to find out from the photo, in the context of the owner's question.")] string question,
@@ -629,6 +641,13 @@ public class AssistantTools(
             label = $"receipt {receipt.FileName} for {receipt.Expense!.Description}, {Money(receipt.Expense.Amount)} on {receipt.Expense.Date.ToString("yyyy-MM-dd", Us)}";
             photo = receipt.PreviewKey is { } preview ? (await ReadAsync(preview, ct), "image/jpeg")
                 : WebImageType(receipt.ContentType) is { } type ? (await ReadAsync(receipt.StorageKey, ct), type)
+                : null;
+        }
+        else if (id[0] == 'B' && await db.BusinessDocuments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == number && !d.KeepFromAssistant, ct) is { IsImage: true } document)
+        {
+            label = $"{document.Kind.DisplayName()} document \"{document.Description}\" ({document.FileName})";
+            photo = document.PreviewKey is { } preview ? (await ReadAsync(preview, ct), "image/jpeg")
+                : WebImageType(document.ContentType) is { } type ? (await ReadAsync(document.StorageKey, ct), type)
                 : null;
         }
         else if (id[0] == 'E' && await db.EmailAttachments.AsNoTracking().Include(a => a.EmailMessage).FirstOrDefaultAsync(a => a.Id == number, ct) is { } email

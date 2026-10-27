@@ -1,0 +1,309 @@
+@page "/documents"
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject BusinessDocumentService DocumentService
+@inject IOptionsMonitor<FeatureOptions> Features
+
+<PageTitle>Documents</PageTitle>
+
+<h1>Documents</h1>
+<p class="text-muted" style="max-width: 52rem">
+    Papers for the business: LLC formation, tax returns and 1099s, insurance policies, deeds and closing papers,
+    mortgage and loan papers, bank statements. Leases have their own documents on each lease, and receipts go on their expense.
+    @if (Features.CurrentValue.Assistant)
+    {
+        <span>The Ask page can search these unless you tick <strong>Keep out of Ask</strong>.</span>
+    }
+</p>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="h5">Upload</h2>
+        @if (Uploaded > 0)
+        {
+            <div class="alert alert-success py-2">Uploaded @Uploaded @(Uploaded == 1 ? "file" : "files").</div>
+        }
+        <FormError Message="@UploadError" />
+        <form method="post" action="business-documents" enctype="multipart/form-data" data-file-upload>
+            <AntiforgeryToken />
+            <div class="row g-2">
+                <div class="col-sm-6 col-lg-4">
+                    <label class="form-label" for="doc-description">Description</label>
+                    <input id="doc-description" name="description" class="form-control" maxlength="@BusinessDocumentService.MaxDescriptionLength"
+                           placeholder="e.g. Closing, Tax 2026, Articles of organization" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label" for="doc-kind">Type</label>
+                    @* Plain HTML rather than @bind, so a choice made while the page is still connecting isn't reset. *@
+                    <select id="doc-kind" name="kind" class="form-select"
+                            onchange="const box = document.getElementById('doc-private'); if (box) box.checked = this.selectedOptions[0].dataset.private === 'true';">
+                        @foreach (var k in Enum.GetValues<BusinessDocumentKind>())
+                        {
+                            <option value="@k" data-private="@(k.PrivateByDefault() ? "true" : "false")">@k.DisplayName()</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label" for="doc-property">Property</label>
+                    <select id="doc-property" name="propertyId" class="form-select">
+                        <option value="">Whole business</option>
+                        @foreach (var p in properties)
+                        {
+                            <option value="@p.Id">@p.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <label class="form-label" for="doc-year">Year</label>
+                    <input id="doc-year" name="year" type="number" min="1900" max="2200" class="form-control" placeholder="optional" />
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-2 align-items-center">
+                <input type="file" name="files" multiple required class="form-control w-auto flex-grow-1"
+                       accept="@string.Join(',', LeaseDocumentService.AllowedTypes.Keys)" />
+                @if (Features.CurrentValue.Assistant)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="doc-private" name="keepFromAssistant" value="true" checked="@(default(BusinessDocumentKind).PrivateByDefault())" />
+                        <label class="form-check-label" for="doc-private" title="The file is kept here but never sent to the AI model.">Keep out of Ask</label>
+                    </div>
+                }
+                <button type="submit" class="btn btn-primary">Upload</button>
+            </div>
+            <div class="small text-muted mt-1">
+                PDF, Word, or photos (JPG, PNG, HEIC), up to @(LeaseDocumentService.MaxFileBytes / 1024 / 1024) MB each.
+                Every file in one upload gets the same description and type; leave the description blank to use the file name.
+                @if (Features.CurrentValue.Assistant)
+                {
+                    <span>Tax returns and 1099s/W-9s start out kept out of Ask because they hold Social Security and tax ID numbers.</span>
+                }
+            </div>
+            <div class="alert alert-danger small mt-2" data-upload-message hidden></div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-auto">
+        <input class="form-control" placeholder="Search descriptions" @bind="search" @bind:event="oninput" aria-label="Search" />
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="kindFilter" aria-label="Type">
+            <option value="">All types</option>
+            @foreach (var k in Enum.GetValues<BusinessDocumentKind>())
+            {
+                <option value="@k">@k.DisplayName()</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="propertyFilter" aria-label="Property">
+            <option value="0">All properties</option>
+            <option value="@WholeBusiness">Whole business</option>
+            @foreach (var p in properties)
+            {
+                <option value="@p.Id">@p.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="yearFilter" aria-label="Year">
+            <option value="0">All years</option>
+            @foreach (var y in documents.Select(d => d.Year).OfType<int>().Distinct().OrderDescending())
+            {
+                <option value="@y">@y</option>
+            }
+        </select>
+    </div>
+</div>
+
+<FormError Message="@editError" />
+@if (!loaded)
+{
+    <p><em>Loading…</em></p>
+}
+else if (documents.Count == 0)
+{
+    <p class="text-muted">No documents yet.</p>
+}
+else if (!Shown.Any())
+{
+    <p class="text-muted">No documents match.</p>
+}
+else
+{
+    <table class="table align-middle">
+        <thead>
+            <tr><th>Description</th><th>Type</th><th>Property</th><th>Year</th><th>File</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var d in Shown)
+            {
+                @if (editing?.Id == d.Id)
+                {
+                    <tr class="table-light">
+                        <td><input class="form-control form-control-sm" @bind="editing.Description" maxlength="@BusinessDocumentService.MaxDescriptionLength" aria-label="Description" /></td>
+                        <td>
+                            <select class="form-select form-select-sm" @bind="editing.Kind" aria-label="Type">
+                                @foreach (var k in Enum.GetValues<BusinessDocumentKind>())
+                                {
+                                    <option value="@k">@k.DisplayName()</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <select class="form-select form-select-sm" @bind="editing.PropertyId" aria-label="Property">
+                                <option value="">Whole business</option>
+                                @foreach (var p in properties)
+                                {
+                                    <option value="@p.Id">@p.Name</option>
+                                }
+                            </select>
+                        </td>
+                        <td><input type="number" class="form-control form-control-sm" style="width: 6rem" @bind="editing.Year" aria-label="Year" /></td>
+                        <td>
+                            @d.FileName
+                            @if (Features.CurrentValue.Assistant)
+                            {
+                                <div class="form-check small mt-1">
+                                    <input class="form-check-input" type="checkbox" id="edit-private" @bind="editing.KeepFromAssistant" />
+                                    <label class="form-check-label" for="edit-private">Keep out of Ask</label>
+                                </div>
+                            }
+                        </td>
+                        <td class="text-nowrap text-end">
+                            <button class="btn btn-sm btn-primary" @onclick="SaveEditAsync">Save</button>
+                            <button class="btn btn-sm btn-link" @onclick="() => editing = null">Cancel</button>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                @if (d.ThumbnailKey is not null)
+                                {
+                                    <img src="business-documents/@d.Id?size=thumb" alt="" style="width: 2.5rem; height: 2.5rem; object-fit: cover" class="rounded border" />
+                                }
+                                <a href="@($"business-documents/{d.Id}{(d.PreviewKey is null ? "" : "?size=preview")}")" target="_blank">@d.Description</a>
+                            </div>
+                        </td>
+                        <td>@d.Kind.DisplayName()</td>
+                        <td>@(d.Property?.Name ?? "Whole business")</td>
+                        <td>@d.Year</td>
+                        <td class="small">
+                            @d.FileName <span class="text-muted">(@FormatSize(d.SizeBytes))</span>
+                            @if (Features.CurrentValue.Assistant)
+                            {
+                                @if (d.KeepFromAssistant)
+                                {
+                                    <div class="text-muted">🔒 Kept out of Ask</div>
+                                }
+                                else if (!d.HasText && !d.IsImage)
+                                {
+                                    <div class="text-muted">No readable text (scanned), so Ask can't search it.</div>
+                                }
+                            }
+                        </td>
+                        <td class="text-nowrap text-end">
+                            <a class="btn btn-sm btn-outline-secondary" href="business-documents/@d.Id?download=true">Download</a>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(d)">Edit</button>
+                            @if (deleting == d.Id)
+                            {
+                                <button class="btn btn-sm btn-danger" @onclick="() => DeleteAsync(d.Id)">Delete it</button>
+                                <button class="btn btn-sm btn-link" @onclick="() => deleting = null">Keep</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => deleting = d.Id">Delete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    // Set by the upload endpoint when it redirects back here.
+    [SupplyParameterFromQuery] public int Uploaded { get; set; }
+    [SupplyParameterFromQuery] public string? UploadError { get; set; }
+
+    private const int WholeBusiness = -1;
+
+    private List<BusinessDocument> documents = [];
+    private List<Property> properties = [];
+    private bool loaded;
+
+    private string search = "";
+    private string kindFilter = "";
+    private int propertyFilter;
+    private int yearFilter;
+
+    private BusinessDocument? editing;
+    private string? editError;
+    private int? deleting;
+
+    private IEnumerable<BusinessDocument> Shown => documents
+        .Where(d => kindFilter == "" || d.Kind.ToString() == kindFilter)
+        .Where(d => propertyFilter == 0 || (propertyFilter == WholeBusiness ? d.PropertyId is null : d.PropertyId == propertyFilter))
+        .Where(d => yearFilter == 0 || d.Year == yearFilter)
+        .Where(d => string.IsNullOrWhiteSpace(search)
+            || search.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(w =>
+                $"{d.Description} {d.FileName} {d.Kind.DisplayName()} {d.Property?.Name} {d.Year}".Contains(w, StringComparison.OrdinalIgnoreCase)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        properties = await db.Properties.AsNoTracking().OrderBy(p => p.Name).ToListAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        documents = (await db.BusinessDocuments.AsNoTracking().Include(d => d.Property).ToListAsync())
+            .OrderByDescending(d => d.Year ?? int.MaxValue)
+            .ThenBy(d => d.Kind)
+            .ThenByDescending(d => d.UploadedAt)
+            .ToList();
+        loaded = true;
+    }
+
+    private void StartEdit(BusinessDocument d)
+    {
+        editError = null;
+        deleting = null;
+        editing = new BusinessDocument
+        {
+            Id = d.Id, Kind = d.Kind, Description = d.Description, PropertyId = d.PropertyId, Year = d.Year,
+            KeepFromAssistant = d.KeepFromAssistant,
+        };
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (editing is null)
+        {
+            return;
+        }
+        editError = await DocumentService.UpdateAsync(editing.Id,
+            new BusinessDocumentInfo(editing.Kind, editing.Description, editing.PropertyId, editing.Year, editing.KeepFromAssistant));
+        if (editError is null)
+        {
+            editing = null;
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await DocumentService.DeleteAsync(id);
+        deleting = null;
+        await LoadAsync();
+    }
+
+    private static string FormatSize(long bytes) =>
+        bytes >= 1024 * 1024 ? $"{bytes / 1024.0 / 1024:0.#} MB" : $"{Math.Max(1, bytes / 1024)} KB";
+}

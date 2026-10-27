@@ -25,8 +25,10 @@ document.addEventListener('submit', async (event) => {
     button.textContent = 'Uploading…';
     try {
         const data = new FormData();
-        for (const field of form.querySelectorAll('input[type=hidden]')) {
-            data.append(field.name, field.value);
+        for (const field of form.querySelectorAll('input:not([type=file]), select, textarea')) {
+            if (field.name && !((field.type === 'checkbox' || field.type === 'radio') && !field.checked)) {
+                data.append(field.name, field.value);
+            }
         }
 
         const unreadable = [];

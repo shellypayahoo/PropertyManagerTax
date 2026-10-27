@@ -46,7 +46,8 @@ public class ProposedChange
 /// conversation for the owner to approve. Also reads files attached to the conversation.
 /// </summary>
 public partial class AssistantActions(
-    IDbContextFactory<PropertyManagerDbContext> dbFactory, ReceiptService receipts, LeaseDocumentService leaseDocuments, TimeProvider? time = null)
+    IDbContextFactory<PropertyManagerDbContext> dbFactory, ReceiptService receipts, LeaseDocumentService leaseDocuments, TimeProvider? time = null,
+    BusinessDocumentService? businessDocuments = null)
 {
     private static readonly CultureInfo Us = CultureInfo.GetCultureInfo("en-US");
 
@@ -66,6 +67,7 @@ public partial class AssistantActions(
         AIFunctionFactory.Create(ProposeAddVendorAsync, "propose_add_vendor"),
         AIFunctionFactory.Create(ProposeUpdateTenantAsync, "propose_update_tenant"),
         AIFunctionFactory.Create(ProposeAttachFileAsync, "propose_attach_file"),
+        AIFunctionFactory.Create(ProposeSaveDocumentAsync, "propose_save_document"),
     ];
 
     [Description("Reads a file the owner attached in this conversation (PDF, Word, CSV, or text), 20,000 characters at a time.")]
@@ -492,6 +494,63 @@ public partial class AssistantActions(
         }
         return Propose($"Save {file.Name} to {target}", [$"File: {file.Name}", $"As: {(expenseId is not null ? "receipt" : "lease document")}"],
             async token => (await AttachAsync(file, expenseId, leaseId, token)).Trim());
+    }
+
+    [Description("Proposes saving an attached file as a business document on the Documents page: LLC papers, tax returns, 1099s and W-9s, insurance, deeds and closing papers, mortgage and loan papers, bank statements. Use propose_attach_file instead for receipts and lease documents.")]
+    public async Task<string> ProposeSaveDocumentAsync(
+        [Description("The attached file's name.")] string fileName,
+        [Description("Document type: LLC, Tax return, 1099/W-9, Insurance, Deed/Closing, Mortgage/Loan, Bank statement, or Other.")] string type,
+        [Description("A short description, e.g. \"Closing\", \"Tax 2026\", or \"Articles of organization\".")] string description,
+        [Description("Optional: the property it's about; leave out for the whole business.")] string? property = null,
+        [Description("Optional: the year it's for, e.g. the tax year.")] int? year = null,
+        CancellationToken ct = default)
+    {
+        if (businessDocuments is null) return "Saving business documents isn't available.";
+        if (FindFile(fileName) is not { } file) return NoSuchFile(fileName);
+        if (ResolveDocumentKind(type) is not { } kind)
+            return $"\"{type}\" isn't a document type; use one of: {string.Join(", ", Enum.GetValues<BusinessDocumentKind>().Select(k => k.DisplayName()))}.";
+        if (year is < 1900 or > 2200) return $"{year} isn't a year.";
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        int? propertyId = null;
+        var where = "Whole business";
+        if (!string.IsNullOrWhiteSpace(property) && !Regex.IsMatch(property.Trim(), @"^(none|shared|all( properties)?|(the )?(whole )?business|llc)$", RegexOptions.IgnoreCase))
+        {
+            var (place, placeError) = await ResolvePlaceAsync(db, property, null, ct);
+            if (placeError is not null) return placeError;
+            (propertyId, where) = (place.PropertyId, place.Label);
+        }
+        var text = string.IsNullOrWhiteSpace(description) ? Path.GetFileNameWithoutExtension(file.Name) : description.Trim();
+        var keepPrivate = kind.PrivateByDefault();
+        var details = new List<string> { $"File: {file.Name}", $"Type: {kind.DisplayName()}", $"Description: {text}", $"Property: {where}" };
+        if (year is not null) details.Add($"Year: {year}");
+        if (keepPrivate) details.Add("Kept out of Ask (tax papers hold SSNs and EINs); you can change that on the Documents page");
+        return Propose($"Save {file.Name} to Documents as \"{text}\" ({kind.DisplayName()})", details, async token =>
+        {
+            var result = await businessDocuments.AddAsync(new BusinessDocumentInfo(kind, text, propertyId, year, keepPrivate),
+                [(file.Name, file.Content.LongLength, () => new MemoryStream(file.Content))], token);
+            return result.Saved == 1 ? $"Saved {file.Name} to the Documents page." : $"Couldn't save {file.Name}: {string.Join(" ", result.Problems)}";
+        });
+    }
+
+    internal static BusinessDocumentKind? ResolveDocumentKind(string text)
+    {
+        var t = (text ?? "").Trim().ToLowerInvariant();
+        foreach (var kind in Enum.GetValues<BusinessDocumentKind>())
+        {
+            if (t == kind.ToString().ToLowerInvariant() || t == kind.DisplayName().ToLowerInvariant()) return kind;
+        }
+        return t switch
+        {
+            _ when t.Contains("llc") || t.Contains("formation") || t.Contains("operating agreement") || t.Contains("articles") => BusinessDocumentKind.LlcAndFormation,
+            _ when t.Contains("1099") || t.Contains("w-9") || t.Contains("w9") || t.Contains("1098") => BusinessDocumentKind.TaxForm,
+            _ when t.Contains("tax") => BusinessDocumentKind.TaxReturn,
+            _ when t.Contains("insur") => BusinessDocumentKind.Insurance,
+            _ when t.Contains("deed") || t.Contains("closing") || t.Contains("settlement") || t.Contains("title") => BusinessDocumentKind.DeedAndClosing,
+            _ when t.Contains("mortgage") || t.Contains("loan") || t.Contains("refi") => BusinessDocumentKind.MortgageAndLoan,
+            _ when t.Contains("bank") || t.Contains("statement") => BusinessDocumentKind.BankStatement,
+            _ when t.Contains("other") => BusinessDocumentKind.Other,
+            _ => null,
+        };
     }
 
     // ---- helpers ----

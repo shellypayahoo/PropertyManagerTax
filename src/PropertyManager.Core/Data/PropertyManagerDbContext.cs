@@ -25,6 +25,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<MessageContact> MessageContacts => Set<MessageContact>();
     public DbSet<TextAttachment> TextAttachments => Set<TextAttachment>();
     public DbSet<ExpenseReceipt> ExpenseReceipts => Set<ExpenseReceipt>();
+    public DbSet<BusinessDocument> BusinessDocuments => Set<BusinessDocument>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<AskTurn> AskTurns => Set<AskTurn>();
     public DbSet<EmailFolder> EmailFolders => Set<EmailFolder>();
@@ -236,6 +237,23 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.Property(r => r.ThumbnailKey).HasMaxLength(100);
             e.Ignore(r => r.IsImage);
             e.HasOne(r => r.Expense).WithMany(x => x.Receipts).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BusinessDocument>(e =>
+        {
+            e.Property(d => d.Kind).HasConversion<string>().HasMaxLength(30);
+            e.Property(d => d.Description).HasMaxLength(200).IsRequired();
+            e.Property(d => d.FileName).HasMaxLength(255).IsRequired();
+            e.Property(d => d.ContentType).HasMaxLength(100).IsRequired();
+            e.Property(d => d.StorageKey).HasMaxLength(100).IsRequired();
+            e.HasIndex(d => d.StorageKey).IsUnique();
+            e.Property(d => d.PreviewKey).HasMaxLength(100);
+            e.Property(d => d.ThumbnailKey).HasMaxLength(100);
+            e.Property(d => d.UploadedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            e.Ignore(d => d.IsImage);
+            e.Ignore(d => d.HasText);
+            // Deleting a property keeps its documents, filed under the whole business.
+            e.HasOne(d => d.Property).WithMany().OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<TextAttachment>(e =>

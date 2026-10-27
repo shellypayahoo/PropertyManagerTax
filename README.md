@@ -185,6 +185,20 @@ The text of PDF and Word (.docx) files is read when they're uploaded, so the **A
 
 Besides that text, the database stores each file's name, size, and upload time. The files themselves are saved under `src/PropertyManager.Web/App_Data/documents` (set `DocumentStorage:LocalPath` in `appsettings.json` to use another folder, such as one in iCloud Drive or OneDrive). File access goes through `IDocumentStorage`, so moving to Azure Blob Storage later means adding one class and changing one line in `Program.cs`.
 
+## Business documents
+
+The **Documents** page holds papers about the business rather than a tenant or an expense: LLC formation papers, tax returns, 1099s and W-9s, insurance policies, deeds and closing papers, mortgage and loan papers, and bank statements.
+
+1. Type a **Description** such as "Closing", "Tax 2026", or "Articles of organization" (leave it blank to use the file name).
+2. Pick the **Type**, the **Property** it's about (or **Whole business** for LLC papers), and optionally the **Year**.
+3. Choose one or more files (PDF, Word, JPG, PNG, HEIC; up to 25 MB each) and click **Upload**. Every file in one upload is filed the same way.
+
+Filter the list by type, property, or year, or type in the search box to match descriptions. Click a description to open the file; **Edit** changes its description, type, property, year, or privacy; **Delete** asks once more before removing it.
+
+**Keep out of Ask:** the Ask page can search and read these documents ("What's my LLC's EIN?", "When does the Taylor insurance renew?", "What were my closing costs on 1st St?"), which sends their text to your AI model. Tick **Keep out of Ask** on any document to store it here but never send it. Tax returns and 1099s/W-9s start out ticked because they hold Social Security and tax ID numbers; untick it (with **Edit**) if you want Ask to read one. Ask can also save a file you attach there to the Documents page; like other changes, it shows a card and waits for **Apply**.
+
+The files are stored with the other documents (see [Lease documents](#lease-documents)).
+
 ## Importing financial information
 
 **Bank and Zelle CSV files** (**Import** page): download transactions as CSV from your bank's website and upload them. Common layouts (Chase, Bank of America, Capital One, Wells Fargo, and others) are detected automatically, including banks whose amounts are all positive with a separate Debit/Credit column; otherwise you pick the columns once per account.
