@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="PropertyManager.Tests" />
     <PackageReference Include="Anthropic" Version="12.54.1" />
     <PackageReference Include="Anthropic.Foundry" Version="0.7.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.*" />

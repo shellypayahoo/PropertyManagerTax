@@ -7,7 +7,10 @@ namespace PropertyManager.Core.Assistant;
 /// <summary>A tool the assistant called while answering, shown on the Ask page so it's clear what was looked up.</summary>
 public record AssistantLookup(string Tool, string Arguments);
 
-public record AssistantReply(string Text, IReadOnlyList<AssistantLookup> Lookups, bool Declined, string Provider);
+public record AssistantReply(string Text, IReadOnlyList<AssistantLookup> Lookups, bool Declined, string Provider, IReadOnlyList<ProposedChange>? Proposals = null)
+{
+    public IReadOnlyList<ProposedChange> Changes => Proposals ?? [];
+}
 
 /// <summary>One conversation on the Ask page.</summary>
 public class AssistantConversation
@@ -19,9 +22,20 @@ public class AssistantConversation
     internal BetaFallbackState FallbackState { get; } = BetaFallbackState.Create();
 
     public bool IsEmpty => History.Count == 0;
+
+    /// <summary>Files attached to questions in this conversation; the assistant can read them again or save them.</summary>
+    public List<UploadedFile> Files { get; } = [];
+
+    /// <summary>Changes the assistant proposed, waiting for the owner to apply or dismiss them.</summary>
+    public List<ProposedChange> Proposals { get; } = [];
+
+    /// <summary>Proposals made while answering the current question.</summary>
+    internal List<ProposedChange> NewProposals { get; } = [];
 }
 
-public class AssistantService(IOptionsMonitor<AssistantOptions> options, AssistantTools tools, Func<AssistantProviderOptions, IChatClient>? clientFactory = null)
+public class AssistantService(
+    IOptionsMonitor<AssistantOptions> options, AssistantTools tools, Func<AssistantProviderOptions, IChatClient>? clientFactory = null,
+    AssistantActions? actions = null, Messaging.IImageConverter? images = null)
 {
     private readonly Func<AssistantProviderOptions, IChatClient> createClient = clientFactory ?? (p => ChatClientFactory.Create(p));
 
@@ -37,7 +51,13 @@ public class AssistantService(IOptionsMonitor<AssistantOptions> options, Assista
         options.CurrentValue.Providers.Select(p => { p.Value.Name = p.Key; return p.Value; }).ToList();
 
     /// <param name="allowPhotos">Whether the assistant may look at photos (each one it looks at is an extra request with the image).</param>
-    public async Task<AssistantReply> AskAsync(AssistantConversation conversation, string providerName, string question, CancellationToken ct = default, bool allowPhotos = false)
+    /// <summary>Reads files the owner attached so they can go with a question (photos converted to JPEG where possible).</summary>
+    public Task<UploadedFile> PrepareFileAsync(string fileName, byte[] content, CancellationToken ct = default) =>
+        UploadedFile.PrepareAsync(fileName, content, images, ct);
+
+    /// <param name="files">Files attached to this question; added to the conversation so later questions can use them.</param>
+    public async Task<AssistantReply> AskAsync(AssistantConversation conversation, string providerName, string question, CancellationToken ct = default, bool allowPhotos = false,
+        IReadOnlyList<UploadedFile>? files = null)
     {
         var provider = Providers.FirstOrDefault(p => p.Name == providerName)
             ?? throw new InvalidOperationException($"No AI model named \"{providerName}\" is set up.");
@@ -59,11 +79,31 @@ public class AssistantService(IOptionsMonitor<AssistantOptions> options, Assista
         }
         conversation.ProviderName = provider.Name;
 
-        var userMessage = new ChatMessage(ChatRole.User, question);
+        // The files go with this question in full; later questions see only their names and can read them again.
+        var attached = files ?? [];
+        conversation.Files.AddRange(attached);
+        List<AIContent> contents = [new TextContent(question)];
+        foreach (var file in attached)
+        {
+            contents.Add(new TextContent(file.Describe()));
+            if (file.Image is { } image)
+            {
+                contents.Add(new DataContent(image, file.ImageType!));
+            }
+        }
+        var userMessage = new ChatMessage(ChatRole.User, contents);
+        var remembered = new ChatMessage(ChatRole.User, attached.Count == 0 ? question
+            : $"{question}\n[Attached: {string.Join(", ", attached.Select(f => f.Name))}. read_uploaded_file reads them again.]");
+
         List<ChatMessage> messages = [new(ChatRole.System, SystemPrompt(DateTime.Now)), .. conversation.History, userMessage];
         using var client = createClient(provider);
         tools.PhotoDescriber = allowPhotos ? (bytes, mediaType, ask, token) => DescribePhotoAsync(client, bytes, mediaType, ask, token) : null;
-        var chatOptions = new ChatOptions { Tools = tools.All() };
+        conversation.NewProposals.Clear();
+        if (actions is not null)
+        {
+            actions.Conversation = conversation;
+        }
+        var chatOptions = new ChatOptions { Tools = actions is null ? tools.All() : [.. tools.All(), .. actions.All()] };
         ChatResponse response;
         using (conversation.FallbackState.Use())
         {
@@ -86,10 +126,41 @@ public class AssistantService(IOptionsMonitor<AssistantOptions> options, Assista
         {
             // Keep only the question and answer: re-sending earlier lookups with every question uses up the provider's
             // tokens-per-minute limit quickly, and the model can look things up again when needed.
-            conversation.History.Add(userMessage);
+            conversation.History.Add(remembered);
             conversation.History.Add(new ChatMessage(ChatRole.Assistant, text));
         }
-        return new AssistantReply(text, lookups, declined, provider.Name);
+        return new AssistantReply(text, lookups, declined, provider.Name, [.. conversation.NewProposals]);
+    }
+
+    /// <summary>Carries out a proposed change the owner approved. Returns what happened.</summary>
+    public async Task<string> ApplyAsync(AssistantConversation conversation, ProposedChange change, CancellationToken ct = default)
+    {
+        if (change.State != ProposalState.Pending)
+        {
+            return change.Result ?? "";
+        }
+        try
+        {
+            change.Result = await change.Apply(ct);
+            change.State = ProposalState.Applied;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException or IOException)
+        {
+            change.Result = $"Couldn't apply: {ex.Message}";
+            change.State = ProposalState.Failed;
+        }
+        // So follow-up questions know what was (or wasn't) done.
+        conversation.History.Add(new ChatMessage(ChatRole.User, $"[Change {change.Number} \"{change.Summary}\": {(change.State == ProposalState.Applied ? "applied by the owner" : "failed")}. {change.Result}]"));
+        return change.Result;
+    }
+
+    public void Dismiss(AssistantConversation conversation, ProposedChange change)
+    {
+        if (change.State == ProposalState.Pending)
+        {
+            change.State = ProposalState.Dismissed;
+            conversation.History.Add(new ChatMessage(ChatRole.User, $"[Change {change.Number} \"{change.Summary}\" was dismissed by the owner; it wasn't made.]"));
+        }
     }
 
     /// <summary>A separate request to the same model with just the photo and the question, so it works with any provider.</summary>
@@ -120,6 +191,10 @@ public class AssistantService(IOptionsMonitor<AssistantOptions> options, Assista
 
         Tenants and vendors communicate by both text and email, so for questions about what someone said or agreed, search both. When an answer relies on text messages or emails, say who said it and when (date, and time if it matters), give an email's subject, and quote the key words briefly. When it relies on rent or expense records, give the dates and amounts. If the records don't answer the question, say so plainly and say what you searched; don't fill gaps with assumptions. "Me" in a conversation is the owner.
 
-        Keep answers short and direct, using plain text or simple lists. You can read data but cannot change it; if the owner wants something recorded, tell them which page of the app to use (Rent, Expenses, Leases, Maintenance, Messages).
+        The owner may attach files (receipts, invoices, leases, photos, spreadsheets) to a question; their text or image comes with the question, and read_uploaded_file reads them again later.
+
+        You can propose changes with the propose_ tools: adding or editing an expense (with an attached receipt), recording a rent payment, adding or updating a maintenance request, adding a vendor, updating a tenant's contact details, or saving an attached file as a receipt or lease document. A proposal shows the owner a card with Apply and Dismiss buttons; nothing changes until they click Apply. Look things up first so proposals use the right property, unit, tenant, vendor, and numbers; propose only what the owner asked for or clearly agreed to; then say plainly what you proposed and that it's waiting for their approval. Never say a change has been made. Notes like "[Change 2 ...: applied by the owner]" in the conversation tell you what happened to earlier proposals. You can't delete anything; for that, tell them which page to use.
+
+        Keep answers short and direct, using plain text or simple lists.
         """;
 }

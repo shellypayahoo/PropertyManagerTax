@@ -10,7 +10,9 @@
 <p class="text-muted" style="max-width: 52rem">
     Ask questions about your texts with tenants and vendors, rent, expenses, leases, and maintenance, such as
     "When did the Taylor basement tenant first mention the leak?" or "What did I pay the HVAC company this year?"
-    The assistant looks things up and says which texts or records its answer comes from. It can't change anything.
+    The assistant looks things up and says which texts or records its answer comes from. Attach receipts, invoices,
+    leases, or photos with 📎. It can also offer to add or change things (expenses, rent payments, maintenance,
+    vendors, tenant details, saving a file as a receipt); you approve each change with Apply.
 </p>
 
 @if (Assistant.Providers.Count == 0)
@@ -58,10 +60,40 @@ else
         {
             <div class="mb-3">
                 <div class="fw-semibold">@turn.Question</div>
+                @if (turn.Files.Count > 0)
+                {
+                    <div class="small text-muted">📎 @string.Join(", ", turn.Files)</div>
+                }
                 @if (turn.Reply is { } reply)
                 {
                     <div class="card mt-1 @(reply.Declined ? "border-warning" : "")">
                         <div class="card-body py-2" style="white-space: pre-wrap">@reply.Text</div>
+                        @foreach (var change in reply.Changes)
+                        {
+                            <div class="mx-3 mb-2 border rounded p-2 @(change.State switch { ProposalState.Applied => "border-success bg-success-subtle", ProposalState.Failed => "border-danger", ProposalState.Dismissed => "opacity-50", _ => "border-primary" })">
+                                <div class="small text-uppercase text-muted">Proposed change @change.Number</div>
+                                <div class="fw-semibold">@change.Summary</div>
+                                <ul class="small mb-2">
+                                    @foreach (var d in change.Details) { <li>@d</li> }
+                                </ul>
+                                @switch (change.State)
+                                {
+                                    case ProposalState.Pending:
+                                        <button class="btn btn-sm btn-success" disabled="@applying" @onclick="() => ApplyAsync(change)">Apply</button>
+                                        <button class="btn btn-sm btn-link" disabled="@applying" @onclick="() => Assistant.Dismiss(conversation, change)">Dismiss</button>
+                                        break;
+                                    case ProposalState.Applied:
+                                        <span class="small text-success">✓ Done. @change.Result</span>
+                                        break;
+                                    case ProposalState.Failed:
+                                        <span class="small text-danger">@change.Result</span>
+                                        break;
+                                    default:
+                                        <span class="small text-muted">Dismissed; nothing was changed.</span>
+                                        break;
+                                }
+                            </div>
+                        }
                         <div class="card-footer py-1 small text-muted">
                             @reply.Provider
                             @if (reply.Lookups.Count > 0)
@@ -91,9 +123,24 @@ else
         }
 
         <form @onsubmit="AskAsync" class="d-flex gap-2">
-            <textarea class="form-control" rows="2" placeholder="Ask a question" @bind="question" @bind:event="oninput" disabled="@busy"></textarea>
-            <button type="submit" class="btn btn-primary align-self-start" disabled="@(busy || string.IsNullOrWhiteSpace(question) || Selected?.IsConfigured != true)">Ask</button>
+            <textarea class="form-control" rows="2" placeholder="Ask a question, or ask it to add or change something" @bind="question" @bind:event="oninput" disabled="@busy"></textarea>
+            <button type="submit" class="btn btn-primary align-self-start" disabled="@(busy || reading || string.IsNullOrWhiteSpace(question) || Selected?.IsConfigured != true)">Ask</button>
         </form>
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+            <label class="btn btn-sm btn-outline-secondary mb-0" title="Receipts, invoices, leases, photos, spreadsheets">
+                📎 Attach files
+                <InputFile OnChange="AttachAsync" multiple class="d-none" accept="image/*,.heic,.pdf,.doc,.docx,.csv,.txt,.md" disabled="@busy" />
+            </label>
+            @if (reading) { <span class="small text-muted">Reading…</span> }
+            @foreach (var f in pending)
+            {
+                <span class="badge text-bg-light border">
+                    @f.Name <button type="button" class="btn-close btn-close-sm ms-1" style="font-size: .6rem" aria-label="Remove" @onclick="() => pending.Remove(f)"></button>
+                </span>
+            }
+        </div>
+        @if (attachError is not null) { <div class="small text-danger mt-1">@attachError</div> }
+        <div class="small text-muted mt-1">When it offers to add or change something, it shows the change with an Apply button; nothing changes until you click Apply.</div>
     </div>
 }
 </FeatureGate>
@@ -102,6 +149,7 @@ else
     private sealed class Turn(string question)
     {
         public string Question { get; } = question;
+        public List<string> Files { get; } = [];
         public AssistantReply? Reply { get; set; }
         public string? Error { get; set; }
     }
@@ -112,6 +160,50 @@ else
     private string question = "";
     private bool busy;
     private bool allowPhotos = true;
+    private readonly List<UploadedFile> pending = [];
+    private bool reading;
+    private bool applying;
+    private string? attachError;
+
+    private async Task AttachAsync(InputFileChangeEventArgs e)
+    {
+        reading = true;
+        attachError = null;
+        var problems = new List<string>();
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            try
+            {
+                await using var stream = file.OpenReadStream(UploadedFile.MaxBytes);
+                using var copy = new MemoryStream();
+                await stream.CopyToAsync(copy);
+                pending.Add(await Assistant.PrepareFileAsync(file.Name, copy.ToArray()));
+            }
+            catch (InvalidDataException ex)
+            {
+                problems.Add(ex.Message);
+            }
+            catch (IOException ex)
+            {
+                problems.Add($"{file.Name}: couldn't read it ({ex.Message}). If it's in OneDrive or iCloud, make sure it's downloaded to this computer.");
+            }
+        }
+        attachError = problems.Count == 0 ? null : string.Join(" ", problems);
+        reading = false;
+    }
+
+    private async Task ApplyAsync(ProposedChange change)
+    {
+        applying = true;
+        try
+        {
+            await Assistant.ApplyAsync(conversation, change);
+        }
+        finally
+        {
+            applying = false;
+        }
+    }
 
     private AssistantProviderOptions? Selected => Assistant.Providers.FirstOrDefault(p => p.Name == providerName);
 
@@ -125,6 +217,7 @@ else
     {
         conversation = new();
         turns.Clear();
+        pending.Clear();
     }
 
     private async Task AskAsync()
@@ -134,12 +227,15 @@ else
             return;
         }
         var turn = new Turn(question.Trim());
+        var files = pending.ToList();
+        turn.Files.AddRange(files.Select(f => f.Name));
+        pending.Clear();
         turns.Add(turn);
         question = "";
         busy = true;
         try
         {
-            turn.Reply = await Assistant.AskAsync(conversation, providerName, turn.Question, allowPhotos: allowPhotos);
+            turn.Reply = await Assistant.AskAsync(conversation, providerName, turn.Question, allowPhotos: allowPhotos, files: files);
         }
         catch (Exception ex)
         {

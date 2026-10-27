@@ -58,6 +58,7 @@ builder.Services.Configure<BusinessOptions>(builder.Configuration.GetSection(Bus
 var configurationProblems = ConfigurationCheck.Run(builder.Configuration);
 builder.Services.AddSingleton(configurationProblems);
 builder.Services.AddScoped<AssistantTools>();
+builder.Services.AddScoped<AssistantActions>();
 builder.Services.AddScoped<AssistantService>();
 
 // Tenant emails from a Hotmail/Outlook.com folder, read-only through Microsoft Graph.

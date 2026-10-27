@@ -293,6 +293,10 @@ Calendar access uses the **Calendars.Read** permission. If you signed in before 
 
 The **Ask** page answers questions about your imported texts and the app's records, for example "When did the Taylor basement tenant first mention the leak?", "Has everyone paid March rent?", "What did I pay Ace Plumbing this year?", or "What does the Taylor basement lease say about pets?". The assistant looks things up with read-only tools (text message and email search, conversations, contacts, uploaded lease documents and email attachments, properties/leases/tenants, rent status, expenses, maintenance requests, and the annual profit and loss), cites the dates and senders of texts it relies on, and lists the lookups it made under each answer. It can't change any data.
 
+**Attaching files:** click **📎 Attach files** under the question box to send photos (including iPhone HEIC), PDFs, Word, CSV, or text files (up to 20 MB each) with a question, e.g. "here's the plumber's invoice; what did they charge for parts?". The text of documents and the photos go to the model with that question; later in the conversation it can read them again.
+
+**Changes, with your approval:** the assistant can propose adding or editing an expense (and attaching an uploaded receipt), recording a rent payment, adding or updating a maintenance request, adding a vendor, updating a tenant's phone, email, or notes, and saving an uploaded file as a receipt or lease document. Each proposal appears as a card under its answer listing exactly what will change (with a warning if, say, that month's rent looks already paid), with **Apply** and **Dismiss**. Nothing changes until you click **Apply**; the card then says what was done. It never deletes anything.
+
 Pick the model from the dropdown; you can switch mid-conversation. Under the dropdown the page says where the looked-up texts and records are sent. Only what's needed to answer each question is sent, not the whole database.
 
 | Name | Model | Where data goes |

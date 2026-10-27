@@ -238,7 +238,7 @@ public class AssistantTools(
         foreach (var e in matches.Take(300))
         {
             var where = e.IsShared ? "All properties (shared)" : e.Unit?.DisplayName ?? e.Property?.Name;
-            result.AppendLine($"- {e.Date:yyyy-MM-dd} | {Money(e.Amount)} | {e.Category.DisplayName()} | {where} | {e.Description}{(e.Vendor is null ? "" : " | vendor " + e.Vendor.Name)}{(e.PaidWith is { } m ? " | paid by " + m : "")}{(string.IsNullOrWhiteSpace(e.Notes) ? "" : " | notes: " + e.Notes)}"
+            result.AppendLine($"- Expense #{e.Id} | {e.Date:yyyy-MM-dd} | {Money(e.Amount)} | {e.Category.DisplayName()} | {where} | {e.Description}{(e.Vendor is null ? "" : " | vendor " + e.Vendor.Name)}{(e.PaidWith is { } m ? " | paid by " + m : "")}{(string.IsNullOrWhiteSpace(e.Notes) ? "" : " | notes: " + e.Notes)}"
                 + (e.Receipts.Count == 0 ? " | no receipt" : " | receipt: " + string.Join(", ", e.Receipts.Select(r => $"{r.FileName} ({(r.IsImage ? "photo" : "document")} R{r.Id})"))));
         }
         if (matches.Count > 300)
@@ -265,7 +265,7 @@ public class AssistantTools(
         var text = new StringBuilder();
         foreach (var r in list)
         {
-            text.AppendLine($"- {r.ReportedOn:yyyy-MM-dd} | {r.Unit?.DisplayName} | {r.Title} | {r.Status}, {r.Priority} priority{(r.ScheduledFor is { } s ? $" | scheduled {s:yyyy-MM-dd}" : "")}{(r.CompletedOn is { } c ? $" | completed {c:yyyy-MM-dd}" : "")}{(r.Vendor is null ? "" : " | vendor " + r.Vendor.Name)}{(string.IsNullOrWhiteSpace(r.Description) ? "" : " | " + r.Description)}");
+            text.AppendLine($"- Request #{r.Id} | {r.ReportedOn:yyyy-MM-dd} | {r.Unit?.DisplayName} | {r.Title} | {r.Status}, {r.Priority} priority{(r.ScheduledFor is { } s ? $" | scheduled {s:yyyy-MM-dd}" : "")}{(r.CompletedOn is { } c ? $" | completed {c:yyyy-MM-dd}" : "")}{(r.Vendor is null ? "" : " | vendor " + r.Vendor.Name)}{(string.IsNullOrWhiteSpace(r.Description) ? "" : " | " + r.Description)}");
         }
         return text.ToString();
     }
