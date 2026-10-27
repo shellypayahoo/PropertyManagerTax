@@ -103,6 +103,16 @@
             }
         </select>
     </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="vendorFilter" @bind:after="LoadAsync" aria-label="Vendor">
+            <option value="0">All vendors</option>
+            <option value="@NoVendorFilter">No vendor</option>
+            @foreach (var v in vendors)
+            {
+                <option value="@v.Id">@v.Name</option>
+            }
+        </select>
+    </div>
     @if (Features.CurrentValue.Receipts)
     {
         <div class="col-auto form-check align-self-center ms-2">
@@ -112,6 +122,45 @@
     }
     <div class="col-auto ms-auto fs-5">Total: <strong>@Shown.Sum(e => e.Amount).ToString("C")</strong></div>
 </div>
+
+@if (vendors.FirstOrDefault(v => v.Id == vendorFilter) is { } vendor)
+{
+    var shown = Shown.ToList();
+    <div class="card mb-3" style="max-width: 40rem">
+        <div class="card-body py-2">
+            <div class="fw-semibold">
+                @vendor.Name in @year: @shown.Sum(e => e.Amount).ToString("C")
+                <span class="text-muted fw-normal">(@shown.Count expense@(shown.Count == 1 ? "" : "s")@(propertyFilter != 0 ? ", " + PropertyFilterName : ""))</span>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(vendor.Trade) || !string.IsNullOrWhiteSpace(vendor.Phone) || !string.IsNullOrWhiteSpace(vendor.Email))
+            {
+                <div class="small text-muted">@string.Join(" · ", new[] { vendor.Trade, vendor.Phone, vendor.Email }.Where(x => !string.IsNullOrWhiteSpace(x)))</div>
+            }
+            @if (shown.Count > 0)
+            {
+                <div class="d-flex flex-wrap gap-4 mt-1 small">
+                    <table class="table table-sm mb-0 w-auto">
+                        <tr class="text-muted"><th class="fw-normal">By category</th><th></th></tr>
+                        @foreach (var g in shown.GroupBy(e => e.Category).OrderByDescending(g => g.Sum(e => e.Amount)))
+                        {
+                            <tr><td>@g.Key.DisplayName() <span class="text-muted">(@g.Count())</span></td><td class="text-end">@g.Sum(e => e.Amount).ToString("C")</td></tr>
+                        }
+                    </table>
+                    @if (propertyFilter == 0)
+                    {
+                        <table class="table table-sm mb-0 w-auto">
+                            <tr class="text-muted"><th class="fw-normal">By property</th><th></th></tr>
+                            @foreach (var g in shown.GroupBy(e => e.IsShared ? "All properties" : e.Property?.Name ?? "").OrderByDescending(g => g.Sum(e => e.Amount)))
+                            {
+                                <tr><td>@g.Key <span class="text-muted">(@g.Count())</span></td><td class="text-end">@g.Sum(e => e.Amount).ToString("C")</td></tr>
+                            }
+                        </table>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
 
 @if (selected.Count > 0)
 {
@@ -219,7 +268,12 @@
                         @e.Description
                         @if (!string.IsNullOrWhiteSpace(e.Notes)) { <div class="small text-muted text-truncate" style="max-width: 24rem" title="@e.Notes">@e.Notes</div> }
                     </td>
-                    <td>@e.Vendor?.Name</td>
+                    <td>
+                        @if (e.Vendor is { } ev)
+                        {
+                            <a href="" @onclick="() => ShowVendorAsync(ev.Id)" @onclick:preventDefault title="Show all of @ev.Name's expenses for @year">@ev.Name</a>
+                        }
+                    </td>
                     <td>@e.PaidWith</td>
                     <td class="text-end">@e.Amount.ToString("C")</td>
                     <td class="text-nowrap">
@@ -398,6 +452,18 @@
     [SupplyParameterFromQuery] public int? ReceiptsFor { get; set; }
     [SupplyParameterFromQuery] public int ReceiptsAdded { get; set; }
     [SupplyParameterFromQuery] public string? ReceiptError { get; set; }
+    [SupplyParameterFromQuery] public int? Vendor { get; set; }
+
+    private const int NoVendorFilter = -1;
+    private int vendorFilter;
+
+    private string PropertyFilterName => propertyFilter == SharedFilter ? "shared by all properties" : properties.FirstOrDefault(p => p.Id == propertyFilter)?.Name ?? "";
+
+    private async Task ShowVendorAsync(int vendorId)
+    {
+        vendorFilter = vendorId;
+        await LoadAsync();
+    }
 
     private int? receiptsOpen;
     private string? receiptMessage;
@@ -430,6 +496,7 @@
         properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
         vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
         recurringAdded = await Recurring.GenerateDueAsync();
+        vendorFilter = Vendor ?? 0;
         if (ReceiptsFor is { } id && await db.Expenses.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id) is { } uploadedTo)
         {
             // Back from uploading receipts: show that expense's year with its receipts open.
@@ -477,6 +544,14 @@
         else if (propertyFilter != 0)
         {
             query = query.Where(e => e.PropertyId == propertyFilter);
+        }
+        if (vendorFilter == NoVendorFilter)
+        {
+            query = query.Where(e => e.VendorId == null);
+        }
+        else if (vendorFilter != 0)
+        {
+            query = query.Where(e => e.VendorId == vendorFilter);
         }
         expenses = await query.OrderByDescending(e => e.Date).ThenByDescending(e => e.Id).ToListAsync();
         selected.IntersectWith(expenses.Select(e => e.Id));

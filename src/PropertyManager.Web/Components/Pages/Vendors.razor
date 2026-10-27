@@ -32,7 +32,7 @@
         @foreach (var v in vendors)
         {
             <tr class="@(acting?.Id == v.Id ? "table-active" : "")">
-                <td>@v.Name</td>
+                <td><a href="expenses?vendor=@v.Id" title="Show this vendor's expenses">@v.Name</a></td>
                 <td>@v.Trade</td>
                 <td>@v.Phone</td>
                 <td>@v.Email</td>
