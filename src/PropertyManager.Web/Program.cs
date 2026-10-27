@@ -60,6 +60,7 @@ builder.Services.AddSingleton(configurationProblems);
 builder.Services.AddScoped<AssistantTools>();
 builder.Services.AddScoped<AssistantActions>();
 builder.Services.AddScoped<AssistantService>();
+builder.Services.AddSingleton<AskHistory>();
 
 // Tenant emails from a Hotmail/Outlook.com folder, read-only through Microsoft Graph.
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.Section));

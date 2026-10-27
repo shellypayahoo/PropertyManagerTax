@@ -336,7 +336,7 @@ Notes:
 - Azure deployments have a tokens-per-minute limit (student subscriptions' are small). If the page says the limit was reached, wait a minute or raise the deployment's rate limit in Azure AI Foundry (Deployments → the model → Edit). The app already waits and retries a few times before giving up, and only questions and answers (not earlier lookups) are re-sent with follow-up questions.
 - If Claude declines to answer a request, it's automatically retried once on Claude Opus 4.8, and that conversation stays on Opus 4.8. If both decline, the page says so.
 - Rent, expenses, leases, tenants, maintenance, and documents are looked up when you ask, so new entries and uploads show up right away. New texts need **Import messages for ticked contacts** on the Messages page first, and new emails need **Get new emails** on the Email page.
-- A conversation is kept only while the page is open; **New conversation** starts over.
+- The conversation is saved in the app's database, so it's still there when you go to another page, refresh, restart the app, or open Ask on your phone. **Clear conversation** deletes it and starts over. Attached files can be read again only until the app restarts (their names stay), and a proposal you haven't applied yet becomes "Not applied" after a restart; ask again to make it. One question is answered at a time, even across devices.
 
 ## Other reports
 

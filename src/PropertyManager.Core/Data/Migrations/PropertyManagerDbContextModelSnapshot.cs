@@ -47,6 +47,46 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("AppSettings");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.AskTurn", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Answer")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("AskedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ChangesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Declined")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Files")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LookupsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AskTurns");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.BankAccount", b =>
                 {
                     b.Property<int>("Id")

@@ -23,6 +23,16 @@ public class AssistantConversation
 
     public bool IsEmpty => History.Count == 0;
 
+    /// <summary>Rebuilds what the model remembers from a saved question and answer.</summary>
+    public void Remember(string question, string? answer)
+    {
+        History.Add(new ChatMessage(ChatRole.User, question));
+        if (!string.IsNullOrWhiteSpace(answer))
+        {
+            History.Add(new ChatMessage(ChatRole.Assistant, answer));
+        }
+    }
+
     /// <summary>Files attached to questions in this conversation; the assistant can read them again or save them.</summary>
     public List<UploadedFile> Files { get; } = [];
 

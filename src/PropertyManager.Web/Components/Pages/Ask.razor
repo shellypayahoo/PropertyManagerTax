@@ -1,6 +1,7 @@
 @page "/ask"
 @using PropertyManager.Core.Assistant
 @inject AssistantService Assistant
+@inject AskHistory History
 @inject IOptionsMonitor<FeatureOptions> Features
 
 <PageTitle>Ask</PageTitle>
@@ -13,6 +14,7 @@
     The assistant looks things up and says which texts or records its answer comes from. Attach receipts, invoices,
     leases, or photos with 📎. It can also offer to add or change things (expenses, rent payments, maintenance,
     vendors, tenant details, saving a file as a receipt); you approve each change with Apply.
+    The conversation is kept, on every device, until you clear it.
 </p>
 
 @if (Assistant.Providers.Count == 0)
@@ -35,7 +37,7 @@ else
         </div>
         @if (turns.Count > 0)
         {
-            <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="NewConversation">New conversation</button>
+            <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="ClearAsync">Clear conversation</button>
         }
     </div>
     @if (Selected is { } selected)
@@ -70,7 +72,7 @@ else
                         <div class="card-body py-2" style="white-space: pre-wrap">@reply.Text</div>
                         @foreach (var change in reply.Changes)
                         {
-                            <div class="mx-3 mb-2 border rounded p-2 @(change.State switch { ProposalState.Applied => "border-success bg-success-subtle", ProposalState.Failed => "border-danger", ProposalState.Dismissed => "opacity-50", _ => "border-primary" })">
+                            <div class="mx-3 mb-2 border rounded p-2 @(change.State switch { ProposalState.Applied => "border-success bg-success-subtle", ProposalState.Failed => "border-danger", ProposalState.Dismissed or ProposalState.Expired => "opacity-50", _ => "border-primary" })">
                                 <div class="small text-uppercase text-muted">Proposed change @change.Number</div>
                                 <div class="fw-semibold">@change.Summary</div>
                                 <ul class="small mb-2">
@@ -79,14 +81,17 @@ else
                                 @switch (change.State)
                                 {
                                     case ProposalState.Pending:
-                                        <button class="btn btn-sm btn-success" disabled="@applying" @onclick="() => ApplyAsync(change)">Apply</button>
-                                        <button class="btn btn-sm btn-link" disabled="@applying" @onclick="() => Assistant.Dismiss(conversation, change)">Dismiss</button>
+                                        <button class="btn btn-sm btn-success" disabled="@applying" @onclick="() => ApplyAsync(turn, change)">Apply</button>
+                                        <button class="btn btn-sm btn-link" disabled="@applying" @onclick="() => DismissAsync(turn, change)">Dismiss</button>
                                         break;
                                     case ProposalState.Applied:
                                         <span class="small text-success">✓ Done. @change.Result</span>
                                         break;
                                     case ProposalState.Failed:
                                         <span class="small text-danger">@change.Result</span>
+                                        break;
+                                    case ProposalState.Expired:
+                                        <span class="small text-muted">Not applied. @change.Result</span>
                                         break;
                                     default:
                                         <span class="small text-muted">Dismissed; nothing was changed.</span>
@@ -115,9 +120,13 @@ else
                 {
                     <div class="alert alert-warning mt-1 py-2">@turn.Error</div>
                 }
-                else
+                else if (busy)
                 {
                     <div class="text-muted mt-1">Looking things up…</div>
+                }
+                else
+                {
+                    <div class="text-muted mt-1">No answer (the app stopped before it finished).</div>
                 }
             </div>
         }
@@ -146,16 +155,8 @@ else
 </FeatureGate>
 
 @code {
-    private sealed class Turn(string question)
-    {
-        public string Question { get; } = question;
-        public List<string> Files { get; } = [];
-        public AssistantReply? Reply { get; set; }
-        public string? Error { get; set; }
-    }
-
-    private AssistantConversation conversation = new();
-    private readonly List<Turn> turns = [];
+    private AssistantConversation conversation => History.Conversation;
+    private List<AskTurnView> turns => History.Turns;
     private string? providerName;
     private string question = "";
     private bool busy;
@@ -192,12 +193,13 @@ else
         reading = false;
     }
 
-    private async Task ApplyAsync(ProposedChange change)
+    private async Task ApplyAsync(AskTurnView turn, ProposedChange change)
     {
         applying = true;
         try
         {
             await Assistant.ApplyAsync(conversation, change);
+            await History.SaveAsync(turn);
         }
         finally
         {
@@ -205,18 +207,24 @@ else
         }
     }
 
+    private async Task DismissAsync(AskTurnView turn, ProposedChange change)
+    {
+        Assistant.Dismiss(conversation, change);
+        await History.SaveAsync(turn);
+    }
+
     private AssistantProviderOptions? Selected => Assistant.Providers.FirstOrDefault(p => p.Name == providerName);
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         providerName = Assistant.DefaultProvider?.Name;
         allowPhotos = Assistant.AllowPhotosByDefault;
+        await History.EnsureLoadedAsync();
     }
 
-    private void NewConversation()
+    private async Task ClearAsync()
     {
-        conversation = new();
-        turns.Clear();
+        await History.ClearAsync();
         pending.Clear();
     }
 
@@ -226,7 +234,13 @@ else
         {
             return;
         }
-        var turn = new Turn(question.Trim());
+        if (!History.Busy.Wait(0))
+        {
+            attachError = "Another browser tab or device is waiting on an answer. Ask again in a moment.";
+            return;
+        }
+        attachError = null;
+        var turn = new AskTurnView { AskedAt = DateTimeOffset.Now, Question = question.Trim() };
         var files = pending.ToList();
         turn.Files.AddRange(files.Select(f => f.Name));
         pending.Clear();
@@ -251,6 +265,8 @@ else
         finally
         {
             busy = false;
+            History.Busy.Release();
         }
+        await History.SaveAsync(turn);
     }
 }

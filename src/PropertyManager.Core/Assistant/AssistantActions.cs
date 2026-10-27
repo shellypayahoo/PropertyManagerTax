@@ -10,7 +10,7 @@ using PropertyManager.Core.Services;
 
 namespace PropertyManager.Core.Assistant;
 
-public enum ProposalState { Pending, Applied, Dismissed, Failed }
+public enum ProposalState { Pending, Applied, Dismissed, Failed, Expired }
 
 /// <summary>
 /// A change the assistant proposed. Nothing happens until the owner clicks Apply on the Ask page, which runs it.
@@ -26,6 +26,19 @@ public class ProposedChange
     public string? Result { get; internal set; }
 
     internal Func<CancellationToken, Task<string>> Apply { get; init; } = _ => Task.FromResult("");
+
+    /// <summary>
+    /// A proposal read back from saved history. One still pending can't be applied any more (the app restarted
+    /// since it was made), so it's marked expired.
+    /// </summary>
+    public static ProposedChange Restored(int number, string summary, IReadOnlyList<string> details, ProposalState state, string? result) => new()
+    {
+        Number = number,
+        Summary = summary,
+        Details = details,
+        State = state == ProposalState.Pending ? ProposalState.Expired : state,
+        Result = state == ProposalState.Pending ? "This proposal is from before the app restarted; ask again to make it." : result,
+    };
 }
 
 /// <summary>
