@@ -1,10 +1,14 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace PropertyManager.Core.Email;
 
-/// <summary>Reads mail folders, messages, and attachments with the Microsoft Graph REST API (read-only, Mail.Read).</summary>
+/// <summary>
+/// Reads mail folders, messages, attachments, and calendars with the Microsoft Graph REST API, and adds calendar events.
+/// Nothing else in the mailbox is changed.
+/// </summary>
 public class GraphMailSource(HttpClient http, IMailTokenProvider tokens) : IMailSource
 {
     public const string BaseUrl = "https://graph.microsoft.com/v1.0/me/";
@@ -112,23 +116,60 @@ public class GraphMailSource(HttpClient http, IMailTokenProvider tokens) : IMail
         var events = new List<CalendarItem>();
         await foreach (var e in PagesAsync(url, ct))
         {
-            static string? Text(JsonElement item, string name) =>
-                item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-            // With the outlook.timezone="UTC" preference, times come back as UTC without an offset.
-            static DateTimeOffset Time(JsonElement e, string name) =>
-                new(DateTime.SpecifyKind(DateTime.Parse(Text(e.GetProperty(name), "dateTime")!, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc));
-
-            events.Add(new CalendarItem(
-                e.GetProperty("id").GetString()!,
-                Text(e, "subject") ?? "",
-                e.TryGetProperty("location", out var location) ? Text(location, "displayName") is { Length: > 0 } place ? place : null : null,
-                Text(e, "bodyPreview") is { Length: > 0 } preview ? preview : null,
-                Time(e, "start"),
-                Time(e, "end"),
-                e.TryGetProperty("isAllDay", out var allDay) && allDay.ValueKind == JsonValueKind.True,
-                e.TryGetProperty("isCancelled", out var cancelled) && cancelled.ValueKind == JsonValueKind.True));
+            events.Add(ToCalendarItem(e));
         }
         return events;
+    }
+
+    public async Task<CalendarItem> CreateEventAsync(string calendarId, NewCalendarItem item, CancellationToken ct = default)
+    {
+        static object Time(DateTime t, string zone) => new { dateTime = t.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture), timeZone = zone };
+        var body = new Dictionary<string, object?>
+        {
+            ["subject"] = item.Subject,
+            ["body"] = new { contentType = "text", content = item.Notes ?? "" },
+            ["start"] = Time(item.Start, item.TimeZone),
+            ["end"] = Time(item.End, item.TimeZone),
+            ["isAllDay"] = item.IsAllDay,
+            ["isReminderOn"] = item.ReminderMinutes is not null,
+            ["showAs"] = item.IsAllDay ? "free" : "busy",
+        };
+        if (item.ReminderMinutes is { } minutes)
+        {
+            body["reminderMinutesBeforeStart"] = minutes;
+        }
+        if (!string.IsNullOrWhiteSpace(item.Location))
+        {
+            body["location"] = new { displayName = item.Location };
+        }
+
+        var url = $"{BaseUrl}calendars/{Uri.EscapeDataString(calendarId)}/events";
+        using var request = await RequestAsync(url, ct, HttpMethod.Post, write: true);
+        request.Headers.Add("Prefer", "outlook.timezone=\"UTC\"");
+        request.Content = JsonContent.Create(body);
+        using var response = await http.SendAsync(request, ct);
+        await EnsureSuccessAsync(response, ct);
+        using var created = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        return ToCalendarItem(created.RootElement);
+    }
+
+    private static CalendarItem ToCalendarItem(JsonElement e)
+    {
+        static string? Text(JsonElement item, string name) =>
+            item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        // With the outlook.timezone="UTC" preference, times come back as UTC without an offset.
+        static DateTimeOffset Time(JsonElement e, string name) =>
+            new(DateTime.SpecifyKind(DateTime.Parse(Text(e.GetProperty(name), "dateTime")!, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc));
+
+        return new CalendarItem(
+            e.GetProperty("id").GetString()!,
+            Text(e, "subject") ?? "",
+            e.TryGetProperty("location", out var location) ? Text(location, "displayName") is { Length: > 0 } place ? place : null : null,
+            Text(e, "bodyPreview") is { Length: > 0 } preview ? preview : null,
+            Time(e, "start"),
+            Time(e, "end"),
+            e.TryGetProperty("isAllDay", out var allDay) && allDay.ValueKind == JsonValueKind.True,
+            e.TryGetProperty("isCancelled", out var cancelled) && cancelled.ValueKind == JsonValueKind.True);
     }
 
     private static MailItem ToMailItem(string id, JsonElement item)
@@ -186,15 +227,16 @@ public class GraphMailSource(HttpClient http, IMailTokenProvider tokens) : IMail
         return await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
     }
 
-    private async Task<HttpRequestMessage> RequestAsync(string url, CancellationToken ct)
+    private async Task<HttpRequestMessage> RequestAsync(string url, CancellationToken ct, HttpMethod? method = null, bool write = false)
     {
         if (!url.StartsWith("https://graph.microsoft.com/", StringComparison.OrdinalIgnoreCase))
         {
             // Links come back from Graph; never send the token anywhere else.
             throw new InvalidOperationException($"Unexpected Microsoft Graph link: {url}");
         }
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await tokens.GetAccessTokenAsync(ct));
+        var request = new HttpRequestMessage(method ?? HttpMethod.Get, url);
+        var token = write ? await tokens.GetCalendarWriteTokenAsync(ct) : await tokens.GetAccessTokenAsync(ct);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return request;
     }
 

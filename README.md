@@ -271,7 +271,7 @@ Photos, videos, and files sent in those conversations are copied too (up to 50 M
 
 ## Email
 
-The **Email** page copies emails from the Hotmail / Outlook.com folders you choose (for example a "Tenants" folder) into the app, so the **Ask** page can search them alongside texts and records. Access is read-only (Microsoft Graph `Mail.Read`); nothing in the mailbox is changed.
+The **Email** page copies emails from the Hotmail / Outlook.com folders you choose (for example a "Tenants" folder) into the app, so the **Ask** page can search them alongside texts and records. Mail access is read-only (Microsoft Graph `Mail.Read`); nothing in the mailbox is changed. The only thing the app ever writes is calendar appointments you add (see [Calendar](#calendar)).
 
 - Emails are linked to a tenant or vendor by the email address on their Tenants/Vendors page.
 - Each email's text is stored twice: the newly written part (quoted earlier replies removed), which is what search uses, and the full body.
@@ -285,7 +285,7 @@ Microsoft requires an app registration for any app that reads mail. It's free:
 1. Sign in to the [Azure portal](https://portal.azure.com) with an account in your own (personal) directory, not a work directory, and open **Microsoft Entra ID → App registrations → New registration**.
 2. Name: `Property Manager`. Supported account types: **Personal Microsoft accounts only** (or "accounts in any organizational directory and personal Microsoft accounts"). Leave the redirect URI empty. Click **Register**.
 3. On the app's **Authentication** page, turn on **Allow public client flows** and save.
-4. On **API permissions**, add **Microsoft Graph → Delegated permissions → Mail.Read** and **Calendars.Read**. (No admin consent is needed for a personal account.)
+4. On **API permissions**, add **Microsoft Graph → Delegated permissions → Mail.Read**, **Calendars.Read**, and **Calendars.ReadWrite**. (No admin consent is needed for a personal account.)
 5. Copy the **Application (client) ID** from the **Overview** page and, from the repository root:
 
    ```sh
@@ -303,7 +303,16 @@ The same page (**Email & calendar**) copies appointments from the Outlook.com ca
 - The **Dashboard** lists the next two weeks of appointments, with the property each one mentions (by street number or street name, e.g. "1354" or "Taylor") and the maintenance request it's linked to.
 - On **Maintenance**, open requests show appointments that look like the visit: within a few days before to four months after the request was reported, mentioning its property or its vendor, and ideally its unit or words from its title. **Use as scheduled date** links the appointment, fills in the scheduled date, and marks the request Scheduled; **Not this** hides a suggestion.
 
-Calendar access uses the **Calendars.Read** permission. If you signed in before calendar support was added, the page asks you to sign in again once. You can also add Microsoft Graph → Delegated → **Calendars.Read** under the app registration's API permissions, though personal accounts are asked for it at sign-in either way.
+**Adding appointments:** the app can add appointments to your Outlook calendar, so they show on your phone and in Outlook like any other:
+
+- **Dashboard** and **Email & calendar**: **+ Add appointment** for showings, inspections, a meeting with your accountant. Pick a property under **Fill in an address** to put its address in the appointment.
+- **Maintenance**: **📅 Add to calendar** on an open request fills in the vendor, issue, unit address, and the vendor's and tenant's phone numbers. Adding it links the appointment to the request and marks it Scheduled.
+- **Leases**: on a lease with an end date, **30 / 60 / 90 days before** adds an all-day reminder before the lease ends (reminding you at 9 AM that day), and the lease page shows it.
+- **Ask**: "put the plumber on my calendar Tuesday at 10" or "remind me 60 days before the Taylor basement lease ends" shows a proposed appointment with **Apply**, like other changes.
+
+Each form lets you change the title, date, time, length, place, notes, and reminder, and choose which synced calendar it goes in (the one you used last is picked first). Appointments go only into calendars you've chosen above. The app never changes or deletes appointments in Outlook.
+
+Calendar access uses the **Calendars.Read** permission, and adding appointments uses **Calendars.ReadWrite**. If you signed in before these were added, the page asks you to sign in again once (email and calendar syncing keep working until you do). You can also add those Microsoft Graph delegated permissions under the app registration's API permissions, though personal accounts are asked for them at sign-in either way.
 
 ## Ask (AI assistant)
 

@@ -1,10 +1,22 @@
 @using PropertyManager.Core.Calendar
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
+@inject CalendarEventService CalendarEvents
 
 @if (synced)
 {
-    <h2 class="h5 mt-4">Upcoming appointments <span class="small text-muted fw-normal">(next @Days days)</span></h2>
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-4 mb-2">
+        <h2 class="h5 mb-0">Upcoming appointments <span class="small text-muted fw-normal">(next @Days days)</span></h2>
+        @if (adding is null)
+        {
+            <button class="btn btn-sm btn-outline-primary" @onclick="() => adding = CalendarEvents.Blank()">+ Add appointment</button>
+        }
+    </div>
+    @if (adding is not null)
+    {
+        <div class="mb-3"><AddAppointment Draft="adding" OnAdded="AddedAsync" OnCancel="() => adding = null" /></div>
+    }
+    @if (added is not null) { <div class="alert alert-success py-1 px-2 small" style="max-width: 52rem">@added</div> }
     @if (events.Count == 0)
     {
         <p class="text-muted">Nothing on your synced calendars. <a href="email">Get calendar events</a> to refresh.</p>
@@ -35,6 +47,16 @@
     private const int Days = 14;
     private bool synced;
     private List<(CalendarEvent Event, Property? Property, MaintenanceRequest? Request)> events = [];
+
+    private AppointmentDraft? adding;
+    private string? added;
+
+    private async Task AddedAsync(CalendarEvent ev)
+    {
+        added = $"Added \"{ev.Subject}\" ({ev.StartDate:ddd, MMM d}) to your calendar.";
+        adding = null;
+        await OnInitializedAsync();
+    }
 
     protected override async Task OnInitializedAsync()
     {

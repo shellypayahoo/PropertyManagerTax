@@ -270,6 +270,9 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("LastAddedToAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long?>("LastSyncedAt")
                         .HasColumnType("INTEGER");
 
@@ -645,6 +648,9 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Property<DateOnly?>("EndDate")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("EndReminderEventId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<decimal>("MonthlyRent")
                         .HasColumnType("TEXT");
 
@@ -658,6 +664,8 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EndReminderEventId");
 
                     b.HasIndex("UnitId");
 
@@ -1384,11 +1392,18 @@ namespace PropertyManager.Core.Data.Migrations
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Lease", b =>
                 {
+                    b.HasOne("PropertyManager.Core.Entities.CalendarEvent", "EndReminderEvent")
+                        .WithMany()
+                        .HasForeignKey("EndReminderEventId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("PropertyManager.Core.Entities.Unit", "Unit")
                         .WithMany("Leases")
                         .HasForeignKey("UnitId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("EndReminderEvent");
 
                     b.Navigation("Unit");
                 });

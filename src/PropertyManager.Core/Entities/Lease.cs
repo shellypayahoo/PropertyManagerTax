@@ -17,6 +17,10 @@ public class Lease
     public decimal MonthlyRent { get; set; }
     public decimal SecurityDeposit { get; set; }
 
+    /// <summary>The calendar reminder added for the end of the lease, if any.</summary>
+    public int? EndReminderEventId { get; set; }
+    public CalendarEvent? EndReminderEvent { get; set; }
+
     public List<LeaseDocument> Documents { get; set; } = [];
     public List<RentPayment> Payments { get; set; } = [];
 

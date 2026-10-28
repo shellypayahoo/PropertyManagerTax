@@ -3,6 +3,8 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject IDocumentStorage Storage
 @inject TimeProvider Clock
+@inject IOptionsMonitor<FeatureOptions> Features
+@inject PropertyManager.Core.Calendar.CalendarEventService CalendarEvents
 
 <PageTitle>Lease</PageTitle>
 
@@ -60,6 +62,34 @@ else
     </EditForm>
     <FormError Message="@error" />
     @if (saved) { <div class="text-success small mt-1">Saved.</div> }
+
+    @if (Features.CurrentValue.Calendar && lease.EndDate is { } leaseEnd)
+    {
+        <div class="mt-3" style="max-width: 52rem">
+            @if (lease.EndReminderEvent is { } reminder && reminderDraft is null)
+            {
+                <div class="small">
+                    📅 Reminder on your calendar for @reminder.StartDate.ToString("ddd, MMM d, yyyy"): @reminder.Subject
+                    <button class="btn btn-link btn-sm p-0 ms-1" @onclick="() => StartReminderAsync(60)">Add another</button>
+                </div>
+            }
+            else if (reminderDraft is null)
+            {
+                <div class="d-flex flex-wrap align-items-center gap-2 small">
+                    <span>Remind me before this lease ends (@leaseEnd.ToString("MMM d, yyyy")):</span>
+                    @foreach (var days in new[] { 30, 60, 90 })
+                    {
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => StartReminderAsync(days)">@days days before</button>
+                    }
+                </div>
+            }
+            else
+            {
+                <AddAppointment Draft="reminderDraft" OnAdded="ReminderAddedAsync" OnCancel="() => reminderDraft = null" />
+            }
+            <FormError Message="@reminderError" />
+        </div>
+    }
 
     <div class="d-flex align-items-center gap-3 mt-5 mb-2">
         <h2 class="h4 mb-0">Rent</h2>
@@ -218,6 +248,28 @@ else
         }
     }
 
+    private PropertyManager.Core.Calendar.AppointmentDraft? reminderDraft;
+    private string? reminderError;
+
+    private async Task StartReminderAsync(int daysBefore)
+    {
+        reminderError = null;
+        try
+        {
+            reminderDraft = await CalendarEvents.ForLeaseEndAsync(Id, daysBefore);
+        }
+        catch (InvalidOperationException ex)
+        {
+            reminderError = ex.Message;
+        }
+    }
+
+    private async Task ReminderAddedAsync(CalendarEvent ev)
+    {
+        reminderDraft = null;
+        await LoadAsync();
+    }
+
     private async Task LoadAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
@@ -226,6 +278,7 @@ else
             .Include(l => l.Unit).ThenInclude(u => u!.Property)
             .Include(l => l.Documents)
             .Include(l => l.Payments)
+            .Include(l => l.EndReminderEvent)
             .FirstOrDefaultAsync(l => l.Id == Id);
         allTenants = await db.Tenants.AsNoTracking().OrderBy(t => t.LastName).ThenBy(t => t.FirstName).ToListAsync();
         loaded = true;

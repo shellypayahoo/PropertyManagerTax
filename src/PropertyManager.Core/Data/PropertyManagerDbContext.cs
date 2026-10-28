@@ -61,6 +61,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
         {
             e.HasMany(l => l.Tenants).WithMany(t => t.Leases).UsingEntity("LeaseTenants");
             e.Ignore(l => l.TenantNames);
+            e.HasOne(l => l.EndReminderEvent).WithMany().OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<LeaseDocument>(e =>
@@ -198,6 +199,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.HasIndex(c => c.GraphId).IsUnique();
             e.Property(c => c.Name).HasMaxLength(200).IsRequired();
             e.Property(c => c.LastSyncedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            e.Property(c => c.LastAddedToAt).HasConversion(new DateTimeOffsetToBinaryConverter());
         });
 
         modelBuilder.Entity<CalendarEvent>(e =>

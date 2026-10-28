@@ -5,12 +5,16 @@ using Microsoft.Identity.Client.Extensions.Msal;
 namespace PropertyManager.Core.Email;
 
 /// <summary>
-/// Signs in to the mailbox with Microsoft (device code flow, read-only Mail.Read and Calendars.Read permissions). The sign-in is kept in
+/// Signs in to the mailbox with Microsoft (device code flow; Mail.Read and Calendars.Read, plus Calendars.ReadWrite so the
+/// app can add appointments). The sign-in is kept in
 /// the macOS Keychain (Windows: DPAPI) so it survives restarts; the app never sees the password.
 /// </summary>
 public class EmailSignIn(IOptions<EmailOptions> options) : IMailTokenProvider
 {
     private static readonly string[] Scopes = ["Mail.Read", "Calendars.Read"];
+
+    // Asked for separately so a sign-in made before adding events existed keeps syncing until the owner signs in again.
+    private static readonly string[] WriteScopes = ["Calendars.ReadWrite"];
     private readonly SemaphoreSlim gate = new(1, 1);
     private IPublicClientApplication? app;
 
@@ -34,7 +38,7 @@ public class EmailSignIn(IOptions<EmailOptions> options) : IMailTokenProvider
     public async Task<string> SignInAsync(Func<string, string, Task> showCode, CancellationToken ct)
     {
         var result = await (await AppAsync())
-            .AcquireTokenWithDeviceCode(Scopes, code => showCode(code.VerificationUrl, code.UserCode))
+            .AcquireTokenWithDeviceCode([.. Scopes, .. WriteScopes], code => showCode(code.VerificationUrl, code.UserCode))
             .ExecuteAsync(ct);
         return result.Account.Username;
     }
@@ -58,6 +62,40 @@ public class EmailSignIn(IOptions<EmailOptions> options) : IMailTokenProvider
         catch (MsalUiRequiredException)
         {
             return true;
+        }
+    }
+
+    /// <summary>True when signed in with permission to add calendar events.</summary>
+    public async Task<bool> CanAddEventsAsync(CancellationToken ct = default)
+    {
+        var client = await AppAsync();
+        if ((await client.GetAccountsAsync()).FirstOrDefault() is not { } account)
+        {
+            return false;
+        }
+        try
+        {
+            await client.AcquireTokenSilent(WriteScopes, account).ExecuteAsync(ct);
+            return true;
+        }
+        catch (MsalUiRequiredException)
+        {
+            return false;
+        }
+    }
+
+    public async Task<string> GetCalendarWriteTokenAsync(CancellationToken ct = default)
+    {
+        var client = await AppAsync();
+        var account = (await client.GetAccountsAsync()).FirstOrDefault()
+            ?? throw new InvalidOperationException("Not signed in to Microsoft. Sign in on the Email & calendar page.");
+        try
+        {
+            return (await client.AcquireTokenSilent(WriteScopes, account).ExecuteAsync(ct)).AccessToken;
+        }
+        catch (MsalUiRequiredException)
+        {
+            throw new InvalidOperationException("To add events, sign in again on the Email & calendar page and accept the permission to add to your calendar.");
         }
     }
 

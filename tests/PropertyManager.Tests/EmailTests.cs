@@ -362,6 +362,21 @@ public sealed class EmailTests : IDisposable
             EventWindow = (from, to);
             return Task.FromResult<IReadOnlyList<CalendarItem>>(Events[calendarId].ToList());
         }
+
+        public List<(string CalendarId, NewCalendarItem Item)> Created { get; } = [];
+
+        /// <summary>Records the event and adds it to the calendar; all-day events come back at midnight UTC, like Graph's.</summary>
+        public Task<CalendarItem> CreateEventAsync(string calendarId, NewCalendarItem item, CancellationToken ct = default)
+        {
+            Created.Add((calendarId, item));
+            var created = new CalendarItem($"new-{Created.Count}", item.Subject, item.Location, item.Notes?[..Math.Min(item.Notes.Length, 255)],
+                new DateTimeOffset(item.Start, TimeSpan.Zero), new DateTimeOffset(item.End, TimeSpan.Zero), item.IsAllDay, false);
+            if (Events.TryGetValue(calendarId, out var list))
+            {
+                list.Add(created);
+            }
+            return Task.FromResult(created);
+        }
     }
 
     private sealed class TestDbContextFactory(DbContextOptions<PropertyManagerDbContext> options)

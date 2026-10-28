@@ -3,6 +3,7 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
 @inject IOptionsMonitor<FeatureOptions> Features
+@inject CalendarEventService CalendarEvents
 
 <PageTitle>Maintenance</PageTitle>
 
@@ -79,6 +80,10 @@
                     }
                     else if (m.IsOpen)
                     {
+                        @if (Features.CurrentValue.Calendar && scheduling?.MaintenanceRequestId != m.Id)
+                        {
+                            <button class="btn btn-link btn-sm p-0 small" @onclick="() => StartSchedulingAsync(m.Id)">📅 Add to calendar</button>
+                        }
                         @foreach (var s in SuggestionsFor(m))
                         {
                             <div class="small border-start border-3 border-info ps-2 mt-1">
@@ -115,6 +120,14 @@
                 <td class="text-end">@(m.Expenses.Count == 0 ? "" : m.Expenses.Sum(e => e.Amount).ToString("C"))</td>
                 <td class="text-nowrap text-end"><button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(m)">Edit</button></td>
             </tr>
+            @if (scheduling is { } draft && draft.MaintenanceRequestId == m.Id)
+            {
+                <tr class="table-light">
+                    <td colspan="8">
+                        <AddAppointment Draft="draft" OnAdded="ScheduledAsync" OnCancel="() => scheduling = null" />
+                    </td>
+                </tr>
+            }
             @if (editing?.Id == m.Id)
             {
                 <tr class="table-light">
@@ -302,6 +315,22 @@
             request.CompletedOn = status == MaintenanceStatus.Completed ? request.CompletedOn ?? today : null;
             await db.SaveChangesAsync();
         }
+        await LoadAsync();
+    }
+
+    private AppointmentDraft? scheduling;
+
+    private async Task StartSchedulingAsync(int requestId)
+    {
+        editing = null;
+        scheduling = await CalendarEvents.ForMaintenanceAsync(requestId);
+    }
+
+    private async Task ScheduledAsync(CalendarEvent ev)
+    {
+        status = $"Added \"{ev.Subject}\" to your calendar.";
+        error = null;
+        scheduling = null;
         await LoadAsync();
     }
 

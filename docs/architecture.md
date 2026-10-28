@@ -41,7 +41,7 @@ flowchart LR
     end
 
     subgraph Cloud["Outside services"]
-        Graph["Microsoft Graph<br/>Outlook.com mail & calendar<br/>Mail.Read · Calendars.Read"]
+        Graph["Microsoft Graph<br/>Outlook.com mail & calendar<br/>Mail.Read · Calendars.Read<br/>Calendars.ReadWrite (add appointments)"]
         Entra["Microsoft sign-in<br/>app registration"]
         AI["AI provider, as configured<br/>Azure AI Foundry · OpenAI · Anthropic<br/>Claude on Foundry · Ollama (local)"]
         Web2["Websites<br/>e.g. the LLC's site, for house photos"]

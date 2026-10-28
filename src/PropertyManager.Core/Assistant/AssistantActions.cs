@@ -47,7 +47,7 @@ public class ProposedChange
 /// </summary>
 public partial class AssistantActions(
     IDbContextFactory<PropertyManagerDbContext> dbFactory, ReceiptService receipts, LeaseDocumentService leaseDocuments, TimeProvider? time = null,
-    BusinessDocumentService? businessDocuments = null)
+    BusinessDocumentService? businessDocuments = null, CalendarEventService? calendarEvents = null)
 {
     private static readonly CultureInfo Us = CultureInfo.GetCultureInfo("en-US");
 
@@ -68,6 +68,7 @@ public partial class AssistantActions(
         AIFunctionFactory.Create(ProposeUpdateTenantAsync, "propose_update_tenant"),
         AIFunctionFactory.Create(ProposeAttachFileAsync, "propose_attach_file"),
         AIFunctionFactory.Create(ProposeSaveDocumentAsync, "propose_save_document"),
+        AIFunctionFactory.Create(ProposeAddCalendarEventAsync, "propose_add_calendar_event"),
     ];
 
     [Description("Reads a file the owner attached in this conversation (PDF, Word, CSV, or text), 20,000 characters at a time.")]
@@ -530,6 +531,103 @@ public partial class AssistantActions(
                 [(file.Name, file.Content.LongLength, () => new MemoryStream(file.Content))], token);
             return result.Saved == 1 ? $"Saved {file.Name} to the Documents page." : $"Couldn't save {file.Name}: {string.Join(" ", result.Problems)}";
         });
+    }
+
+    [Description("Proposes adding an appointment to the owner's Outlook.com calendar, e.g. a repair visit, showing, inspection, or a reminder before a lease ends. For a maintenance visit pass maintenanceRequestId: the vendor, address, and phone numbers are filled in and the request is marked scheduled. For a lease-end reminder pass leaseId and leave out time (all day).")]
+    public async Task<string> ProposeAddCalendarEventAsync(
+        [Description("Date, yyyy-MM-dd.")] string date,
+        [Description("Optional title; filled in for maintenance visits and lease reminders.")] string? title = null,
+        [Description("Optional start time, e.g. \"10:00\" or \"2:30 PM\"; leave out for an all-day event.")] string? time = null,
+        [Description("Length in minutes (default 60).")] int durationMinutes = 60,
+        [Description("Optional property (and unit) it's at; the address becomes the location.")] string? property = null,
+        [Description("Optional unit label, e.g. \"B\".")] string? unit = null,
+        [Description("Optional notes for the appointment.")] string? notes = null,
+        [Description("Optional calendar name; defaults to the one last added to.")] string? calendar = null,
+        [Description("Optional maintenance request number this visit is for.")] int? maintenanceRequestId = null,
+        [Description("Optional lease number, for a reminder before that lease ends.")] int? leaseId = null,
+        CancellationToken ct = default)
+    {
+        if (calendarEvents is null) return "Adding calendar events isn't available.";
+        if (ParseDate(date) is not { } day) return $"\"{date}\" isn't a date; use yyyy-MM-dd.";
+        TimeOnly? start = null;
+        if (!string.IsNullOrWhiteSpace(time))
+        {
+            if (ParseTime(time) is not { } t) return $"\"{time}\" isn't a time; use e.g. 10:00 or 2:30 PM.";
+            start = t;
+        }
+        if (durationMinutes is <= 0 or > 24 * 60) return "The length must be between 1 and 1440 minutes.";
+
+        var calendars = await calendarEvents.CalendarsAsync(ct);
+        if (calendars.Count == 0) return "No Outlook calendars are synced. The owner chooses calendars on the Email & calendar page first.";
+        var target = calendars[0];
+        if (!string.IsNullOrWhiteSpace(calendar))
+        {
+            var named = calendars.Where(c => Contains(c.Name, calendar)).ToList();
+            if (named.Count != 1) return $"\"{calendar}\" {(named.Count == 0 ? "matches no" : "matches more than one")} synced calendar. Calendars: {string.Join(", ", calendars.Select(c => c.Name))}.";
+            target = named[0];
+        }
+
+        AppointmentDraft draft;
+        try
+        {
+            draft = maintenanceRequestId is { } rid ? await calendarEvents.ForMaintenanceAsync(rid, ct)
+                : leaseId is { } lid ? await calendarEvents.ForLeaseEndAsync(lid, ct: ct)
+                : calendarEvents.Blank();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
+        draft.Date = day;
+        if (start is { } at)
+        {
+            (draft.AllDay, draft.Start, draft.DurationMinutes, draft.ReminderMinutes) = (false, at, durationMinutes, 60);
+        }
+        else if (maintenanceRequestId is null)
+        {
+            (draft.AllDay, draft.ReminderMinutes) = (true, AppointmentDraft.AllDayReminder);
+        }
+        else
+        {
+            return "Give a time for the visit.";
+        }
+        if (!string.IsNullOrWhiteSpace(title)) draft.Subject = title.Trim();
+        if (string.IsNullOrWhiteSpace(draft.Subject)) return "Give the appointment a title.";
+        if (!string.IsNullOrWhiteSpace(notes)) draft.Notes = string.IsNullOrWhiteSpace(draft.Notes) ? notes.Trim() : $"{notes.Trim()}\n\n{draft.Notes}";
+        if (!string.IsNullOrWhiteSpace(property))
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct);
+            var (place, placeError) = await ResolvePlaceAsync(db, property, unit, ct);
+            if (placeError is not null) return placeError;
+            if (place.PropertyId is { } pid && await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == pid, ct) is { } prop)
+            {
+                draft.Location = prop.FullAddress + (place.UnitId is null ? "" : $" ({place.Label[(place.Label.LastIndexOf("Unit ", StringComparison.Ordinal))..]})");
+            }
+        }
+
+        var details = new List<string> { $"Calendar: {target.Name}", $"When: {draft.When}", $"Title: {draft.Subject}" };
+        if (!string.IsNullOrWhiteSpace(draft.Location)) details.Add($"Where: {draft.Location}");
+        if (!string.IsNullOrWhiteSpace(draft.Notes)) details.Add($"Notes: {draft.Notes.ReplaceLineEndings("; ")}");
+        if (draft.MaintenanceRequestId is { } linkedRequest) details.Add($"Links maintenance request #{linkedRequest} and marks it scheduled");
+        if (draft.LeaseId is { } linkedLease) details.Add($"Saved as lease #{linkedLease}'s end-of-lease reminder");
+        var calendarId = target.Id;
+        return Propose($"Add to calendar: {draft.Subject}, {draft.When}", details, async token =>
+        {
+            var ev = await calendarEvents.AddAsync(calendarId, draft, token);
+            return $"Added \"{ev.Subject}\" to {target.Name}.";
+        });
+    }
+
+    internal static TimeOnly? ParseTime(string text)
+    {
+        var m = Regex.Match(text.Trim(), @"^(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m?\.?$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var hour = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture) % 12 + (char.ToLowerInvariant(m.Groups[3].Value[0]) == 'p' ? 12 : 0);
+            var minute = m.Groups[2].Success ? int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture) : 0;
+            return hour < 24 && minute < 60 ? new TimeOnly(hour, minute) : null;
+        }
+        return TimeOnly.TryParse(text.Trim(), CultureInfo.InvariantCulture, out var t) ? t : null;
     }
 
     internal static BusinessDocumentKind? ResolveDocumentKind(string text)

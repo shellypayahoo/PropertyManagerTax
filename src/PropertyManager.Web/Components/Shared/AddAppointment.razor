@@ -1,0 +1,160 @@
+@using PropertyManager.Core.Calendar
+@inject CalendarEventService CalendarEvents
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+
+@* A form that adds an appointment to one of the synced Outlook calendars. *@
+<div class="border rounded p-3 bg-body-tertiary" style="max-width: 52rem">
+    @if (calendars is null)
+    {
+        <p class="text-muted mb-0">Loading…</p>
+    }
+    else if (calendars.Count == 0)
+    {
+        <p class="mb-2">To add appointments, first choose the Outlook calendar you use on the <a href="email">Email &amp; calendar</a> page.</p>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="OnCancel">Close</button>
+    }
+    else
+    {
+        <div class="row g-2">
+            <div class="col-12">
+                <label class="form-label small mb-0" for="@Id("title")">Title</label>
+                <input id="@Id("title")" class="form-control form-control-sm" @bind="Draft.Subject" maxlength="@AppointmentDraft.MaxSubjectLength" />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label small mb-0" for="@Id("date")">Date</label>
+                <input id="@Id("date")" type="date" class="form-control form-control-sm" @bind="Draft.Date" />
+            </div>
+            <div class="col-sm-3">
+                <label class="form-label small mb-0" for="@Id("start")">Start</label>
+                <input id="@Id("start")" type="time" class="form-control form-control-sm" @bind="Draft.Start" disabled="@Draft.AllDay" />
+            </div>
+            <div class="col-sm-3">
+                <label class="form-label small mb-0" for="@Id("length")">Length</label>
+                <select id="@Id("length")" class="form-select form-select-sm" @bind="Draft.DurationMinutes" disabled="@Draft.AllDay">
+                    @foreach (var (minutes, label) in Lengths)
+                    {
+                        <option value="@minutes">@label</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-2 d-flex align-items-end">
+                <div class="form-check mb-1">
+                    <input class="form-check-input" type="checkbox" id="@Id("allday")" checked="@Draft.AllDay" @onchange="e => SetAllDay((bool)e.Value!)" />
+                    <label class="form-check-label small" for="@Id("allday")">All day</label>
+                </div>
+            </div>
+            <div class="col-sm-8">
+                <label class="form-label small mb-0" for="@Id("where")">Where</label>
+                <input id="@Id("where")" class="form-control form-control-sm" @bind="Draft.Location" placeholder="optional" />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label small mb-0" for="@Id("place")">Fill in an address</label>
+                <select id="@Id("place")" class="form-select form-select-sm" @onchange="e => FillAddress(e.Value as string)">
+                    <option value="">—</option>
+                    @foreach (var u in units)
+                    {
+                        <option value="@u.Id">@u.DisplayName</option>
+                    }
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label small mb-0" for="@Id("notes")">Notes</label>
+                <textarea id="@Id("notes")" class="form-control form-control-sm" rows="2" @bind="Draft.Notes"></textarea>
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label small mb-0" for="@Id("reminder")">Reminder</label>
+                <select id="@Id("reminder")" class="form-select form-select-sm" value="@(Draft.ReminderMinutes?.ToString() ?? "")"
+                        @onchange="e => Draft.ReminderMinutes = int.TryParse(e.Value as string, out var m) ? m : null">
+                    <option value="">None</option>
+                    @foreach (var (minutes, label) in Draft.AllDay ? AllDayReminders : Reminders)
+                    {
+                        <option value="@minutes">@label</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-8">
+                <label class="form-label small mb-0" for="@Id("calendar")">Calendar</label>
+                <select id="@Id("calendar")" class="form-select form-select-sm" @bind="calendarId">
+                    @foreach (var c in calendars)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+            </div>
+        </div>
+        @if (error is not null)
+        {
+            <div class="alert alert-warning py-1 px-2 small mt-2 mb-0">
+                @error
+                @if (error.Contains("sign in again", StringComparison.OrdinalIgnoreCase)) { <a href="email" class="ms-1">Go to Email &amp; calendar</a> }
+            </div>
+        }
+        <div class="d-flex gap-2 mt-2">
+            <button class="btn btn-sm btn-primary" disabled="@busy" @onclick="AddAsync">@(busy ? "Adding…" : "Add to calendar")</button>
+            <button class="btn btn-sm btn-link" disabled="@busy" @onclick="OnCancel">Cancel</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public AppointmentDraft Draft { get; set; } = new();
+    [Parameter] public EventCallback<CalendarEvent> OnAdded { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private static readonly (int, string)[] Lengths =
+        [(15, "15 min"), (30, "30 min"), (45, "45 min"), (60, "1 hour"), (90, "1½ hours"), (120, "2 hours"), (180, "3 hours"), (240, "4 hours"), (480, "8 hours")];
+    private static readonly (int, string)[] Reminders = [(15, "15 minutes before"), (60, "1 hour before"), (120, "2 hours before"), (1440, "1 day before")];
+    private static readonly (int, string)[] AllDayReminders =
+        [(AppointmentDraft.AllDayReminder, "Day before, 9 AM"), (AppointmentDraft.AllDayReminder + 6 * 24 * 60, "Week before, 9 AM")];
+
+    private readonly string prefix = "appt-" + Guid.NewGuid().ToString("N")[..8];
+    private List<CalendarSource>? calendars;
+    private List<Unit> units = [];
+    private int calendarId;
+    private bool busy;
+    private string? error;
+
+    private string Id(string name) => $"{prefix}-{name}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        calendars = await CalendarEvents.CalendarsAsync();
+        calendarId = calendars.FirstOrDefault()?.Id ?? 0;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        units = (await db.Units.AsNoTracking().Include(u => u.Property).ToListAsync())
+            .OrderBy(u => u.Property?.Name).ThenBy(u => u.Label).ToList();
+    }
+
+    private void SetAllDay(bool allDay)
+    {
+        Draft.AllDay = allDay;
+        Draft.ReminderMinutes = allDay ? AppointmentDraft.AllDayReminder : 60;
+    }
+
+    private void FillAddress(string? unitId)
+    {
+        if (units.FirstOrDefault(u => u.Id.ToString() == unitId) is { Property: { } property } unit)
+        {
+            Draft.Location = $"{property.FullAddress} (Unit {unit.Label})";
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            var ev = await CalendarEvents.AddAsync(calendarId, Draft);
+            await OnAdded.InvokeAsync(ev);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException)
+        {
+            error = $"Couldn't add it: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

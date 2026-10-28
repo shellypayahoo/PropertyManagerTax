@@ -71,6 +71,7 @@ builder.Services.AddSingleton<IMailTokenProvider>(sp => sp.GetRequiredService<Em
 builder.Services.AddHttpClient<IMailSource, GraphMailSource>();
 builder.Services.AddScoped<EmailSyncService>();
 builder.Services.AddScoped<PropertyManager.Core.Calendar.CalendarSyncService>();
+builder.Services.AddScoped<PropertyManager.Core.Calendar.CalendarEventService>();
 
 // Uploaded documents live on disk; swap this registration for an Azure Blob implementation when hosting.
 builder.Services.AddSingleton<IDocumentStorage>(new LocalDocumentStorage(

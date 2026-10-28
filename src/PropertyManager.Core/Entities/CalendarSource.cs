@@ -11,5 +11,8 @@ public class CalendarSource
     public string Name { get; set; } = "";
     public DateTimeOffset? LastSyncedAt { get; set; }
 
+    /// <summary>When the app last added an event here; the most recent one is offered first next time.</summary>
+    public DateTimeOffset? LastAddedToAt { get; set; }
+
     public List<CalendarEvent> Events { get; set; } = [];
 }

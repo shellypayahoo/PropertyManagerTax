@@ -3,6 +3,7 @@
 @implements IDisposable
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject EmailSignIn SignIn
+@inject PropertyManager.Core.Calendar.CalendarEventService CalendarEvents
 @inject IMailSource Mail
 @inject EmailSyncService Sync
 @inject PropertyManager.Core.Calendar.CalendarSyncService CalendarSync
@@ -34,7 +35,7 @@ else if (signedInAs is null)
         <div class="alert alert-primary" style="max-width: 52rem">
             Go to <a href="@signInCode.Url" target="_blank" rel="noopener">@signInCode.Url</a> and enter the code
             <strong class="font-monospace fs-5 mx-1">@signInCode.Code</strong>, then sign in with your Hotmail account and accept the
-            read-mail permission. This page continues by itself once you're done.
+            permissions (read mail, read your calendar, and add appointments to it). This page continues by itself once you're done.
         </div>
     }
     else
@@ -148,7 +149,33 @@ else
         <div class="d-flex flex-wrap gap-2 mb-3">
             <button class="btn btn-outline-primary" disabled="@(busy || needsSignInAgain)" @onclick="ChooseCalendarsAsync">Choose calendars</button>
             <button class="btn btn-primary" disabled="@(busy || calendars.Count == 0 || needsSignInAgain)" @onclick="SyncCalendarsAsync">Get calendar events</button>
+            @if (calendars.Count > 0 && canAddEvents && adding is null)
+            {
+                <button class="btn btn-outline-primary" disabled="@busy" @onclick="() => adding = CalendarEvents.Blank()">+ Add appointment</button>
+            }
         </div>
+        @if (adding is not null)
+        {
+            <div class="mb-3"><AddAppointment Draft="adding" OnAdded="AppointmentAddedAsync" OnCancel="() => adding = null" /></div>
+        }
+        @if (calendars.Count > 0 && !canAddEvents && !needsSignInAgain)
+        {
+            <div class="alert alert-info small" style="max-width: 52rem">
+                The app can now add appointments to your calendar (from here, the Dashboard, Maintenance, leases, and Ask).
+                That needs your permission once: click <strong>Sign in again</strong> and accept the permission to add to your calendar.
+                @if (deviceCode is { } writeCode)
+                {
+                    <div class="mt-2">
+                        Go to <a href="@writeCode.Url" target="_blank" rel="noopener">@writeCode.Url</a> and enter the code
+                        <strong class="font-monospace fs-6 mx-1">@writeCode.Code</strong>, then sign in and accept.
+                    </div>
+                }
+                else
+                {
+                    <button class="btn btn-sm btn-primary ms-2" disabled="@busy" @onclick="SignInAsync">Sign in again</button>
+                }
+            </div>
+        }
     }
     </FeatureGate>
 }
@@ -210,6 +237,16 @@ else
     private const int Shown = 100;
     private string? signedInAs;
     private bool needsSignInAgain;
+    private bool canAddEvents;
+    private PropertyManager.Core.Calendar.AppointmentDraft? adding;
+
+    private async Task AppointmentAddedAsync(CalendarEvent ev)
+    {
+        status = $"Added \"{ev.Subject}\" ({ev.StartDate:ddd, MMM d}) to your calendar.";
+        error = null;
+        adding = null;
+        await LoadAsync();
+    }
     private List<CalendarSource> calendars = [];
     private IReadOnlyList<CalendarInfo> mailCalendars = [];
     private readonly HashSet<string> pickedCalendars = [];
@@ -236,6 +273,7 @@ else
         {
             signedInAs = await SignIn.GetSignedInAddressAsync();
             needsSignInAgain = signedInAs is not null && await SignIn.NeedsSignInAgainAsync();
+            canAddEvents = signedInAs is not null && await SignIn.CanAddEventsAsync();
         }
         catch (Exception ex)
         {
@@ -296,6 +334,7 @@ else
             await InvokeAsync(StateHasChanged);
         }, leaving.Token);
         needsSignInAgain = false;
+        canAddEvents = await SignIn.CanAddEventsAsync();
     });
 
     private Task SignOutAsync() => RunAsync(async () =>
