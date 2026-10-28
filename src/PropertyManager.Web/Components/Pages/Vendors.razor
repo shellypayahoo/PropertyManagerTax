@@ -8,15 +8,15 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h2 class="h5">@(form.Id == 0 ? "Add vendor" : $"Edit {editingName}")</h2>
-        <EditForm Model="form" OnValidSubmit="SaveAsync" FormName="vendor" class="row g-2">
+        <h2 class="h5">Add vendor</h2>
+        @* novalidate: the app checks the email itself and says what's wrong, instead of the browser silently refusing. *@
+        <EditForm Model="form" OnValidSubmit="AddAsync" FormName="vendor" class="row g-2" novalidate>
             <div class="col-md-3"><InputText @bind-Value="form.Name" class="form-control" placeholder="Name" /></div>
             <div class="col-md-2"><InputText @bind-Value="form.Trade" class="form-control" placeholder="Trade (e.g. Plumber)" /></div>
             <div class="col-md-2"><InputText @bind-Value="form.Phone" class="form-control" placeholder="Phone" type="tel" /></div>
             <div class="col-md-3"><InputText @bind-Value="form.Email" class="form-control" placeholder="Email" type="email" /></div>
             <div class="col-md-2 d-flex gap-2">
-                <button type="submit" class="btn btn-primary">@(form.Id == 0 ? "Add" : "Save")</button>
-                @if (form.Id != 0) { <button type="button" class="btn btn-link" @onclick="CancelEdit">Cancel</button> }
+                <button type="submit" class="btn btn-primary">Add</button>
             </div>
         </EditForm>
         <FormError Message="@error" />
@@ -31,6 +31,25 @@
     <tbody>
         @foreach (var v in vendors)
         {
+            @if (editing?.Id == v.Id)
+            {
+                <tr class="table-light">
+                    <td><input class="form-control form-control-sm" @bind="editing.Name" aria-label="Name" /></td>
+                    <td><input class="form-control form-control-sm" @bind="editing.Trade" aria-label="Trade" /></td>
+                    <td><input class="form-control form-control-sm" @bind="editing.Phone" type="tel" aria-label="Phone" /></td>
+                    <td><input class="form-control form-control-sm" @bind="editing.Email" aria-label="Email" /></td>
+                    <td></td>
+                    <td class="text-nowrap text-end">
+                        <button class="btn btn-sm btn-primary" @onclick="SaveEditAsync">Save</button>
+                        <button class="btn btn-sm btn-link" @onclick="() => { editing = null; editError = null; }">Cancel</button>
+                    </td>
+                </tr>
+                @if (editError is not null)
+                {
+                    <tr class="table-light"><td colspan="6"><FormError Message="@editError" /></td></tr>
+                }
+                continue;
+            }
             <tr class="@(acting?.Id == v.Id ? "table-active" : "")">
                 <td><a href="expenses?vendor=@v.Id" title="Show this vendor's expenses">@v.Name</a></td>
                 <td>@v.Trade</td>
@@ -94,7 +113,8 @@
 @code {
     private List<Vendor> vendors = [];
     private Vendor form = new();
-    private string editingName = "";
+    private Vendor? editing;
+    private string? editError;
     private string? error;
     private string? status;
     private Vendor? acting;
@@ -114,46 +134,73 @@
     {
         acting = null;
         status = null;
-        editingName = v.Name;
-        form = new Vendor { Id = v.Id, Name = v.Name, Trade = v.Trade, Phone = v.Phone, Email = v.Email, Notes = v.Notes, KeepMessagesUntil = v.KeepMessagesUntil };
+        editError = null;
+        editing = new Vendor { Id = v.Id, Name = v.Name, Trade = v.Trade, Phone = v.Phone, Email = v.Email, Notes = v.Notes };
     }
 
-    private void CancelEdit()
+    private async Task AddAsync()
     {
-        form = new();
-        error = null;
-    }
-
-    private async Task SaveAsync()
-    {
-        if (string.IsNullOrWhiteSpace(form.Name))
+        if (Problem(form) is { } problem)
         {
-            error = "Name is required.";
+            error = problem;
             return;
         }
-        var name = form.Name.Trim();
-        if (vendors.Any(v => v.Id != form.Id && string.Equals(v.Name.Trim(), name, StringComparison.OrdinalIgnoreCase)))
-        {
-            error = $"There's already a vendor named {name}.";
-            return;
-        }
-
         await using var db = await DbFactory.CreateDbContextAsync();
-        form.Name = name;
-        if (form.Id == 0)
-        {
-            db.Vendors.Add(form);
-            status = $"Added {name}.";
-        }
-        else
-        {
-            db.Vendors.Update(form);
-            status = $"Saved {name}.";
-        }
+        Clean(form);
+        db.Vendors.Add(form);
         await db.SaveChangesAsync();
+        status = $"Added {form.Name}.";
         form = new();
         error = null;
         await LoadAsync();
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (Problem(editing!) is { } problem)
+        {
+            editError = problem;
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // Only the fields on the row change; the message retention date and links are left as they are.
+        if (await db.Vendors.FindAsync(editing!.Id) is { } vendor)
+        {
+            Clean(editing);
+            (vendor.Name, vendor.Trade, vendor.Phone, vendor.Email) = (editing.Name, editing.Trade, editing.Phone, editing.Email);
+            await db.SaveChangesAsync();
+            status = $"Saved {vendor.Name}.";
+        }
+        editing = null;
+        editError = null;
+        await LoadAsync();
+    }
+
+    /// <summary>What's wrong with a vendor's details, or null.</summary>
+    private string? Problem(Vendor v)
+    {
+        if (string.IsNullOrWhiteSpace(v.Name))
+        {
+            return "Name is required.";
+        }
+        var name = v.Name.Trim();
+        if (vendors.Any(o => o.Id != v.Id && string.Equals(o.Name.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return $"There's already a vendor named {name}. To combine them, use Merge into… on one of them.";
+        }
+        var email = v.Email?.Trim() ?? "";
+        if (email.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+        {
+            return $"\"{email}\" doesn't look like an email address (one address, no spaces, like name@example.com). Fix it or clear it.";
+        }
+        return null;
+    }
+
+    private static void Clean(Vendor v)
+    {
+        static string? Trim(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        v.Name = v.Name.Trim();
+        (v.Trade, v.Phone, v.Email, v.Notes) = (Trim(v.Trade), Trim(v.Phone), Trim(v.Email), Trim(v.Notes));
     }
 
     private async Task StartAsync(Vendor v, bool merging)
@@ -182,9 +229,9 @@
 
     private async Task FinishAsync()
     {
-        if (form.Id == acting!.Id)
+        if (editing?.Id == acting!.Id)
         {
-            form = new();
+            editing = null;
         }
         acting = null;
         usage = null;

@@ -393,7 +393,7 @@ The **Dashboard** shows a card for each unit listing its open Emergency, High ("
 
 ## Vendors
 
-Add and edit vendors at the top of the **Vendors** page; a second vendor with the same name is refused. To fix a vendor entered twice, click **Merge into…** on the duplicate and choose the one to keep: its expenses, recurring expenses, maintenance requests, import rules, texts, and emails move over, the kept vendor gets any phone, email, trade, or notes it was missing, and the duplicate is deleted. **Delete** removes a vendor after saying what uses it; those items are kept with no vendor.
+Add vendors at the top of the **Vendors** page, and click **Edit** on a vendor to change its name, trade, phone, or email right in its row. A second vendor with the same name is refused, and an email that isn't a single valid address (for example one with a space) gets a message saying so. Click a vendor's name to see its expenses. To fix a vendor entered twice, click **Merge into…** on the duplicate and choose the one to keep: its expenses, recurring expenses, maintenance requests, import rules, texts, and emails move over, the kept vendor gets any phone, email, trade, or notes it was missing, and the duplicate is deleted. **Delete** removes a vendor after saying what uses it; those items are kept with no vendor.
 
 ## Notes
 
