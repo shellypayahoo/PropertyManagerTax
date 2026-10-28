@@ -22,7 +22,8 @@
             </div>
             <div class="col-sm-4">
                 <label class="form-label small mb-0" for="@Id("date")">Date</label>
-                <input id="@Id("date")" type="date" class="form-control form-control-sm" @bind="Draft.Date" />
+                <input id="@Id("date")" type="date" class="form-control form-control-sm" @bind="Draft.Date" @bind:event="oninput" />
+                <div class="small text-muted">@Draft.Date.ToString("dddd, MMMM d")</div>
             </div>
             <div class="col-sm-3">
                 <label class="form-label small mb-0" for="@Id("start")">Start</label>
@@ -43,7 +44,20 @@
                     <label class="form-check-label small" for="@Id("allday")">All day</label>
                 </div>
             </div>
-            <div class="col-sm-8">
+            @if (!Draft.AllDay)
+            {
+                <div class="col-sm-4">
+                    <label class="form-label small mb-0" for="@Id("zone")">Time zone</label>
+                    <select id="@Id("zone")" class="form-select form-select-sm" @bind="Draft.TimeZone">
+                        @foreach (var (zoneId, name) in BusinessTimeZone.Common)
+                        {
+                            <option value="@zoneId">@name@(zoneId == LocalZone ? " (usual)" : "")</option>
+                        }
+                        @if (Draft.TimeZone is { Length: > 0 } other && BusinessTimeZone.Common.All(c => c.Id != other)) { <option value="@other">@other</option> }
+                    </select>
+                </div>
+            }
+            <div class="@(Draft.AllDay ? "col-sm-8" : "col-sm-4")">
                 <label class="form-label small mb-0" for="@Id("where")">Where</label>
                 <input id="@Id("where")" class="form-control form-control-sm" @bind="Draft.Location" placeholder="optional" />
             </div>
@@ -116,8 +130,11 @@
 
     private string Id(string name) => $"{prefix}-{name}";
 
+    private static string LocalZone => BusinessTimeZone.IanaId(TimeZoneInfo.Local);
+
     protected override async Task OnInitializedAsync()
     {
+        Draft.TimeZone ??= LocalZone;
         calendars = await CalendarEvents.CalendarsAsync();
         calendarId = calendars.FirstOrDefault()?.Id ?? 0;
         await using var db = await DbFactory.CreateDbContextAsync();

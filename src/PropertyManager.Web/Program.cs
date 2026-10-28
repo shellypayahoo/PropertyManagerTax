@@ -98,6 +98,11 @@ await using (var scope = app.Services.CreateAsyncScope())
     await db.Database.MigrateAsync();
     // Pick up settings saved in the app now that the table surely exists.
     ((IConfigurationRoot)app.Configuration).Reload();
+    // Dates and times follow the business's time zone (e.g. DC rentals run from a Mac on Mountain time).
+    if (BusinessTimeZone.Apply(app.Configuration["Business:TimeZone"]) is { } zoneProblem)
+    {
+        app.Logger.LogWarning("Settings: {Problem}", zoneProblem);
+    }
     // Only an empty database is set up; an existing portfolio is never changed.
     await DbSeeder.SeedAsync(db, app.Configuration.GetSection(SetupOptions.Section).Get<SetupOptions>()?.Properties ?? []);
     await scope.ServiceProvider.GetRequiredService<RecurringExpenseService>().GenerateDueAsync();

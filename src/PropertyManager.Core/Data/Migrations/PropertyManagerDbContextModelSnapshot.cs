@@ -247,6 +247,9 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("TimeZone")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CalendarSourceId");

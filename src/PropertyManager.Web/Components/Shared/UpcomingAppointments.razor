@@ -28,8 +28,11 @@
                 @foreach (var (ev, property, request) in events)
                 {
                     <tr>
-                        <td class="text-nowrap">@ev.StartDate.ToString("ddd, MMM d")</td>
-                        <td class="text-nowrap">@(ev.IsAllDay ? "All day" : ev.StartsAt.ToLocalTime().ToString("h:mm tt"))</td>
+                        <td class="text-nowrap">@EventTimes.Date(ev).ToString("ddd, MMM d")</td>
+                        <td class="text-nowrap">
+                            @EventTimes.Start(ev)
+                            @if (EventTimes.InBusinessZone(ev) is { } here) { <div class="small text-muted">@here</div> }
+                        </td>
                         <td>
                             @ev.Subject
                             @if (!string.IsNullOrWhiteSpace(ev.Location)) { <span class="small text-muted"> · @ev.Location</span> }

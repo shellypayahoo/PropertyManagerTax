@@ -310,7 +310,11 @@ The same page (**Email & calendar**) copies appointments from the Outlook.com ca
 - **Leases**: on a lease with an end date, **30 / 60 / 90 days before** adds an all-day reminder before the lease ends (reminding you at 9 AM that day), and the lease page shows it.
 - **Ask**: "put the plumber on my calendar Tuesday at 10" or "remind me 60 days before the Taylor basement lease ends" shows a proposed appointment with **Apply**, like other changes.
 
-Each form lets you change the title, date, time, length, place, notes, and reminder, and choose which synced calendar it goes in (the one you used last is picked first). Appointments go only into calendars you've chosen above. The app never changes or deletes appointments in Outlook.
+Each form lets you change the title, date, time, length, place, notes, and reminder, and choose which synced calendar it goes in (the one you used last is picked first). Under the date it shows the day of the week, so a wrong date stands out.
+
+**Time zones:** the app uses the business's time zone (**Settings → Time zone**; this repository's `appsettings.json` sets Eastern, `America/New_York`, for the DC rentals) rather than the computer's, so a Mac on Mountain time still shows tenant appointments, texts, and emails in Eastern time. New appointments start out in that zone, and the form's **Time zone** box lets you pick another one for an appointment where you are (Ask understands "1 PM Mountain" too). Appointments made in another zone show that zone's time with its label, e.g. "1:00 PM MT", with the Eastern time under it. Choose **This computer's** in Settings to follow the computer instead. On Windows the app always uses the computer's time zone.
+
+The **Ask** page can also look up your synced appointments ("what's on my calendar next week?", "when is the dishwasher delivery?"). Appointments go only into calendars you've chosen above. The app never changes or deletes appointments in Outlook.
 
 Calendar access uses the **Calendars.Read** permission, and adding appointments uses **Calendars.ReadWrite**. If you signed in before these were added, the page asks you to sign in again once (email and calendar syncing keep working until you do). You can also add those Microsoft Graph delegated permissions under the app registration's API permissions, though personal accounts are asked for them at sign-in either way.
 

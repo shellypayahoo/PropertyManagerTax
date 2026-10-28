@@ -28,6 +28,10 @@ public static class ConfigurationCheck
         {
             Error($"Business:LateAfterDays is {business.LateAfterDays}; use 0 to 31.");
         }
+        if (!string.IsNullOrWhiteSpace(business.TimeZone) && BusinessTimeZone.Find(business.TimeZone) is null)
+        {
+            Error($"Business:TimeZone \"{business.TimeZone}\" isn't a time zone; use one like America/New_York.");
+        }
 
         if (features.Assistant)
         {

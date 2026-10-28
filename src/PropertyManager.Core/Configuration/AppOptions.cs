@@ -37,6 +37,12 @@ public class BusinessOptions
 
     /// <summary>Grace period before rent counts as late, the Rent collection report's starting choice.</summary>
     public int LateAfterDays { get; set; } = 5;
+
+    /// <summary>
+    /// The time zone the business runs in, e.g. America/New_York, when it isn't the computer's. Times in the app are shown
+    /// in it, and new appointments start out in it. Blank uses the computer's time zone.
+    /// </summary>
+    public string? TimeZone { get; set; }
 }
 
 /// <summary>Properties and units created when the app starts with an empty database.</summary>

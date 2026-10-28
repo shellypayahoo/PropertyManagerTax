@@ -24,6 +24,7 @@ public class AssistantTools(
     // Lookups for parts of the app turned off in "Features" aren't offered to the model.
     private static readonly string[] TextTools = ["search_text_messages", "get_conversation", "list_text_contacts"];
     private static readonly string[] EmailTools = ["search_emails", "read_email"];
+    private static readonly string[] CalendarTools = ["list_calendar_events"];
 
     /// <summary>
     /// Asks the current AI model about a photo: (JPEG/PNG bytes, media type, question) → answer. Set by
@@ -40,7 +41,8 @@ public class AssistantTools(
     {
         var on = features?.CurrentValue ?? new FeatureOptions();
         var tools = Base()
-            .Where(t => (on.TextMessages || !TextTools.Contains(t.Name)) && (on.Email || !EmailTools.Contains(t.Name)))
+            .Where(t => (on.TextMessages || !TextTools.Contains(t.Name)) && (on.Email || !EmailTools.Contains(t.Name))
+                && (on.Calendar || !CalendarTools.Contains(t.Name)))
             .ToList();
         if (PhotoDescriber is not null)
         {
@@ -64,7 +66,56 @@ public class AssistantTools(
         AIFunctionFactory.Create(ListDocumentsAsync, "list_documents"),
         AIFunctionFactory.Create(SearchDocumentsAsync, "search_documents"),
         AIFunctionFactory.Create(ReadDocumentAsync, "read_document"),
+        AIFunctionFactory.Create(ListCalendarEventsAsync, "list_calendar_events"),
     ];
+
+    [Description("Lists appointments on the owner's synced Outlook calendars (as of the last sync), in date order, with time, title, place, and the maintenance request or lease each is linked to. Times are the owner's local time.")]
+    public async Task<string> ListCalendarEventsAsync(
+        [Description("First date, yyyy-MM-dd (default today).")] string? fromDate = null,
+        [Description("Last date, yyyy-MM-dd (default 30 days after the first date).")] string? toDate = null,
+        [Description("Optional words that must appear in the title, place, or notes, e.g. \"dishwasher\" or \"Taylor\".")] string? query = null,
+        CancellationToken ct = default)
+    {
+        var from = DateOnly.TryParse(fromDate, CultureInfo.InvariantCulture, out var f) ? f : Today;
+        var to = DateOnly.TryParse(toDate, CultureInfo.InvariantCulture, out var t) ? t : from.AddDays(30);
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        if (!await db.CalendarSources.AnyAsync(ct))
+        {
+            return "No calendars are synced (Email & calendar page).";
+        }
+        // All-day events are stored at midnight UTC and timed ones by their real time; widen by a day and filter by date.
+        var start = new DateTimeOffset(from.AddDays(-1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var end = new DateTimeOffset(to.AddDays(2).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var words = (query ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var events = (await db.CalendarEvents.AsNoTracking().Include(e => e.CalendarSource)
+                .Where(e => e.StartsAt >= start && e.StartsAt < end).ToListAsync(ct))
+            .Where(e => e.StartDate >= from && e.StartDate <= to && words.All(w => Contains(e.Text, w)))
+            .OrderBy(e => e.StartsAt)
+            .Take(100)
+            .ToList();
+        if (events.Count == 0)
+        {
+            return $"No appointments from {from:yyyy-MM-dd} to {to:yyyy-MM-dd}{(words.Length > 0 ? " matching " + query : "")}.";
+        }
+        var ids = events.Select(e => e.Id).ToList();
+        var requests = await db.MaintenanceRequests.AsNoTracking().Where(m => m.CalendarEventId != null && ids.Contains(m.CalendarEventId.Value)).ToListAsync(ct);
+        var leases = await db.Leases.AsNoTracking().Where(l => l.EndReminderEventId != null && ids.Contains(l.EndReminderEventId.Value)).ToListAsync(ct);
+        var text = new StringBuilder($"{events.Count} appointment(s):\n");
+        foreach (var e in events)
+        {
+            var when = e.IsAllDay ? $"{e.StartDate.ToString("yyyy-MM-dd ddd", Us)} all day"
+                : $"{e.StartsAt.ToLocalTime().ToString("yyyy-MM-dd ddd h:mm tt", Us)}-{e.EndsAt.ToLocalTime().ToString("h:mm tt", Us)} {BusinessTimeZone.Abbreviation(TimeZoneInfo.Local, e.StartsAt)}"
+                  + (Calendar.EventTimes.OtherZone(e) is not null ? $" (made in another time zone: {Calendar.EventTimes.Start(e)} there)" : "");
+            text.Append($"- {when}: {e.Subject}");
+            if (!string.IsNullOrWhiteSpace(e.Location)) text.Append($" @ {e.Location}");
+            text.Append($" [{e.CalendarSource?.Name}]");
+            if (requests.FirstOrDefault(m => m.CalendarEventId == e.Id) is { } m) text.Append($" (maintenance request #{m.Id})");
+            if (leases.FirstOrDefault(l => l.EndReminderEventId == e.Id) is { } l) text.Append($" (end reminder for lease #{l.Id})");
+            if (!string.IsNullOrWhiteSpace(e.Preview)) text.Append($"\n  Notes: {e.Preview.ReplaceLineEndings(" ")}");
+            text.AppendLine();
+        }
+        return text.ToString();
+    }
 
     // Kept modest so a question fits within small tokens-per-minute limits; the model can ask for more.
     private const int DocumentChunk = 12_000;

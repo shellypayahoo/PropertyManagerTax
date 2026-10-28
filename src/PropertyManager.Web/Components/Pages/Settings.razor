@@ -40,6 +40,18 @@
                     @foreach (var d in new[] { 0, 3, 5, 7, 10 }.Append(lateAfterDays).Distinct().Order()) { <option value="@d">@(d == 0 ? "the due date" : $"{d} days")</option> }
                 </select>
             </div>
+            <div class="col-md-6">
+                <label class="form-label" for="tz">Time zone</label>
+                <select id="tz" class="form-select" @bind="timeZone">
+                    <option value="">This computer's (@ComputerZone)</option>
+                    @foreach (var (id, name) in BusinessTimeZone.Common)
+                    {
+                        <option value="@id">@name (@id)</option>
+                    }
+                    @if (timeZone.Length > 0 && BusinessTimeZone.Common.All(c => c.Id != timeZone)) { <option value="@timeZone">@timeZone</option> }
+                </select>
+                <div class="form-text">Times in the app are shown in this zone, and new appointments start out in it. Use where the rentals are if you manage them from elsewhere.</div>
+            </div>
         </div>
     </div>
 </div>
@@ -140,6 +152,7 @@
         };
         var b = Business.CurrentValue;
         (businessName, rentDueDay, lateAfterDays) = (b.Name ?? "", Math.Clamp(b.RentDueDay, 1, 28), Math.Clamp(b.LateAfterDays, 0, 31));
+        timeZone = BusinessTimeZone.Find(b.TimeZone) is { } zone ? BusinessTimeZone.IanaId(zone) : "";
         defaultProvider = Configuration["Assistant:DefaultProvider"] ?? "";
         allowPhotos = Assistant.AllowPhotosByDefault;
         savedHere = await SavedSettings.GetSavedAsync();
@@ -164,6 +177,7 @@
             ["Business:Name"] = string.IsNullOrWhiteSpace(businessName) ? null : businessName.Trim(),
             ["Business:RentDueDay"] = rentDueDay.ToString(),
             ["Business:LateAfterDays"] = lateAfterDays.ToString(),
+            ["Business:TimeZone"] = timeZone,
             ["Assistant:DefaultProvider"] = string.IsNullOrEmpty(defaultProvider) ? null : defaultProvider,
             ["Assistant:AllowPhotos"] = allowPhotos ? "true" : "false",
         };
@@ -172,6 +186,7 @@
             values[$"Features:{key}"] = on ? "true" : "false";
         }
         await SavedSettings.SaveAsync(values);
+        BusinessTimeZone.Apply(timeZone.Length == 0 ? ComputerZone : timeZone);
         // Reload the page so the menu shows the parts that are on.
         Navigation.NavigateTo("/settings?saved=1", forceLoad: true);
     }
@@ -186,6 +201,30 @@
     [SupplyParameterFromQuery] public int Saved { get; set; }
 
     protected override void OnParametersSet() => status = Saved == 1 ? "Settings saved." : null;
+
+    private string timeZone = "";
+
+    // The computer's own zone, read from the system rather than the app's (possibly business) local zone.
+    private static readonly string ComputerZone = ReadComputerZone();
+
+    private static string ReadComputerZone()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return BusinessTimeZone.IanaId(TimeZoneInfo.Local);
+        }
+        try
+        {
+            // /etc/localtime links to the zone file, e.g. /var/db/timezone/zoneinfo/America/Denver on macOS.
+            var target = new FileInfo("/etc/localtime").LinkTarget ?? "";
+            var marker = target.IndexOf("zoneinfo/", StringComparison.Ordinal);
+            return marker >= 0 ? target[(marker + "zoneinfo/".Length)..] : "UTC";
+        }
+        catch (IOException)
+        {
+            return "UTC";
+        }
+    }
 
     private static string Suffix(int day) => (day % 100) switch { 11 or 12 or 13 => "th", _ => (day % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" } };
 }

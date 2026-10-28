@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using PropertyManager.Core.Calendar;
+using PropertyManager.Core.Configuration;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Entities;
 using PropertyManager.Core.Services;
@@ -543,6 +544,7 @@ public partial class AssistantActions(
         [Description("Optional unit label, e.g. \"B\".")] string? unit = null,
         [Description("Optional notes for the appointment.")] string? notes = null,
         [Description("Optional calendar name; defaults to the one last added to.")] string? calendar = null,
+        [Description("Optional time zone of the time given, e.g. \"Mountain\" or \"Eastern\"; defaults to the business's time zone (where the rentals are). Use it when the owner says the appointment is in another zone, such as a personal appointment where they are.")] string? timeZone = null,
         [Description("Optional maintenance request number this visit is for.")] int? maintenanceRequestId = null,
         [Description("Optional lease number, for a reminder before that lease ends.")] int? leaseId = null,
         CancellationToken ct = default)
@@ -556,6 +558,9 @@ public partial class AssistantActions(
             start = t;
         }
         if (durationMinutes is <= 0 or > 24 * 60) return "The length must be between 1 and 1440 minutes.";
+        TimeZoneInfo? zone = null;
+        if (!string.IsNullOrWhiteSpace(timeZone) && (zone = BusinessTimeZone.Find(timeZone)) is null)
+            return $"\"{timeZone}\" isn't a time zone; use Eastern, Central, Mountain, Pacific, or an id like America/Denver.";
 
         var calendars = await calendarEvents.CalendarsAsync(ct);
         if (calendars.Count == 0) return "No Outlook calendars are synced. The owner chooses calendars on the Email & calendar page first.";
@@ -592,6 +597,7 @@ public partial class AssistantActions(
             return "Give a time for the visit.";
         }
         if (!string.IsNullOrWhiteSpace(title)) draft.Subject = title.Trim();
+        if (zone is not null) draft.TimeZone = BusinessTimeZone.IanaId(zone);
         if (string.IsNullOrWhiteSpace(draft.Subject)) return "Give the appointment a title.";
         if (!string.IsNullOrWhiteSpace(notes)) draft.Notes = string.IsNullOrWhiteSpace(draft.Notes) ? notes.Trim() : $"{notes.Trim()}\n\n{draft.Notes}";
         if (!string.IsNullOrWhiteSpace(property))

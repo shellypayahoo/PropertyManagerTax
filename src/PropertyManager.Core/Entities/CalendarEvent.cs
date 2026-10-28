@@ -22,6 +22,9 @@ public class CalendarEvent
     /// <summary>All-day events are stored at midnight UTC of their date; use <see cref="StartDate"/>.</summary>
     public bool IsAllDay { get; set; }
 
+    /// <summary>IANA id of the time zone the appointment was made in (e.g. America/Denver), when known.</summary>
+    public string? TimeZone { get; set; }
+
     public DateOnly StartDate => IsAllDay ? DateOnly.FromDateTime(StartsAt.UtcDateTime) : DateOnly.FromDateTime(StartsAt.LocalDateTime);
 
     public string Text => $"{Subject} {Location} {Preview}";

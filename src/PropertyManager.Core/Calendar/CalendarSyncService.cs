@@ -57,7 +57,7 @@ public class CalendarSyncService(IDbContextFactory<PropertyManagerDbContext> dbF
             {
                 var isNew = !byId.TryGetValue(item.Id, out var ev) && !elsewhere.TryGetValue(item.Id, out ev);
                 ev ??= new CalendarEvent { GraphId = item.Id };
-                var before = (ev.Subject, ev.Location, ev.Preview, ev.StartsAt, ev.EndsAt, ev.IsAllDay, ev.CalendarSourceId);
+                var before = (ev.Subject, ev.Location, ev.Preview, ev.StartsAt, ev.EndsAt, ev.IsAllDay, ev.CalendarSourceId, ev.TimeZone);
                 ev.CalendarSource = calendar;
                 ev.Subject = Truncate(item.Subject, 500);
                 ev.Location = item.Location is null ? null : Truncate(item.Location, 500);
@@ -65,13 +65,14 @@ public class CalendarSyncService(IDbContextFactory<PropertyManagerDbContext> dbF
                 ev.StartsAt = item.Start;
                 ev.EndsAt = item.End;
                 ev.IsAllDay = item.IsAllDay;
+                ev.TimeZone = item.TimeZone;
                 if (isNew)
                 {
                     db.CalendarEvents.Add(ev);
                     byId[item.Id] = ev;
                     added++;
                 }
-                else if (before != (ev.Subject, ev.Location, ev.Preview, ev.StartsAt, ev.EndsAt, ev.IsAllDay, calendar.Id))
+                else if (before != (ev.Subject, ev.Location, ev.Preview, ev.StartsAt, ev.EndsAt, ev.IsAllDay, calendar.Id, ev.TimeZone))
                 {
                     updated++;
                 }

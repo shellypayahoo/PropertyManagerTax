@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PropertyManager.Core.Configuration;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Email;
 using PropertyManager.Core.Entities;
@@ -19,6 +20,9 @@ public class AppointmentDraft
     public string? Location { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>IANA id of the time zone the date and time are in; the business's time zone when not set.</summary>
+    public string? TimeZone { get; set; }
+
     /// <summary>Minutes before the start to remind, or null for no reminder.</summary>
     public int? ReminderMinutes { get; set; } = 60;
 
@@ -28,7 +32,8 @@ public class AppointmentDraft
     /// <summary>The lease whose end this reminds about; it's linked to the lease.</summary>
     public int? LeaseId { get; set; }
 
-    public string When => AllDay ? $"{Date:ddd, MMM d, yyyy} (all day)" : $"{Date:ddd, MMM d, yyyy} {Start:h:mm tt}–{Start.AddMinutes(DurationMinutes):h:mm tt}";
+    public string When => AllDay ? $"{Date:ddd, MMM d, yyyy} (all day)"
+        : $"{Date:ddd, MMM d, yyyy} {Start:h:mm tt}–{Start.AddMinutes(DurationMinutes):h:mm tt}{(BusinessTimeZone.Find(TimeZone) is { } zone ? " " + BusinessTimeZone.Abbreviation(zone, new DateTimeOffset(Date.ToDateTime(Start), TimeSpan.Zero)) : "")}";
 }
 
 /// <summary>Adds appointments to the owner's Outlook.com calendars and keeps a copy with the synced events.</summary>
@@ -44,7 +49,7 @@ public class CalendarEventService(IDbContextFactory<PropertyManagerDbContext> db
             .ToList();
     }
 
-    public AppointmentDraft Blank() => new() { Date = Today.AddDays(1) };
+    public AppointmentDraft Blank() => new() { Date = Today.AddDays(1), TimeZone = BusinessTimeZone.IanaId(clock.LocalTimeZone) };
 
     /// <summary>A visit for a maintenance request: the vendor and issue, the unit's address, and phone numbers in the notes.</summary>
     public async Task<AppointmentDraft> ForMaintenanceAsync(int requestId, CancellationToken ct = default)
@@ -76,6 +81,7 @@ public class CalendarEventService(IDbContextFactory<PropertyManagerDbContext> db
             Date = request.ScheduledFor is { } scheduled && scheduled >= Today ? scheduled : Today.AddDays(1),
             Location = unit.Property is { } p ? $"{p.FullAddress} (Unit {unit.Label})" : null,
             Notes = string.Join("\n", notes),
+            TimeZone = BusinessTimeZone.IanaId(clock.LocalTimeZone),
             MaintenanceRequestId = request.Id,
         };
     }
@@ -123,6 +129,10 @@ public class CalendarEventService(IDbContextFactory<PropertyManagerDbContext> db
         var start = draft.AllDay ? draft.Date.ToDateTime(TimeOnly.MinValue) : draft.Date.ToDateTime(draft.Start);
         var end = draft.AllDay ? start.AddDays(1) : start.AddMinutes(draft.DurationMinutes);
         var zone = clock.LocalTimeZone;
+        if (!string.IsNullOrWhiteSpace(draft.TimeZone))
+        {
+            zone = BusinessTimeZone.Find(draft.TimeZone) ?? throw new ArgumentException($"\"{draft.TimeZone}\" isn't a time zone.");
+        }
         var zoneName = WindowsZoneName(zone);
         if (zoneName is null && !draft.AllDay)
         {
@@ -148,6 +158,7 @@ public class CalendarEventService(IDbContextFactory<PropertyManagerDbContext> db
         ev.StartsAt = item.Start;
         ev.EndsAt = item.End;
         ev.IsAllDay = item.IsAllDay;
+        ev.TimeZone = draft.AllDay ? null : BusinessTimeZone.IanaId(zone);
         calendar.LastAddedToAt = clock.GetUtcNow();
         await db.SaveChangesAsync(ct);
 

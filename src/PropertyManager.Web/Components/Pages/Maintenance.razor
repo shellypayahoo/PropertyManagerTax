@@ -74,7 +74,7 @@
                     @if (m.CalendarEvent is { } linked)
                     {
                         <div class="small">
-                            📅 @linked.Subject, @linked.StartDate.ToString("ddd, MMM d")@(linked.IsAllDay ? "" : linked.StartsAt.ToLocalTime().ToString(" h:mm tt"))
+                            📅 @linked.Subject, @EventTimes.Date(linked).ToString("ddd, MMM d")@(linked.IsAllDay ? "" : " " + EventTimes.Start(linked))
                             <button class="btn btn-link btn-sm p-0 ms-1" @onclick="() => UnlinkAsync(m.Id)">Unlink</button>
                         </div>
                     }
@@ -87,7 +87,7 @@
                         @foreach (var s in SuggestionsFor(m))
                         {
                             <div class="small border-start border-3 border-info ps-2 mt-1">
-                                📅 Calendar: <strong>@s.Event.Subject</strong>, @s.Event.StartDate.ToString("ddd, MMM d")@(s.Event.IsAllDay ? "" : s.Event.StartsAt.ToLocalTime().ToString(" h:mm tt"))
+                                📅 Calendar: <strong>@s.Event.Subject</strong>, @EventTimes.Date(s.Event).ToString("ddd, MMM d")@(s.Event.IsAllDay ? "" : " " + EventTimes.Start(s.Event))
                                 <span class="text-muted">(mentions @string.Join(", ", s.Reasons))</span>
                                 <button class="btn btn-sm btn-outline-primary py-0 ms-1" @onclick="() => LinkAsync(m.Id, s.Event)">Use as scheduled date</button>
                                 <button class="btn btn-sm btn-link py-0" @onclick="() => dismissed.Add((m.Id, s.Event.Id))">Not this</button>

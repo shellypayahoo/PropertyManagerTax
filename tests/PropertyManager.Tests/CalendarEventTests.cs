@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using PropertyManager.Core.Assistant;
 using PropertyManager.Core.Calendar;
+using PropertyManager.Core.Configuration;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Email;
 using PropertyManager.Core.Entities;
@@ -79,6 +80,22 @@ public sealed class CalendarEventTests : IDisposable
         var request = db.MaintenanceRequests.Single(m => m.Id == requestId);
         Assert.Equal((ev.Id, new DateOnly(2026, 10, 29), MaintenanceStatus.Scheduled), (request.CalendarEventId!.Value, request.ScheduledFor!.Value, request.Status));
         Assert.Equal("new-1", db.CalendarEvents.Single(e => e.Id == ev.Id).GraphId);
+    }
+
+    [Fact]
+    public async Task Appointment_can_be_in_another_time_zone()
+    {
+        var draft = service.Blank();
+        Assert.Equal("America/New_York", draft.TimeZone);
+        draft.Subject = "Tank's vet appointment";
+        draft.Start = new TimeOnly(13, 0);
+        draft.TimeZone = "America/Denver";
+
+        var ev = await service.AddAsync(personalId, draft);
+
+        var sent = Assert.Single(mail.Created).Item;
+        Assert.Equal(("Mountain Standard Time", new DateTime(2026, 10, 29, 13, 0, 0)), (sent.TimeZone, sent.Start));
+        Assert.Equal("America/Denver", ev.TimeZone);
     }
 
     [Fact]
@@ -244,5 +261,85 @@ public sealed class CalendarEventTests : IDisposable
         : IDbContextFactory<PropertyManagerDbContext>
     {
         public PropertyManagerDbContext CreateDbContext() => new(options);
+    }
+}
+
+public class CalendarTimeZoneTests
+{
+    [Fact]
+    public async Task Created_event_times_are_read_in_the_zone_Graph_gives()
+    {
+        var http = new ZoneGraph("""
+            {"id":"AAMk2","subject":"Plumber","isAllDay":false,"isCancelled":false,"originalStartTimeZone":"Mountain Standard Time",
+             "start":{"dateTime":"2026-10-29T10:00:00.0000000","timeZone":"Mountain Standard Time"},
+             "end":{"dateTime":"2026-10-29T11:00:00.0000000","timeZone":"Mountain Standard Time"}}
+            """);
+        var graph = new GraphMailSource(new HttpClient(http), new Token());
+
+        var created = await graph.CreateEventAsync("cal", new NewCalendarItem("Plumber", null, null,
+            new DateTime(2026, 10, 29, 10, 0, 0), new DateTime(2026, 10, 29, 11, 0, 0), "Mountain Standard Time", false, null));
+
+        // 10 AM Mountain daylight time is 4 PM UTC, not 10 AM UTC.
+        Assert.Equal(new DateTimeOffset(2026, 10, 29, 16, 0, 0, TimeSpan.Zero), created.Start);
+        Assert.Equal("America/Denver", created.TimeZone);
+    }
+
+    [Fact]
+    public async Task All_day_event_stays_on_its_date_in_any_zone()
+    {
+        var http = new ZoneGraph("""
+            {"id":"AAMk3","subject":"Dishwasher delivery","isAllDay":true,"isCancelled":false,
+             "start":{"dateTime":"2026-10-30T00:00:00.0000000","timeZone":"Eastern Standard Time"},
+             "end":{"dateTime":"2026-10-31T00:00:00.0000000","timeZone":"Eastern Standard Time"}}
+            """);
+        var graph = new GraphMailSource(new HttpClient(http), new Token());
+
+        var created = await graph.CreateEventAsync("cal", new NewCalendarItem("Dishwasher delivery", null, null,
+            new DateTime(2026, 10, 30), new DateTime(2026, 10, 31), "Eastern Standard Time", true, null));
+
+        Assert.Equal(new DateOnly(2026, 10, 30), new CalendarEvent { StartsAt = created.Start, IsAllDay = true }.StartDate);
+    }
+
+    [Theory]
+    [InlineData("Eastern", "America/New_York")]
+    [InlineData("mountain time", "America/Denver")]
+    [InlineData("PT", "America/Los_Angeles")]
+    [InlineData("America/Chicago", "America/Chicago")]
+    [InlineData("Mountain Standard Time", "America/Denver")]
+    public void Time_zones_are_found_by_everyday_names(string text, string iana) =>
+        Assert.Equal(iana, BusinessTimeZone.IanaId(BusinessTimeZone.Find(text)!));
+
+    [Fact]
+    public void Unknown_time_zone_is_reported()
+    {
+        Assert.Null(BusinessTimeZone.Find("Moon/Base"));
+        Assert.Contains("isn't a time zone", BusinessTimeZone.Apply("Moon/Base"));
+    }
+
+    [Fact]
+    public void Appointment_made_in_another_zone_shows_that_zones_time()
+    {
+        var denver = BusinessTimeZone.Find("America/Denver")!;
+        var ev = new CalendarEvent { StartsAt = new DateTimeOffset(2026, 11, 2, 20, 0, 0, TimeSpan.Zero), TimeZone = "America/Denver" };
+        if (BusinessTimeZone.IanaId(TimeZoneInfo.Local) == "America/Denver")
+        {
+            return; // Only meaningful where the app's zone isn't Mountain.
+        }
+
+        Assert.Equal("1:00 PM MT", EventTimes.Start(ev));
+        Assert.Equal(new DateOnly(2026, 11, 2), EventTimes.Date(ev));
+        Assert.NotNull(EventTimes.InBusinessZone(ev));
+        Assert.Equal("MT", BusinessTimeZone.Abbreviation(denver, ev.StartsAt));
+    }
+
+    private sealed class ZoneGraph(string response) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created) { Content = new StringContent(response) });
+    }
+
+    private sealed class Token : IMailTokenProvider
+    {
+        public Task<string> GetAccessTokenAsync(CancellationToken ct = default) => Task.FromResult("t");
     }
 }

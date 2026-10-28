@@ -18,8 +18,11 @@ public record MailAttachmentInfo(string Id, string Name, string ContentType, lon
 
 public record CalendarInfo(string Id, string Name);
 
-/// <summary>One calendar appointment, or one occurrence of a recurring one. Times are UTC; all-day events start at midnight UTC of their date.</summary>
-public record CalendarItem(string Id, string Subject, string? Location, string? Preview, DateTimeOffset Start, DateTimeOffset End, bool IsAllDay, bool IsCancelled);
+/// <summary>
+/// One calendar appointment, or one occurrence of a recurring one. Times are UTC; all-day events start at midnight UTC of
+/// their date. <paramref name="TimeZone"/> is the IANA id of the zone it was made in, when known.
+/// </summary>
+public record CalendarItem(string Id, string Subject, string? Location, string? Preview, DateTimeOffset Start, DateTimeOffset End, bool IsAllDay, bool IsCancelled, string? TimeZone = null);
 
 /// <summary>
 /// An appointment to add. Times are wall-clock times in <paramref name="TimeZone"/> (a Windows time zone name, as

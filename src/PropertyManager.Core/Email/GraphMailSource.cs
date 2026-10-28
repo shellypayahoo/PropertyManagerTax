@@ -112,7 +112,7 @@ public class GraphMailSource(HttpClient http, IMailTokenProvider tokens) : IMail
     {
         var url = $"{BaseUrl}calendars/{Uri.EscapeDataString(calendarId)}/calendarView"
             + $"?startDateTime={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}&endDateTime={to.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}"
-            + "&$top=100&$select=subject,location,bodyPreview,start,end,isAllDay,isCancelled";
+            + "&$top=100&$select=subject,location,bodyPreview,start,end,isAllDay,isCancelled,originalStartTimeZone";
         var events = new List<CalendarItem>();
         await foreach (var e in PagesAsync(url, ct))
         {
@@ -157,19 +157,48 @@ public class GraphMailSource(HttpClient http, IMailTokenProvider tokens) : IMail
     {
         static string? Text(JsonElement item, string name) =>
             item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-        // With the outlook.timezone="UTC" preference, times come back as UTC without an offset.
-        static DateTimeOffset Time(JsonElement e, string name) =>
-            new(DateTime.SpecifyKind(DateTime.Parse(Text(e.GetProperty(name), "dateTime")!, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc));
+        // Times come back without an offset, in the "timeZone" given next to them: UTC when reading with the
+        // outlook.timezone="UTC" preference, but the time zone the event was created in when adding one.
+        // All-day events are kept at midnight UTC of their date, whatever zone they're in.
+        var isAllDay = e.TryGetProperty("isAllDay", out var allDay) && allDay.ValueKind == JsonValueKind.True;
+        DateTimeOffset Time(string name)
+        {
+            var value = e.GetProperty(name);
+            var local = DateTime.SpecifyKind(DateTime.Parse(Text(value, "dateTime")!, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Unspecified);
+            if (isAllDay || ZoneOf(Text(value, "timeZone")) is not { } zone)
+            {
+                return new DateTimeOffset(local, TimeSpan.Zero);
+            }
+            return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone), TimeSpan.Zero);
+        }
 
         return new CalendarItem(
             e.GetProperty("id").GetString()!,
             Text(e, "subject") ?? "",
             e.TryGetProperty("location", out var location) ? Text(location, "displayName") is { Length: > 0 } place ? place : null : null,
             Text(e, "bodyPreview") is { Length: > 0 } preview ? preview : null,
-            Time(e, "start"),
-            Time(e, "end"),
-            e.TryGetProperty("isAllDay", out var allDay) && allDay.ValueKind == JsonValueKind.True,
-            e.TryGetProperty("isCancelled", out var cancelled) && cancelled.ValueKind == JsonValueKind.True);
+            Time("start"),
+            Time("end"),
+            isAllDay,
+            e.TryGetProperty("isCancelled", out var cancelled) && cancelled.ValueKind == JsonValueKind.True,
+            ZoneOf(Text(e, "originalStartTimeZone")) is { } original ? PropertyManager.Core.Configuration.BusinessTimeZone.IanaId(original) : null);
+    }
+
+    /// <summary>The time zone Graph named (Windows or IANA name), or null for UTC or a name this computer doesn't know.</summary>
+    private static TimeZoneInfo? ZoneOf(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name is "UTC" or "Etc/UTC" or "Coordinated Universal Time" or "tzone://Microsoft/Utc")
+        {
+            return null;
+        }
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(name);
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            return null;
+        }
     }
 
     private static MailItem ToMailItem(string id, JsonElement item)
