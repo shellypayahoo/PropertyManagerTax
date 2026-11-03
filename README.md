@@ -108,6 +108,7 @@ This creates `dist/PropertyManager-Windows.zip` (about 70 MB) containing:
 
 The app is reachable only on their computer (`http://localhost:5220`). To use it from their phone, see **Use it from your phone**; on Windows that means editing `ASPNETCORE_URLS` in the start file to `http://0.0.0.0:5220`.
 
+## Use it from your phone
 
 While the app runs on your Mac or Windows computer, your phone can open it over the same Wi-Fi:
 
@@ -120,7 +121,44 @@ While the app runs on your Mac or Windows computer, your phone can open it over 
 2. Find the computer's address: on a Mac run `ipconfig getifaddr en0`; on Windows run `ipconfig` and use the IPv4 address (for example `10.0.0.154`).
 3. On the phone, open `http://<that address>:5220` (type the `http://`). Allow the connection if macOS or Windows Defender Firewall asks. In Safari, Share → **Add to Home Screen** gives it an icon.
 
-The app has no sign-in, so anyone on your Wi-Fi who knows the address can open it while it runs this way; stop it with Ctrl+C when you're done. To reach it away from home, install [Tailscale](https://tailscale.com) on the computer and the phone and use the computer's Tailscale name or address instead.
+The app has no sign-in, so anyone on your Wi-Fi who knows the address can open it while it runs this way; stop it with Ctrl+C when you're done.
+
+### Use it away from home (Tailscale)
+
+[Tailscale](https://tailscale.com) (free for personal use) puts your Mac and phone on a private, encrypted network of their own, so the phone reaches the Mac at home from anywhere, over cellular or any Wi-Fi, without opening anything on your router. Only devices signed in to your Tailscale account can connect, which is what keeps the app (which has no password) private.
+
+1. Install **Tailscale** on the Mac (App Store) and sign in (for example with your Microsoft account; choose **Personal**). Allow the VPN configuration, startup at login, and notifications when asked.
+2. Install **Tailscale** on the iPhone and sign in with the **same** account; leave its switch on.
+3. Keep the Mac awake: the start-at-login setup below does this while the app runs on power. Otherwise, turn on System Settings → Energy (or Battery → Options) → **Prevent automatic sleeping when the display is off**.
+4. Run the app as above (`--urls http://0.0.0.0:5220`), or set it to start by itself (next section).
+5. On the phone, open `http://<the Mac's Tailscale name>:5220`. The name is under **This Device** in the Tailscale menu-bar icon; its `100.x.x.x` address works too. Share → **Add to Home Screen** makes it an icon.
+
+Don't turn on **Tailscale Funnel**, which publishes a computer to the whole internet, and don't add other people to your Tailscale account unless they should see the app.
+
+### Start automatically on the Mac
+
+So the app is there whenever the Mac is on, even after a restart or power cut, set it to start at login:
+
+```sh
+scripts/mac/autostart.sh install
+```
+
+It starts the app now and at every login, restarts it if it stops, keeps the Mac awake (on power) while it runs, and listens for your phone on port 5220. It still uses your settings and API keys as before. Other commands:
+
+| Command | What it does |
+| --- | --- |
+| `scripts/mac/autostart.sh status` | Whether it's running, and the address to open on your phone |
+| `scripts/mac/autostart.sh restart` | Restart it; **do this after a `git pull`** to run the new version (it rebuilds, which takes a minute) |
+| `scripts/mac/autostart.sh stop` / `start` | Stop it for now (it comes back at the next login) / start it again |
+| `scripts/mac/autostart.sh logs` | The latest lines of its log (`~/Library/Logs/PropertyManager/app.log`) |
+| `scripts/mac/autostart.sh uninstall` | Stop starting it automatically |
+
+Two one-time permissions, because the app no longer runs from Terminal:
+
+- **Messages page:** the install command prints the path of the `dotnet` program. Add that file under System Settings → Privacy & Security → **Full Disk Access** (click +, press Command-Shift-G, paste the path), then run `scripts/mac/autostart.sh restart`.
+- **Email sign-in:** if macOS asks whether `dotnet` may use the "PropertyManager.EmailSignIn" keychain item, click **Always Allow**.
+
+While it's running this way, don't also start it from Terminal; the second copy would fail with "address already in use". Use `stop` first if you want to run it by hand.
 
 ## First-run setup and Settings
 
