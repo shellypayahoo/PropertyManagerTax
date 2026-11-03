@@ -90,7 +90,7 @@
                                 📅 Calendar: <strong>@s.Event.Subject</strong>, @EventTimes.Date(s.Event).ToString("ddd, MMM d")@(s.Event.IsAllDay ? "" : " " + EventTimes.Start(s.Event))
                                 <span class="text-muted">(mentions @string.Join(", ", s.Reasons))</span>
                                 <button class="btn btn-sm btn-outline-primary py-0 ms-1" @onclick="() => LinkAsync(m.Id, s.Event)">Use as scheduled date</button>
-                                <button class="btn btn-sm btn-link py-0" @onclick="() => dismissed.Add((m.Id, s.Event.Id))">Not this</button>
+                                <button class="btn btn-sm btn-link py-0" @onclick="() => DismissAsync(m.Id, s.Event.Id)">Not this</button>
                             </div>
                         }
                     }
@@ -200,7 +200,8 @@
     private string? editError;
     private DateOnly today;
     private List<CalendarEvent> calendarEvents = [];
-    private readonly HashSet<(int RequestId, int EventId)> dismissed = [];
+    private HashSet<(int RequestId, int EventId)> dismissed = [];
+    private Dictionary<int, IReadOnlyList<ScheduleSuggestion>> suggestions = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -238,6 +239,10 @@
                 .Where(e => !linked.Contains(e.Id))
                 .ToList();
         }
+        dismissed = (await db.DismissedSuggestions.AsNoTracking().Select(d => new { d.MaintenanceRequestId, d.CalendarEventId }).ToListAsync())
+            .Select(d => (d.MaintenanceRequestId, d.CalendarEventId))
+            .ToHashSet();
+        suggestions = EventMatcher.SuggestEach(open, calendarEvents, dismissed, today);
     }
 
     private async Task AddAsync()
@@ -335,7 +340,18 @@
     }
 
     private IEnumerable<ScheduleSuggestion> SuggestionsFor(MaintenanceRequest request) =>
-        EventMatcher.Suggest(request, calendarEvents.Where(e => !dismissed.Contains((request.Id, e.Id))));
+        suggestions.GetValueOrDefault(request.Id) ?? [];
+
+    private async Task DismissAsync(int requestId, int eventId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (!await db.DismissedSuggestions.AnyAsync(d => d.MaintenanceRequestId == requestId && d.CalendarEventId == eventId))
+        {
+            db.DismissedSuggestions.Add(new DismissedSuggestion { MaintenanceRequestId = requestId, CalendarEventId = eventId });
+            await db.SaveChangesAsync();
+        }
+        await LoadAsync();
+    }
 
     private async Task LinkAsync(int id, CalendarEvent ev)
     {

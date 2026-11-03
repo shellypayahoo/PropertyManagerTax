@@ -339,7 +339,7 @@ The sign-in is remembered in the macOS Keychain (macOS may ask to allow access t
 The same page (**Email & calendar**) copies appointments from the Outlook.com calendars you choose, for example one you keep for the rentals. **Get calendar events** refreshes everything from a year ago to a year ahead (recurring appointments are expanded into each occurrence); appointments cancelled or deleted in Outlook are removed.
 
 - The **Dashboard** lists the next two weeks of appointments, with the property each one mentions (by street number or street name, e.g. "1354" or "Taylor") and the maintenance request it's linked to.
-- On **Maintenance**, open requests show appointments that look like the visit: within a few days before to four months after the request was reported, mentioning its property or its vendor, and ideally its unit or words from its title. **Use as scheduled date** links the appointment, fills in the scheduled date, and marks the request Scheduled; **Not this** hides a suggestion.
+- On **Maintenance**, open requests show upcoming appointments that look like the visit: from today to four months after the request was reported, at its property or with its vendor, and about it (naming its vendor or a word from its title, such as "faucet"). An appointment that only mentions the unit isn't suggested, and each appointment is offered only to the request it fits best. **Use as scheduled date** links the appointment, fills in the scheduled date, and marks the request Scheduled; **Not this** hides that suggestion for good.
 
 **Adding appointments:** the app can add appointments to your Outlook calendar, so they show on your phone and in Outlook like any other:
 

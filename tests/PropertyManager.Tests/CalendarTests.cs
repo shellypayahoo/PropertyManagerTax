@@ -74,6 +74,42 @@ public sealed class CalendarTests : IDisposable
     }
 
     [Fact]
+    public void Suggestions_NeedMoreThanTheUnit()
+    {
+        // A visit to the unit for something else (the HVAC check) isn't the visit for the concrete cracks.
+        var unitA = new Unit { Label = "A", Property = Taylor };
+        var cracks = new MaintenanceRequest { Id = 1, Title = "Front concrete cracks are getting pronounced", ReportedOn = new(2026, 10, 24), Unit = unitA };
+        var hvac = Event("Mission Comfort HVAC check — Main house (arrival 11 AM–2 PM)", new(2026, 10, 30), "1354 Taylor St NW, Unit A");
+
+        Assert.Empty(EventMatcher.Suggest(cracks, [hvac]));
+    }
+
+    [Fact]
+    public void Each_appointment_is_offered_to_the_request_it_fits_best()
+    {
+        var unitA = new Unit { Label = "A", Property = Taylor };
+        var costco = new Vendor { Name = "Costco" };
+        var fridge = new MaintenanceRequest { Id = 1, Title = "Replace refrigerator", ReportedOn = new(2026, 10, 24), Unit = unitA, Vendor = costco };
+        var washer = new MaintenanceRequest { Id = 2, Title = "Washer/Dryer replacement", ReportedOn = new(2026, 10, 24), Unit = unitA, Vendor = costco };
+        var delivery = Event("Costco refrigerator delivery, Taylor unit A", new(2026, 11, 5));
+        delivery.Id = 7;
+
+        var today = new DateOnly(2026, 11, 3);
+        var all = EventMatcher.SuggestEach([fridge, washer], [delivery], new HashSet<(int, int)>(), today);
+
+        Assert.Same(delivery, Assert.Single(all[1]).Event);
+        Assert.Empty(all[2]);
+
+        // "Not this" on the fridge: it's no longer offered there, and the washer still doesn't fit it better.
+        var afterDismiss = EventMatcher.SuggestEach([fridge, washer], [delivery], new HashSet<(int, int)> { (1, 7) }, today);
+        Assert.Empty(afterDismiss[1]);
+        Assert.Same(delivery, Assert.Single(afterDismiss[2]).Event);
+
+        // Once the delivery date has passed, it's no longer offered.
+        Assert.Empty(EventMatcher.SuggestEach([fridge, washer], [delivery], new HashSet<(int, int)>(), new DateOnly(2026, 11, 6))[1]);
+    }
+
+    [Fact]
     public async Task Sync_AddsUpdatesAndRemovesEvents_KeepingIdsAndLinks()
     {
         mail.Events["cal"] =

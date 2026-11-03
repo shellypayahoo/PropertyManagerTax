@@ -337,6 +337,21 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("CategorizationRules");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.DismissedSuggestion", b =>
+                {
+                    b.Property<int>("MaintenanceRequestId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CalendarEventId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("MaintenanceRequestId", "CalendarEventId");
+
+                    b.HasIndex("CalendarEventId");
+
+                    b.ToTable("DismissedSuggestions");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.EmailAttachment", b =>
                 {
                     b.Property<int>("Id")
@@ -1289,6 +1304,25 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Unit");
 
                     b.Navigation("Vendor");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.DismissedSuggestion", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.CalendarEvent", "CalendarEvent")
+                        .WithMany()
+                        .HasForeignKey("CalendarEventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PropertyManager.Core.Entities.MaintenanceRequest", "MaintenanceRequest")
+                        .WithMany()
+                        .HasForeignKey("MaintenanceRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CalendarEvent");
+
+                    b.Navigation("MaintenanceRequest");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.EmailAttachment", b =>

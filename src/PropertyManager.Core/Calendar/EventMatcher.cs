@@ -35,7 +35,8 @@ public static partial class EventMatcher
 
     /// <summary>
     /// Appointments that look like the visit for a request: from a few days before it was reported to four months
-    /// after, mentioning its property or vendor, and ideally words from its title. Best first.
+    /// after, mentioning its vendor or words from its title (what it's about), and its property or vendor (where or
+    /// who). The property and unit alone aren't enough: every visit to a unit mentions those. Best first.
     /// </summary>
     public static IReadOnlyList<ScheduleSuggestion> Suggest(MaintenanceRequest request, IEnumerable<CalendarEvent> events, int max = 3)
     {
@@ -71,7 +72,8 @@ public static partial class EventMatcher
             var shared = titleWords.Where(w => HasWord(ev.Text, w)).Take(2).ToList();
             score += shared.Count;
             reasons.AddRange(shared.Select(w => $"\"{w}\""));
-            if (score >= 3)
+            var vendorNamed = request.Vendor is { } v && VendorNamed(ev.Text, v);
+            if (score >= 3 && (vendorNamed || shared.Count > 0))
             {
                 suggestions.Add(new ScheduleSuggestion(ev, score, reasons));
             }
@@ -81,6 +83,26 @@ public static partial class EventMatcher
             .ThenBy(s => Math.Abs(s.Event.StartDate.DayNumber - request.ReportedOn.DayNumber))
             .Take(max)
             .ToList();
+    }
+
+    /// <summary>
+    /// Suggestions for several requests at once: only appointments from <paramref name="today"/> on (one that's
+    /// already happened can't be the upcoming visit), each offered only to the request(s) it fits best, leaving out
+    /// pairs the owner said "Not this" to.
+    /// </summary>
+    public static Dictionary<int, IReadOnlyList<ScheduleSuggestion>> SuggestEach(
+        IEnumerable<MaintenanceRequest> requests, IEnumerable<CalendarEvent> events, ISet<(int RequestId, int EventId)> dismissed, DateOnly today, int max = 3)
+    {
+        var eventList = events.Where(e => e.StartDate >= today).ToList();
+        var all = requests.ToDictionary(
+            r => r.Id,
+            r => Suggest(r, eventList.Where(e => !dismissed.Contains((r.Id, e.Id))), int.MaxValue));
+        var best = all.Values.SelectMany(s => s)
+            .GroupBy(s => s.Event.Id)
+            .ToDictionary(g => g.Key, g => g.Max(s => s.Score));
+        return all.ToDictionary(
+            kv => kv.Key,
+            kv => (IReadOnlyList<ScheduleSuggestion>)kv.Value.Where(s => s.Score == best[s.Event.Id]).Take(max).ToList());
     }
 
     /// <summary>The vendor's full name, or the first word of it when that's distinctive (e.g. "Ace" for "Ace Plumbing").</summary>

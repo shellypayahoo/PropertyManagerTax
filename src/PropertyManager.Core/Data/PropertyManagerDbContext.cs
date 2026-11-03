@@ -33,6 +33,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<EmailAttachment> EmailAttachments => Set<EmailAttachment>();
     public DbSet<CalendarSource> CalendarSources => Set<CalendarSource>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+    public DbSet<DismissedSuggestion> DismissedSuggestions => Set<DismissedSuggestion>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -200,6 +201,13 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.Property(c => c.Name).HasMaxLength(200).IsRequired();
             e.Property(c => c.LastSyncedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
             e.Property(c => c.LastAddedToAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+        });
+
+        modelBuilder.Entity<DismissedSuggestion>(e =>
+        {
+            e.HasKey(d => new { d.MaintenanceRequestId, d.CalendarEventId });
+            e.HasOne(d => d.MaintenanceRequest).WithMany().OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(d => d.CalendarEvent).WithMany().OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<CalendarEvent>(e =>
