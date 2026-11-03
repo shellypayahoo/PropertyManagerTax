@@ -122,7 +122,7 @@ PLIST
 wait_and_report() {
     echo "Starting (the first start after an update builds the app and can take a minute)…"
     for _ in $(seq 1 90); do
-        if curl -fsS -o /dev/null "http://localhost:$PORT/"; then
+        if curl -fs -o /dev/null "http://localhost:$PORT/"; then
             status
             return
         fi
@@ -134,7 +134,7 @@ wait_and_report() {
 status() {
     if ! is_loaded; then
         echo "Not set up to start automatically (run: $0 install)."
-    elif curl -fsS -o /dev/null "http://localhost:$PORT/"; then
+    elif curl -fs -o /dev/null "http://localhost:$PORT/"; then
         echo "Running. On this Mac: http://localhost:$PORT"
         local name
         name="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale status --self --json 2>/dev/null \
