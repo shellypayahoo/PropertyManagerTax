@@ -23,7 +23,7 @@ flowchart LR
             EmailCal["Email & calendar<br/>EmailSignIn · MSAL · GraphMailSource<br/>EmailSyncService · CalendarSyncService · EventMatcher"]
             Docs["Documents<br/>DocumentTextExtractor<br/>PDF and Word text"]
             Photos["House photos<br/>PropertyPhotoService"]
-            Assistant["Ask assistant<br/>AssistantService · AssistantTools<br/>ChatClientFactory · Microsoft.Extensions.AI"]
+            Assistant["Ask assistant<br/>AssistantService · AssistantTools · AssistantActions<br/>ExpenseFinder + ExpenseAgent (every 3 h)<br/>ChatClientFactory · Microsoft.Extensions.AI"]
         end
 
         subgraph Storage["Owner's data · never in git"]

@@ -2,6 +2,7 @@
 @inject DashboardService Dashboard
 @inject NavigationManager Navigation
 @inject IOptionsMonitor<FeatureOptions> Features
+@inject ExpenseSuggestionService ExpenseSuggestions
 @inject IReadOnlyList<PropertyManager.Web.Configuration.ConfigurationProblem> SettingsProblems
 
 <PageTitle>Dashboard</PageTitle>
@@ -35,6 +36,14 @@ else
         <StatCard Label="Expenses year to date" Value="@summary.ExpensesYearToDate.ToString("C0")" Href="expenses" />
     </div>
 
+    @if (suggestedExpenses > 0)
+    {
+        <div class="alert alert-primary d-flex flex-wrap align-items-center gap-2 py-2" style="max-width: 60rem">
+            <span>🧾 @suggestedExpenses @(suggestedExpenses == 1 ? "expense was" : "expenses were") found in vendor texts and emails, waiting for your OK.</span>
+            <a class="btn btn-sm btn-primary ms-auto" href="expenses#suggested">Review</a>
+        </div>
+    }
+
     @if (summary.OccupiedUnitCount == 0)
     {
         <div class="alert alert-info">
@@ -49,10 +58,15 @@ else
 
 @code {
     private DashboardSummary? summary;
+    private int suggestedExpenses;
 
     protected override async Task OnInitializedAsync()
     {
         summary = await Dashboard.GetSummaryAsync();
+        if (Features.CurrentValue.ExpenseSuggestions && Features.CurrentValue.Assistant)
+        {
+            suggestedExpenses = await ExpenseSuggestions.PendingCountAsync();
+        }
         if (summary.PropertyCount == 0)
         {
             // A brand-new installation: walk the owner through setup first.

@@ -6,6 +6,7 @@
 @inject PropertyManager.Core.Calendar.CalendarEventService CalendarEvents
 @inject IMailSource Mail
 @inject EmailSyncService Sync
+@inject PropertyManager.Web.Agents.ExpenseAgent ExpenseAgent
 @inject PropertyManager.Core.Calendar.CalendarSyncService CalendarSync
 @inject IOptionsMonitor<FeatureOptions> Features
 
@@ -363,6 +364,10 @@ else
     private Task SyncAsync() => RunAsync(async () =>
     {
         var summary = await Sync.SyncAsync(leaving.Token);
+        if (summary.Added > 0)
+        {
+            ExpenseAgent.CheckNow();
+        }
         await LoadAsync();
         status = $"{summary.Added} new email(s), {summary.Updated} updated, {summary.Removed} removed, {summary.Attachments} attachment(s) saved.";
         problems = summary.Problems;

@@ -62,6 +62,10 @@ builder.Services.AddSingleton(configurationProblems);
 builder.Services.AddScoped<AssistantTools>();
 builder.Services.AddScoped<AssistantActions>();
 builder.Services.AddScoped<AssistantService>();
+builder.Services.AddScoped<ExpenseFinder>();
+builder.Services.AddScoped<ExpenseSuggestionService>();
+builder.Services.AddSingleton<PropertyManager.Web.Agents.ExpenseAgent>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PropertyManager.Web.Agents.ExpenseAgent>());
 builder.Services.AddSingleton<AskHistory>();
 
 // Tenant emails from a Hotmail/Outlook.com folder, read-only through Microsoft Graph.

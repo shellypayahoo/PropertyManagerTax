@@ -19,6 +19,11 @@
     <div class="alert alert-info py-2">Added @recurringAdded recurring @(recurringAdded == 1 ? "expense" : "expenses") that came due.</div>
 }
 
+@if (Features.CurrentValue.ExpenseSuggestions && Features.CurrentValue.Assistant)
+{
+    <SuggestedExpenses OnApproved="LoadAsync" />
+}
+
 <div class="card mb-3">
 <div class="card-body">
 <h2 class="h5">Add expense</h2>

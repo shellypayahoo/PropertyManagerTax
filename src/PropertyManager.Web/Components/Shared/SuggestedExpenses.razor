@@ -1,0 +1,229 @@
+@using PropertyManager.Web.Agents
+@implements IDisposable
+@inject ExpenseSuggestionService Suggestions
+@inject ExpenseAgent Agent
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+
+@* Expenses the expense checker found in vendor texts and emails, for the owner to approve, change, or dismiss. *@
+<div class="card mb-3 @(pending.Count > 0 ? "border-primary" : "")" id="suggested">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <h2 class="h5 mb-0 me-auto">Suggested from vendor messages @(pending.Count > 0 ? $"({pending.Count})" : "")</h2>
+            <span class="small text-muted">
+                @if (Agent.IsRunning)
+                {
+                    <span>Checking new messages…</span>
+                }
+                else if (Agent.LastRunAt is { } at)
+                {
+                    <span title="@Agent.LastResult">Last checked @at.ToLocalTime().ToString("MMM d, h:mm tt")</span>
+                }
+                else if (Agent.NextRunAt is { } next)
+                {
+                    <span>First check at @next.ToLocalTime().ToString("h:mm tt")</span>
+                }
+            </span>
+            <button class="btn btn-sm btn-outline-secondary" disabled="@Agent.IsRunning" @onclick="() => Agent.CheckNow(importFirst: true)">Check now</button>
+        </div>
+        @if (Agent.LastResult is { } result && !Agent.IsRunning)
+        {
+            <div class="small text-muted">@result</div>
+        }
+        @if (message is not null) { <div class="alert alert-success py-1 px-2 small mt-2 mb-0">@message</div> }
+
+        @if (pending.Count == 0)
+        {
+            <p class="text-muted small mb-0 mt-2">
+                Nothing waiting. New texts and emails from your vendors are read every few hours (and right after you import them),
+                and any bills or invoices in them show up here for you to approve.
+            </p>
+        }
+        @foreach (var s in pending)
+        {
+            var form = forms[s.Id];
+            <div class="border rounded p-2 mt-2 @(s.DuplicateOfExpense is not null ? "border-warning" : "")">
+                <div class="small text-muted mb-1">
+                    @(s.TextMessage is not null ? "Text" : "Email") from <strong>@s.Vendor?.Name</strong>,
+                    @((s.TextMessage?.SentAt ?? s.EmailMessage?.SentAt)?.ToLocalTime().ToString("ddd, MMM d"))@(s.EmailMessage is { } em ? $", \"{em.Subject}\"" : ""):
+                    <span class="fst-italic">“@s.Evidence”</span>
+                    @if (s.TextAttachment is { } ta)
+                    {
+                        <a class="ms-1" href="text-attachments/@ta.Id" target="_blank">📎 @ta.FileName</a>
+                    }
+                    else if (s.EmailAttachment is { } ea)
+                    {
+                        <a class="ms-1" href="email-attachments/@ea.Id" target="_blank">📎 @ea.FileName</a>
+                    }
+                </div>
+                @if (s.DuplicateOfExpense is { } dup)
+                {
+                    <div class="small text-warning-emphasis mb-1">
+                        ⚠ Possible duplicate of the expense on @dup.Date.ToString("MMM d") for @dup.Amount.ToString("C") (@dup.Description). Dismiss this one if it's the same charge.
+                    </div>
+                }
+                @if (editing.Contains(s.Id))
+                {
+                    <div class="row g-2 align-items-end">
+                        <div class="col-sm-3 col-lg-2"><label class="form-label small mb-0">Date</label><input type="date" class="form-control form-control-sm" @bind="form.Date" /></div>
+                        <div class="col-sm-3 col-lg-2"><label class="form-label small mb-0">Amount</label><input type="number" step="0.01" class="form-control form-control-sm" @bind="form.Amount" /></div>
+                        <div class="col-sm-6 col-lg-4"><label class="form-label small mb-0">Description</label><input class="form-control form-control-sm" @bind="form.Description" /></div>
+                        <div class="col-sm-6 col-lg-4">
+                            <label class="form-label small mb-0">Category</label>
+                            <select class="form-select form-select-sm" @bind="form.Category"><CategoryOptions /></select>
+                        </div>
+                        <div class="col-sm-6 col-lg-4">
+                            <label class="form-label small mb-0">Property</label>
+                            <select class="form-select form-select-sm" value="@PlaceValue(form)" @onchange="e => SetPlace(form, e.Value as string)">
+                                <option value="">Choose…</option>
+                                <option value="shared">All properties (shared)</option>
+                                @foreach (var p in properties)
+                                {
+                                    <option value="@p.Id">@p.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-sm-3 col-lg-2">
+                            <label class="form-label small mb-0">Unit</label>
+                            <select class="form-select form-select-sm" @bind="form.UnitId" disabled="@(form.PropertyId is null)">
+                                <option value="">All</option>
+                                @foreach (var u in properties.FirstOrDefault(p => p.Id == form.PropertyId)?.Units.OrderBy(u => u.Label) ?? Enumerable.Empty<Unit>())
+                                {
+                                    <option value="@u.Id">@u.Label</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-sm-3 col-lg-2">
+                            <label class="form-label small mb-0">Vendor</label>
+                            <select class="form-select form-select-sm" @bind="form.VendorId">
+                                <option value="">—</option>
+                                @foreach (var v in vendors) { <option value="@v.Id">@v.Name</option> }
+                            </select>
+                        </div>
+                        <div class="col-sm-3 col-lg-2">
+                            <label class="form-label small mb-0">Paid with</label>
+                            <select class="form-select form-select-sm" @bind="form.PaidWith">
+                                <option value="">—</option>
+                                @foreach (var m in Enum.GetValues<PaymentMethod>()) { <option value="@m">@m</option> }
+                            </select>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div>
+                        <strong>@form.Amount.ToString("C")</strong> · @form.Description · @form.Category.DisplayName()
+                        · <span class="@(form.NeedsProperty ? "text-danger" : "")">@PlaceLabel(form)</span>
+                        · @form.Date.ToString("MMM d, yyyy")@(form.PaidWith is { } paid ? $" · {paid}" : "")
+                    </div>
+                }
+                @if (errors.GetValueOrDefault(s.Id) is { } problem) { <div class="small text-danger mt-1">@problem</div> }
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <button class="btn btn-sm btn-success" disabled="@busy" @onclick="() => ApproveAsync(s)">Approve</button>
+                    @if (!editing.Contains(s.Id))
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="() => editing.Add(s.Id)">Change</button>
+                    }
+                    <button class="btn btn-sm btn-link" disabled="@busy" @onclick="() => DismissAsync(s)">Dismiss</button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Called after an approval adds an expense, so the page can show it.</summary>
+    [Parameter] public EventCallback OnApproved { get; set; }
+
+    private List<ExpenseSuggestion> pending = [];
+    private readonly Dictionary<int, ExpenseSuggestion> forms = [];
+    private readonly HashSet<int> editing = [];
+    private readonly Dictionary<int, string> errors = [];
+    private List<Property> properties = [];
+    private List<Vendor> vendors = [];
+    private string? message;
+    private bool busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Agent.Changed += OnAgentChanged;
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync();
+            vendors = await db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        pending = await Suggestions.PendingAsync();
+        foreach (var s in pending.Where(s => !forms.ContainsKey(s.Id)))
+        {
+            forms[s.Id] = new ExpenseSuggestion
+            {
+                Date = s.Date, Amount = s.Amount, Description = s.Description, Category = s.Category, PropertyId = s.PropertyId,
+                IsShared = s.IsShared, UnitId = s.UnitId, VendorId = s.VendorId, PaidWith = s.PaidWith,
+            };
+            if (s.NeedsProperty)
+            {
+                editing.Add(s.Id);
+            }
+        }
+    }
+
+    private void OnAgentChanged() => _ = InvokeAsync(async () =>
+    {
+        if (!Agent.IsRunning)
+        {
+            await LoadAsync();
+        }
+        StateHasChanged();
+    });
+
+    private static string PlaceValue(ExpenseSuggestion f) => f.IsShared ? "shared" : f.PropertyId?.ToString() ?? "";
+
+    private static void SetPlace(ExpenseSuggestion f, string? value)
+    {
+        f.IsShared = value == "shared";
+        f.PropertyId = int.TryParse(value, out var id) ? id : null;
+        f.UnitId = null;
+    }
+
+    private string PlaceLabel(ExpenseSuggestion f) =>
+        f.IsShared ? "All properties"
+        : properties.FirstOrDefault(p => p.Id == f.PropertyId) is { } p
+            ? p.Name + (p.Units.FirstOrDefault(u => u.Id == f.UnitId) is { } u ? $" – Unit {u.Label}" : "")
+            : "Property not known: choose one";
+
+    private async Task ApproveAsync(ExpenseSuggestion s)
+    {
+        busy = true;
+        try
+        {
+            var (expense, error) = await Suggestions.ApproveAsync(s.Id, forms[s.Id]);
+            if (error is not null)
+            {
+                errors[s.Id] = error;
+                editing.Add(s.Id);
+                return;
+            }
+            errors.Remove(s.Id);
+            message = $"Added {expense!.Description}, {expense.Amount:C} on {expense.Date:MMM d}.";
+            await LoadAsync();
+            await OnApproved.InvokeAsync();
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DismissAsync(ExpenseSuggestion s)
+    {
+        await Suggestions.DismissAsync(s.Id);
+        message = null;
+        await LoadAsync();
+    }
+
+    public void Dispose() => Agent.Changed -= OnAgentChanged;
+}

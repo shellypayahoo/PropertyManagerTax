@@ -22,6 +22,9 @@ public class FeatureOptions
 
     /// <summary>A photo for each property.</summary>
     public bool PropertyPhotos { get; set; } = true;
+
+    /// <summary>Read new vendor texts and emails with the Ask page's AI model and suggest expenses to approve.</summary>
+    public bool ExpenseSuggestions { get; set; } = true;
 }
 
 /// <summary>Details and rules of the rental business.</summary>

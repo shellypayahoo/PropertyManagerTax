@@ -139,6 +139,7 @@
         new("Email", "Email", "emails with tenants from Outlook.com or Hotmail"),
         new("Calendar", "Calendar", "Outlook.com appointments on the Dashboard and Maintenance"),
         new("Assistant", "Ask (AI assistant)", "questions about your records in plain English"),
+        new("ExpenseSuggestions", "Expense suggestions", "reads new vendor texts and emails with the Ask page's AI model and suggests expenses for you to approve"),
         new("TextMessages", "Text messages", "texts with tenants from a Mac's Messages app"),
     ];
 
@@ -149,6 +150,7 @@
         {
             ["Receipts"] = f.Receipts, ["PropertyPhotos"] = f.PropertyPhotos, ["Email"] = f.Email,
             ["Calendar"] = f.Calendar, ["Assistant"] = f.Assistant, ["TextMessages"] = f.TextMessages,
+            ["ExpenseSuggestions"] = f.ExpenseSuggestions,
         };
         var b = Business.CurrentValue;
         (businessName, rentDueDay, lateAfterDays) = (b.Name ?? "", Math.Clamp(b.RentDueDay, 1, 28), Math.Clamp(b.LateAfterDays, 0, 31));
@@ -162,6 +164,7 @@
     private (bool Ready, string? Note) Status(string key) => key switch
     {
         "Email" or "Calendar" => EmailSettings.CurrentValue.IsConfigured ? (true, "set up") : (false, "needs setup"),
+        "ExpenseSuggestions" => Features.CurrentValue.Assistant && Assistant.Providers.Any(p => p.IsConfigured) ? (true, "uses Ask's model") : (false, "needs Ask set up"),
         "Assistant" => Assistant.Providers.Where(p => p.IsConfigured).Select(p => p.Name).ToList() is { Count: > 0 } ready
             ? (true, "set up: " + string.Join(", ", ready))
             : (false, "needs setup"),

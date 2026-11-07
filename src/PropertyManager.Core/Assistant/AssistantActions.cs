@@ -686,9 +686,9 @@ public partial class AssistantActions(
             : $" Couldn't save {file.Name}: {string.Join(" ", result.Problems)}";
     }
 
-    private record Place(int? PropertyId, int? UnitId, string Label);
+    internal record Place(int? PropertyId, int? UnitId, string Label);
 
-    private static async Task<(Place Place, string? Error)> ResolvePlaceAsync(PropertyManagerDbContext db, string property, string? unit, CancellationToken ct)
+    internal static async Task<(Place Place, string? Error)> ResolvePlaceAsync(PropertyManagerDbContext db, string property, string? unit, CancellationToken ct)
     {
         if (Regex.IsMatch(property.Trim(), @"^(shared|all( properties)?)$", RegexOptions.IgnoreCase))
         {
@@ -738,7 +738,7 @@ public partial class AssistantActions(
         return unitCounts.GetValueOrDefault(property.Id) == 1 || Regex.IsMatch(rest, $@"(?<![\w]){Regex.Escape(unit.Label)}(?![\w])", RegexOptions.IgnoreCase);
     }
 
-    private static ExpenseCategory? ResolveCategory(string text)
+    internal static ExpenseCategory? ResolveCategory(string text)
     {
         var t = text.Trim();
         var all = Enum.GetValues<ExpenseCategory>();
@@ -749,7 +749,7 @@ public partial class AssistantActions(
     private static string UnknownCategory(string text) =>
         $"\"{text}\" isn't a category. Use one of: {string.Join(", ", Enum.GetValues<ExpenseCategory>().Select(c => c.DisplayName()))}.";
 
-    private static PaymentMethod? ResolveMethod(string text) =>
+    internal static PaymentMethod? ResolveMethod(string text) =>
         Enum.TryParse<PaymentMethod>(text.Replace(" ", ""), true, out var m) ? m
         : text.Contains("credit", StringComparison.OrdinalIgnoreCase) || text.Contains("debit", StringComparison.OrdinalIgnoreCase) ? PaymentMethod.Card
         : text.Contains("transfer", StringComparison.OrdinalIgnoreCase) || text.Contains("ach", StringComparison.OrdinalIgnoreCase) ? PaymentMethod.BankTransfer

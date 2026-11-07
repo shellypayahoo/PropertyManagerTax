@@ -5,6 +5,7 @@
 @inject TextMessageSearch Search
 @inject IConfiguration Configuration
 @inject IOptionsMonitor<FeatureOptions> Features
+@inject PropertyManager.Web.Agents.ExpenseAgent ExpenseAgent
 
 <PageTitle>Messages</PageTitle>
 
@@ -231,6 +232,10 @@
     private Task ImportAsync() => RunAsync(async () =>
     {
         var s = await Importer.ImportAsync(MessagesPath);
+        if (s.MessagesAdded > 0)
+        {
+            ExpenseAgent.CheckNow();
+        }
         var files = s.AttachmentsSaved + s.AttachmentsNotOnMac + s.AttachmentsTooLarge == 0 ? ""
             : $" Saved {s.AttachmentsSaved} photo(s) and file(s)"
               + (s.AttachmentsNotOnMac > 0 ? $"; {s.AttachmentsNotOnMac} aren't downloaded to this Mac yet (open the conversation in Messages, then import again)" : "")

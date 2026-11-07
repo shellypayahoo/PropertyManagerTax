@@ -262,6 +262,13 @@ On the Expenses page, **Edit** changes any expense, and checking several expense
 
 **By vendor**: pick a vendor from the vendor dropdown (next to the year and property) to see only that vendor's expenses for the year, with a summary of the total and how it breaks down by category and property. Click a vendor's name in the list, or on the **Vendors** page, to jump straight there. **No vendor** shows expenses without one.
 
+**Suggested from vendor messages**: the app reads new texts and emails from your vendors (contacts linked to a vendor on the Messages page, and emails matched to a vendor) with the Ask page's AI model and suggests the bills in them: invoices, receipts, "total is $180", "sent you $250 on Zelle". Each suggestion at the top of the Expenses page shows the vendor's words and any attached invoice, with the date, amount, description, category, property, and unit filled in. **Approve** adds the expense (attaching the invoice as its receipt), **Change** lets you correct it first, and **Dismiss** drops it. Nothing is added without your click, and the Dashboard says when suggestions are waiting.
+
+- **When it runs:** every 3 hours while the app is running (getting new emails and texts first), right after you import texts or get new emails, and when you click **Check now**. Each message is read once; messages older than 30 days aren't read, so turning it on doesn't dig up old bills.
+- **Duplicates:** if you already have an expense for the same amount from that vendor within two weeks (or with no vendor within five days, like a Zelle payment imported from the bank), the suggestion is marked **Possible duplicate** with that expense, so you can dismiss it.
+- **Only vendors:** tenant conversations aren't read for this.
+- **Privacy and cost:** the vendor messages and their attachments go to the Ask page's AI model (photos only when **Let it look at photos** is on in Settings), one request per vendor with new messages. Turn it off under **Settings → Expense suggestions**.
+
 **Split** divides one expense into parts, each with its own property, unit, category, and amount. **Divide across units** spreads a bill evenly over the units you tick (rounding pennies go to the last one), e.g. a cleaning crew that does three of the four units.
 
 ## Recurring expenses

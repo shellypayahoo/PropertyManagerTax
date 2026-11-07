@@ -34,6 +34,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<CalendarSource> CalendarSources => Set<CalendarSource>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
     public DbSet<DismissedSuggestion> DismissedSuggestions => Set<DismissedSuggestion>();
+    public DbSet<ExpenseSuggestion> ExpenseSuggestions => Set<ExpenseSuggestion>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -201,6 +202,28 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.Property(c => c.Name).HasMaxLength(200).IsRequired();
             e.Property(c => c.LastSyncedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
             e.Property(c => c.LastAddedToAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+        });
+
+        modelBuilder.Entity<ExpenseSuggestion>(e =>
+        {
+            e.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(s => s.Category).HasConversion<string>().HasMaxLength(50);
+            e.Property(s => s.PaidWith).HasConversion<string>().HasMaxLength(20);
+            e.Property(s => s.Amount).HasPrecision(18, 2);
+            e.Property(s => s.Description).HasMaxLength(500);
+            e.Property(s => s.Evidence).HasMaxLength(1000);
+            e.Property(s => s.CreatedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            e.Ignore(s => s.NeedsProperty);
+            e.HasIndex(s => s.Status);
+            // A suggestion goes with its message; the other links are just cleared.
+            e.HasOne(s => s.TextMessage).WithMany().OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(s => s.EmailMessage).WithMany().OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(s => s.Vendor).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(s => s.Property).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(s => s.Unit).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(s => s.TextAttachment).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(s => s.EmailAttachment).WithMany().OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(s => s.DuplicateOfExpense).WithMany().OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<DismissedSuggestion>(e =>

@@ -36,5 +36,8 @@ public class EmailMessage
 
     public List<EmailAttachment> Attachments { get; set; } = [];
 
+    /// <summary>Whether the expense checker has looked at this message (see <see cref="ExpenseSuggestion"/>).</summary>
+    public bool ExpenseChecked { get; set; }
+
     public string FromDisplay => string.IsNullOrWhiteSpace(FromName) ? FromAddress : $"{FromName} <{FromAddress}>";
 }

@@ -439,6 +439,9 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Property<int>("EmailFolderId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ExpenseChecked")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("FromAddress")
                         .IsRequired()
                         .HasMaxLength(320)
@@ -604,6 +607,99 @@ namespace PropertyManager.Core.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ExpenseReceipts");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.ExpenseSuggestion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("DuplicateOfExpenseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("EmailAttachmentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("EmailMessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Evidence")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ExpenseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsShared")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PaidWith")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PropertyId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TextAttachmentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("TextMessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("UnitId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("VendorId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DuplicateOfExpenseId");
+
+                    b.HasIndex("EmailAttachmentId");
+
+                    b.HasIndex("EmailMessageId");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("TextAttachmentId");
+
+                    b.HasIndex("TextMessageId");
+
+                    b.HasIndex("UnitId");
+
+                    b.HasIndex("VendorId");
+
+                    b.ToTable("ExpenseSuggestions");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.ImportedTransaction", b =>
@@ -1121,6 +1217,9 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ExpenseChecked")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Guid")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1400,6 +1499,65 @@ namespace PropertyManager.Core.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Expense");
+                });
+
+            modelBuilder.Entity("PropertyManager.Core.Entities.ExpenseSuggestion", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Expense", "DuplicateOfExpense")
+                        .WithMany()
+                        .HasForeignKey("DuplicateOfExpenseId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.EmailAttachment", "EmailAttachment")
+                        .WithMany()
+                        .HasForeignKey("EmailAttachmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.EmailMessage", "EmailMessage")
+                        .WithMany()
+                        .HasForeignKey("EmailMessageId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("PropertyManager.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.TextAttachment", "TextAttachment")
+                        .WithMany()
+                        .HasForeignKey("TextAttachmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.TextMessage", "TextMessage")
+                        .WithMany()
+                        .HasForeignKey("TextMessageId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("PropertyManager.Core.Entities.Unit", "Unit")
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("PropertyManager.Core.Entities.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("DuplicateOfExpense");
+
+                    b.Navigation("EmailAttachment");
+
+                    b.Navigation("EmailMessage");
+
+                    b.Navigation("Property");
+
+                    b.Navigation("TextAttachment");
+
+                    b.Navigation("TextMessage");
+
+                    b.Navigation("Unit");
+
+                    b.Navigation("Vendor");
                 });
 
             modelBuilder.Entity("PropertyManager.Core.Entities.ImportedTransaction", b =>
