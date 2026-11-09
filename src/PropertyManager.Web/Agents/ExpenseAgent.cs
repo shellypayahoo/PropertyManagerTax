@@ -29,7 +29,10 @@ public sealed class ExpenseAgent(
     public bool IsRunning { get; private set; }
     public DateTimeOffset? LastRunAt { get; private set; }
     public string? LastResult { get; private set; }
-    public DateTimeOffset? NextRunAt { get; private set; }
+    private DateTimeOffset started;
+
+    /// <summary>When the next background check is due, from the last check and the current setting.</summary>
+    public DateTimeOffset NextRunAt => LastRunAt is { } last ? last + Interval : started + FirstRunDelay;
 
     /// <summary>Raised when a check starts or finishes, so open pages can refresh.</summary>
     public event Action? Changed;
@@ -43,7 +46,7 @@ public sealed class ExpenseAgent(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var started = clock.GetUtcNow();
+        started = clock.GetUtcNow();
         while (!stoppingToken.IsCancellationRequested)
         {
             bool woken;
@@ -53,8 +56,7 @@ public sealed class ExpenseAgent(
                 // interval chosen in Settings take effect without a restart.
                 do
                 {
-                    NextRunAt = LastRunAt is { } last ? last + Interval : started + FirstRunDelay;
-                    var wait = NextRunAt.Value - clock.GetUtcNow();
+                    var wait = NextRunAt - clock.GetUtcNow();
                     woken = wait > TimeSpan.Zero && await wake.WaitAsync(wait < TimeSpan.FromMinutes(1) ? wait : TimeSpan.FromMinutes(1), stoppingToken);
                 }
                 while (!woken && clock.GetUtcNow() < NextRunAt);
@@ -100,7 +102,6 @@ public sealed class ExpenseAgent(
         finally
         {
             LastRunAt = clock.GetUtcNow();
-            NextRunAt = LastRunAt + Interval;
             LastResult = string.Join(" ", notes);
             IsRunning = false;
             Changed?.Invoke();
