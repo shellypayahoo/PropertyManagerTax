@@ -237,6 +237,8 @@ Filter the list by type, property, or year, or type in the search box to match d
 
 The files are stored with the other documents (see [Lease documents](#lease-documents)).
 
+**Scanned PDFs and photos:** on a Mac, the app reads the text in scanned PDFs (up to 50 pages) and photos with macOS's built-in text recognition, the same one behind Live Text, when they're uploaded as business documents, lease files, or receipts. Nothing is installed and nothing is sent anywhere. A document uploaded before this, or one where nothing was found, says **No text read yet**, with a **Read text** button to try again (on the Documents page and on a lease's page). On Windows there's no built-in recognition, so scans stay without text.
+
 ## Importing financial information
 
 **Bank and Zelle CSV files** (**Import** page): download transactions as CSV from your bank's website and upload them. Common layouts (Chase, Bank of America, Capital One, Wells Fargo, and others) are detected automatically, including banks whose amounts are all positive with a separate Debit/Credit column; otherwise you pick the columns once per account.

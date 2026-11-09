@@ -39,6 +39,7 @@ builder.Services.AddScoped<LeaseDocumentService>();
 builder.Services.AddScoped<ExpenseSplitService>();
 builder.Services.AddScoped<RecurringExpenseService>();
 builder.Services.AddSingleton<PropertyManager.Core.Messaging.IImageConverter, PropertyManager.Core.Messaging.SipsImageConverter>();
+builder.Services.AddSingleton<PropertyManager.Core.Documents.ITextRecognizer, PropertyManager.Core.Documents.MacTextRecognizer>();
 builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageImportService>();
 builder.Services.AddScoped<PropertyManager.Core.Messaging.TextMessageSearch>();
 builder.Services.AddScoped<PropertyManager.Core.Messaging.MessageRetentionService>();

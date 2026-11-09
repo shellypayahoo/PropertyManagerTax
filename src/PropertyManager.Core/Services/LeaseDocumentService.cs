@@ -8,7 +8,8 @@ namespace PropertyManager.Core.Services;
 
 public record DocumentUploadResult(int Saved, IReadOnlyList<string> Problems);
 
-public class LeaseDocumentService(IDbContextFactory<PropertyManagerDbContext> dbFactory, IDocumentStorage storage, TimeProvider clock)
+public class LeaseDocumentService(
+    IDbContextFactory<PropertyManagerDbContext> dbFactory, IDocumentStorage storage, TimeProvider clock, ITextRecognizer? recognizer = null)
 {
     public const long MaxFileBytes = 25 * 1024 * 1024;
     public const int MaxFilesPerUpload = 20;
@@ -105,31 +106,33 @@ public class LeaseDocumentService(IDbContextFactory<PropertyManagerDbContext> db
         return documents.Count;
     }
 
-    /// <summary>Fills in <see cref="LeaseDocument.Text"/> from the stored file. A file that can't be read just gets no text.</summary>
+    /// <summary>Reads one document's text again, with text recognition for scans and photos. Returns the characters found, or 0.</summary>
+    public async Task<int> ReadTextAgainAsync(int documentId, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        if (await db.LeaseDocuments.FindAsync([documentId], ct) is not { } document)
+        {
+            return 0;
+        }
+        await ReadTextAsync(document, ct);
+        await db.SaveChangesAsync(ct);
+        return document.Text?.Length ?? 0;
+    }
+
+    /// <summary>
+    /// Fills in <see cref="LeaseDocument.Text"/> from the stored file, using text recognition for scans and photos.
+    /// A file that can't be read just gets no text.
+    /// </summary>
     private async Task ReadTextAsync(LeaseDocument document, CancellationToken ct)
     {
         document.TextExtracted = true;
-        if (!DocumentTextExtractor.CanRead(document.FileName))
+        await using var stream = await storage.OpenReadAsync(document.StorageKey, ct);
+        if (stream is null)
         {
             return;
         }
-        try
-        {
-            await using var stream = await storage.OpenReadAsync(document.StorageKey, ct);
-            if (stream is null)
-            {
-                return;
-            }
-            // PdfPig and ZipArchive need a seekable stream.
-            using var copy = new MemoryStream();
-            await stream.CopyToAsync(copy, ct);
-            copy.Position = 0;
-            document.Text = DocumentTextExtractor.Extract(copy, document.FileName);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // Damaged, password-protected, or unusual files are kept; they just can't be searched.
-            document.Text = null;
-        }
+        using var copy = new MemoryStream();
+        await stream.CopyToAsync(copy, ct);
+        document.Text = await DocumentReader.ReadAsync(copy.ToArray(), document.FileName, recognizer, ct);
     }
 }

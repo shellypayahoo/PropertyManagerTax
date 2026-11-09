@@ -5,6 +5,7 @@
 @inject TimeProvider Clock
 @inject IOptionsMonitor<FeatureOptions> Features
 @inject PropertyManager.Core.Calendar.CalendarEventService CalendarEvents
+@inject LeaseDocumentService LeaseDocuments
 
 <PageTitle>Lease</PageTitle>
 
@@ -168,6 +169,7 @@ else
         <div class="alert alert-success py-2">Uploaded @Uploaded @(Uploaded == 1 ? "file" : "files").</div>
     }
     <FormError Message="@UploadError" />
+    @if (documentResult is not null) { <div class="alert alert-info py-1 px-2 small">@documentResult</div> }
     @if (lease.Documents.Count == 0)
     {
         <p class="text-muted">No documents uploaded yet.</p>
@@ -185,9 +187,15 @@ else
                             @if (!d.HasText)
                             {
                                 <div class="small text-muted">
-                                    @(d.FileName.EndsWith(".doc", StringComparison.OrdinalIgnoreCase)
-                                        ? "The Ask page can't read old Word (.doc) files. Save it as .docx or PDF and upload that instead."
-                                        : "No readable text (photo or scanned), so the Ask page can't search it.")
+                                    @if (d.FileName.EndsWith(".doc", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span>The Ask page can't read old Word (.doc) files. Save it as .docx or PDF and upload that instead.</span>
+                                    }
+                                    else
+                                    {
+                                        <span>No text read yet (scan or photo), so the Ask page can't search it.</span>
+                                        <button class="btn btn-link btn-sm p-0 align-baseline" disabled="@(readingDocument is not null)" @onclick="() => ReadDocumentTextAsync(d)">@(readingDocument == d.Id ? "Reading…" : "Read text")</button>
+                                    }
                                 </div>
                             }
                         </td>
@@ -354,6 +362,28 @@ else
             ? null
             : $"Those dates overlap the lease for {overlap.TenantNames} ({overlap.StartDate:d} – {overlap.EndDate?.ToString("d") ?? "month-to-month"}).";
     }
+
+    private int? readingDocument;
+
+    private async Task ReadDocumentTextAsync(LeaseDocument document)
+    {
+        readingDocument = document.Id;
+        try
+        {
+            documentResult = await LeaseDocuments.ReadTextAgainAsync(document.Id) is > 0 and var characters
+                ? $"Read {characters:N0} characters of text from {document.FileName}."
+                : OperatingSystem.IsMacOS()
+                    ? $"No text found in {document.FileName}. If it's a photo or a faint scan, try a clearer copy."
+                    : "Reading scans needs the Mac's text recognition, so it only works when the app runs on a Mac.";
+            await LoadAsync();
+        }
+        finally
+        {
+            readingDocument = null;
+        }
+    }
+
+    private string? documentResult;
 
     private async Task DeleteDocumentAsync(LeaseDocument document)
     {

@@ -117,6 +117,7 @@
 </div>
 
 <FormError Message="@editError" />
+@if (readResult is not null) { <div class="alert alert-info py-1 px-2 small" style="max-width: 52rem">@readResult</div> }
 @if (!loaded)
 {
     <p><em>Loading…</em></p>
@@ -193,16 +194,16 @@ else
                         <td>@d.Year</td>
                         <td class="small">
                             @d.FileName <span class="text-muted">(@FormatSize(d.SizeBytes))</span>
-                            @if (Features.CurrentValue.Assistant)
+                            @if (Features.CurrentValue.Assistant && d.KeepFromAssistant)
                             {
-                                @if (d.KeepFromAssistant)
-                                {
-                                    <div class="text-muted">🔒 Kept out of Ask</div>
-                                }
-                                else if (!d.HasText && !d.IsImage)
-                                {
-                                    <div class="text-muted">No readable text (scanned), so Ask can't search it.</div>
-                                }
+                                <div class="text-muted">🔒 Kept out of Ask</div>
+                            }
+                            @if (!d.HasText && PropertyManager.Core.Documents.MacTextRecognizer.CanRead(d.FileName))
+                            {
+                                <div class="text-muted">
+                                    No text read yet (scan or photo).
+                                    <button class="btn btn-link btn-sm p-0 align-baseline" disabled="@(reading is not null)" @onclick="() => ReadTextAsync(d)">@(reading == d.Id ? "Reading…" : "Read text")</button>
+                                </div>
                             }
                         </td>
                         <td class="text-nowrap text-end">
@@ -243,6 +244,28 @@ else
 
     private BusinessDocument? editing;
     private string? editError;
+    private int? reading;
+    private string? readResult;
+
+    private async Task ReadTextAsync(BusinessDocument d)
+    {
+        reading = d.Id;
+        readResult = null;
+        try
+        {
+            var characters = await DocumentService.ReadTextAsync(d.Id);
+            readResult = characters > 0
+                ? $"Read {characters:N0} characters of text from \"{d.Description}\"." + (d.KeepFromAssistant ? " It's still kept out of Ask; untick that with Edit if you want Ask to use it." : "")
+                : OperatingSystem.IsMacOS()
+                    ? $"No text found in \"{d.Description}\". If it's a photo or a faint scan, try a clearer copy."
+                    : "Reading scans needs the Mac's text recognition, so it only works when the app runs on a Mac.";
+            await LoadAsync();
+        }
+        finally
+        {
+            reading = null;
+        }
+    }
     private int? deleting;
 
     private IEnumerable<BusinessDocument> Shown => documents

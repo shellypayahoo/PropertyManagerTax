@@ -8,7 +8,9 @@ using PropertyManager.Core.Storage;
 namespace PropertyManager.Core.Services;
 
 /// <summary>Attaches receipts (photos, PDFs, Word files) to expenses.</summary>
-public class ReceiptService(IDbContextFactory<PropertyManagerDbContext> dbFactory, IDocumentStorage storage, TimeProvider clock, IImageConverter? images = null)
+public class ReceiptService(
+    IDbContextFactory<PropertyManagerDbContext> dbFactory, IDocumentStorage storage, TimeProvider clock, IImageConverter? images = null,
+    ITextRecognizer? recognizer = null)
 {
     /// <summary>Saves uploaded receipts to an expense. Files that are rejected or fail are reported, not thrown.</summary>
     public async Task<DocumentUploadResult> AddAsync(int expenseId, IEnumerable<(string FileName, long Size, Func<Stream> Open)> files, CancellationToken ct = default)
@@ -60,17 +62,8 @@ public class ReceiptService(IDbContextFactory<PropertyManagerDbContext> dbFactor
                 {
                     await AddPreviewsAsync(receipt, bytes, keys, ct);
                 }
-                else if (DocumentTextExtractor.CanRead(name))
-                {
-                    try
-                    {
-                        receipt.Text = DocumentTextExtractor.Extract(new MemoryStream(bytes), name);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        // Damaged or password-protected: kept, but not searchable.
-                    }
-                }
+                // Photos of receipts and scanned PDFs are read with the Mac's text recognition.
+                receipt.Text = await DocumentReader.ReadAsync(bytes, name, recognizer, ct);
 
                 db.ExpenseReceipts.Add(receipt);
                 await db.SaveChangesAsync(ct);

@@ -11,7 +11,9 @@ namespace PropertyManager.Core.Services;
 public record BusinessDocumentInfo(BusinessDocumentKind Kind, string? Description, int? PropertyId, int? Year, bool KeepFromAssistant);
 
 /// <summary>Stores business documents: LLC papers, tax returns, insurance, deeds and closing papers, and the like.</summary>
-public class BusinessDocumentService(IDbContextFactory<PropertyManagerDbContext> dbFactory, IDocumentStorage storage, TimeProvider clock, IImageConverter? images = null)
+public class BusinessDocumentService(
+    IDbContextFactory<PropertyManagerDbContext> dbFactory, IDocumentStorage storage, TimeProvider clock, IImageConverter? images = null,
+    ITextRecognizer? recognizer = null)
 {
     public const int MaxDescriptionLength = 200;
 
@@ -74,17 +76,8 @@ public class BusinessDocumentService(IDbContextFactory<PropertyManagerDbContext>
                 {
                     await AddPreviewsAsync(document, bytes, keys, ct);
                 }
-                else if (DocumentTextExtractor.CanRead(name))
-                {
-                    try
-                    {
-                        document.Text = DocumentTextExtractor.Extract(new MemoryStream(bytes), name);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        // Damaged or password-protected: kept, but not searchable.
-                    }
-                }
+                // Scanned PDFs and photos are read with the Mac's text recognition.
+                document.Text = await DocumentReader.ReadAsync(bytes, name, recognizer, ct);
 
                 db.BusinessDocuments.Add(document);
                 await db.SaveChangesAsync(ct);
@@ -122,6 +115,34 @@ public class BusinessDocumentService(IDbContextFactory<PropertyManagerDbContext>
         document.KeepFromAssistant = info.KeepFromAssistant;
         await db.SaveChangesAsync(ct);
         return null;
+    }
+
+    /// <summary>
+    /// Reads a document's text again, with text recognition for scans and photos (e.g. one uploaded before that
+    /// existed). Returns how many characters were found, or 0.
+    /// </summary>
+    public async Task<int> ReadTextAsync(int id, CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        if (await db.BusinessDocuments.FindAsync([id], ct) is not { } document || await ReadFileAsync(document.StorageKey, ct) is not { } bytes)
+        {
+            return 0;
+        }
+        document.Text = await DocumentReader.ReadAsync(bytes, document.FileName, recognizer, ct);
+        await db.SaveChangesAsync(ct);
+        return document.Text?.Length ?? 0;
+    }
+
+    private async Task<byte[]?> ReadFileAsync(string key, CancellationToken ct)
+    {
+        await using var stream = await storage.OpenReadAsync(key, ct);
+        if (stream is null)
+        {
+            return null;
+        }
+        using var copy = new MemoryStream();
+        await stream.CopyToAsync(copy, ct);
+        return copy.ToArray();
     }
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
