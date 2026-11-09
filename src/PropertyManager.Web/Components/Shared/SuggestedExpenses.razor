@@ -3,6 +3,7 @@
 @inject ExpenseSuggestionService Suggestions
 @inject ExpenseAgent Agent
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@inject TimeProvider Clock
 
 @* Expenses the expense checker found in vendor texts and emails, for the owner to approve, change, or dismiss. *@
 <div class="card mb-3 @(pending.Count > 0 ? "border-primary" : "")" id="suggested">
@@ -16,11 +17,11 @@
                 }
                 else if (Agent.LastRunAt is { } at)
                 {
-                    <span title="@Agent.LastResult">Last checked @at.ToLocalTime().ToString("MMM d, h:mm tt")</span>
+                    <span title="@RelativeTime.Exact(at)">Last checked @RelativeTime.Ago(at, Clock.GetUtcNow())@(Agent.NextRunAt is { } upcoming ? $", next {RelativeTime.FromNow(upcoming, Clock.GetUtcNow())}" : "")</span>
                 }
                 else if (Agent.NextRunAt is { } next)
                 {
-                    <span>First check at @next.ToLocalTime().ToString("h:mm tt")</span>
+                    <span title="@RelativeTime.Exact(next)">First check @RelativeTime.FromNow(next, Clock.GetUtcNow())</span>
                 }
             </span>
             <button class="btn btn-sm btn-outline-secondary" disabled="@Agent.IsRunning" @onclick="() => Agent.CheckNow(importFirst: true)">Check now</button>
@@ -34,8 +35,8 @@
         @if (pending.Count == 0)
         {
             <p class="text-muted small mb-0 mt-2">
-                Nothing waiting. New texts and emails from your vendors are read every few hours (and right after you import them),
-                and any bills or invoices in them show up here for you to approve.
+                Nothing waiting. New texts and emails from your vendors are read every @(Agent.Interval.TotalHours == 1 ? "hour" : $"{Agent.Interval.TotalHours:0} hours")
+                (change that in <a href="settings">Settings</a>) and right after you import them, and any bills or invoices in them show up here for you to approve.
             </p>
         }
         @foreach (var s in pending)

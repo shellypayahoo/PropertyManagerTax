@@ -27,6 +27,16 @@ public class FeatureOptions
     public bool ExpenseSuggestions { get; set; } = true;
 }
 
+/// <summary>How often the expense checker reads new vendor messages (see Features:ExpenseSuggestions).</summary>
+public class ExpenseCheckOptions
+{
+    public const string Section = "ExpenseCheck";
+    public static readonly int[] Choices = [1, 2, 3, 6, 12, 24];
+
+    /// <summary>Hours between background checks (1–24).</summary>
+    public int HoursBetweenChecks { get; set; } = 3;
+}
+
 /// <summary>Details and rules of the rental business.</summary>
 public class BusinessOptions
 {

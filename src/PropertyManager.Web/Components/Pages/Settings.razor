@@ -5,6 +5,7 @@
 @inject SettingsService SavedSettings
 @inject IOptionsMonitor<FeatureOptions> Features
 @inject IOptionsMonitor<BusinessOptions> Business
+@inject IOptionsMonitor<ExpenseCheckOptions> ExpenseCheck
 @inject IOptionsMonitor<EmailOptions> EmailSettings
 @inject AssistantService Assistant
 @inject NavigationManager Navigation
@@ -69,6 +70,19 @@
                     <strong>@f.Title</strong> <span class="text-muted">· @f.Description</span>
                     @if (note is not null) { <span class="badge @(ready ? "text-bg-success" : "text-bg-light border") ms-1">@note</span> }
                 </label>
+                @if (f.Key == "ExpenseSuggestions" && features[f.Key])
+                {
+                    <div class="d-flex flex-wrap align-items-center gap-2 small mt-1">
+                        <label for="check-hours">Check vendor messages every</label>
+                        <select id="check-hours" class="form-select form-select-sm w-auto" @bind="checkHours">
+                            @foreach (var h in ExpenseCheckOptions.Choices.Append(checkHours).Distinct().Order())
+                            {
+                                <option value="@h">@(h == 1 ? "hour" : $"{h} hours")</option>
+                            }
+                        </select>
+                        <span class="text-muted">(also right after you import texts or get new emails, and on Check now)</span>
+                    </div>
+                }
             </div>
         }
     </div>
@@ -155,6 +169,7 @@
         var b = Business.CurrentValue;
         (businessName, rentDueDay, lateAfterDays) = (b.Name ?? "", Math.Clamp(b.RentDueDay, 1, 28), Math.Clamp(b.LateAfterDays, 0, 31));
         timeZone = BusinessTimeZone.Find(b.TimeZone) is { } zone ? BusinessTimeZone.IanaId(zone) : "";
+        checkHours = Math.Clamp(ExpenseCheck.CurrentValue.HoursBetweenChecks, 1, 24);
         defaultProvider = Configuration["Assistant:DefaultProvider"] ?? "";
         allowPhotos = Assistant.AllowPhotosByDefault;
         savedHere = await SavedSettings.GetSavedAsync();
@@ -181,6 +196,7 @@
             ["Business:RentDueDay"] = rentDueDay.ToString(),
             ["Business:LateAfterDays"] = lateAfterDays.ToString(),
             ["Business:TimeZone"] = timeZone,
+            ["ExpenseCheck:HoursBetweenChecks"] = checkHours.ToString(),
             ["Assistant:DefaultProvider"] = string.IsNullOrEmpty(defaultProvider) ? null : defaultProvider,
             ["Assistant:AllowPhotos"] = allowPhotos ? "true" : "false",
         };
@@ -206,6 +222,7 @@
     protected override void OnParametersSet() => status = Saved == 1 ? "Settings saved." : null;
 
     private string timeZone = "";
+    private int checkHours = 3;
 
     // The computer's own zone, read from the system rather than the app's (possibly business) local zone.
     private static readonly string ComputerZone = ReadComputerZone();

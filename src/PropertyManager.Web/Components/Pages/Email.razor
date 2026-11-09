@@ -102,7 +102,7 @@ else
             <ul>
                 @foreach (var f in folders)
                 {
-                    <li>@f.Path <span class="text-muted small">(@f.Messages.Count emails@(f.LastSyncedAt is { } at ? $", last synced {at.ToLocalTime():g}" : ", not synced yet"))</span></li>
+                    <li>@f.Path <span class="text-muted small">(@f.Messages.Count emails@(f.LastSyncedAt is { } at ? $", last synced {RelativeTime.Ago(at, DateTimeOffset.UtcNow)}" : ", not synced yet"))</span></li>
                 }
             </ul>
         }
@@ -143,7 +143,7 @@ else
             <ul>
                 @foreach (var c in calendars)
                 {
-                    <li>@c.Name <span class="text-muted small">(@c.Events.Count events@(c.LastSyncedAt is { } at ? $", last synced {at.ToLocalTime():g}" : ", not synced yet"))</span></li>
+                    <li>@c.Name <span class="text-muted small">(@c.Events.Count events@(c.LastSyncedAt is { } at ? $", last synced {RelativeTime.Ago(at, DateTimeOffset.UtcNow)}" : ", not synced yet"))</span></li>
                 }
             </ul>
         }

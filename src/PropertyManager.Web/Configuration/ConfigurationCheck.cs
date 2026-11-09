@@ -28,6 +28,11 @@ public static class ConfigurationCheck
         {
             Error($"Business:LateAfterDays is {business.LateAfterDays}; use 0 to 31.");
         }
+        var expenseCheck = Bind<ExpenseCheckOptions>(configuration, ExpenseCheckOptions.Section, Error) ?? new ExpenseCheckOptions();
+        if (expenseCheck.HoursBetweenChecks is < 1 or > 24)
+        {
+            Error($"ExpenseCheck:HoursBetweenChecks is {expenseCheck.HoursBetweenChecks}; use 1 to 24.");
+        }
         if (!string.IsNullOrWhiteSpace(business.TimeZone) && BusinessTimeZone.Find(business.TimeZone) is null)
         {
             Error($"Business:TimeZone \"{business.TimeZone}\" isn't a time zone; use one like America/New_York.");

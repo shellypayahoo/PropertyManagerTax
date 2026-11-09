@@ -57,6 +57,7 @@ builder.Services.AddScoped<SettingsService>();
 // Which parts of the app are on, business rules, and the starting portfolio (see "Configuration" in the README).
 builder.Services.Configure<FeatureOptions>(builder.Configuration.GetSection(FeatureOptions.Section));
 builder.Services.Configure<BusinessOptions>(builder.Configuration.GetSection(BusinessOptions.Section));
+builder.Services.Configure<ExpenseCheckOptions>(builder.Configuration.GetSection(ExpenseCheckOptions.Section));
 var configurationProblems = ConfigurationCheck.Run(builder.Configuration);
 builder.Services.AddSingleton(configurationProblems);
 builder.Services.AddScoped<AssistantTools>();

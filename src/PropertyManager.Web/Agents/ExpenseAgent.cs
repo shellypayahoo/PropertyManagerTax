@@ -9,16 +9,19 @@ using PropertyManager.Core.Messaging;
 namespace PropertyManager.Web.Agents;
 
 /// <summary>
-/// Runs in the background while the app is running: every few hours it gets new emails and texts, then has the
+/// Runs in the background while the app is running: every few hours (ExpenseCheck:HoursBetweenChecks) it gets new
+/// emails and texts, then has the
 /// <see cref="ExpenseFinder"/> look through new vendor messages for expenses to suggest. After an import on the Email or
 /// Messages page, <see cref="CheckNow"/> runs the check right away.
 /// </summary>
 public sealed class ExpenseAgent(
-    IServiceScopeFactory scopes, IOptionsMonitor<FeatureOptions> features, IConfiguration configuration, ILogger<ExpenseAgent> log,
-    TimeProvider clock) : BackgroundService
+    IServiceScopeFactory scopes, IOptionsMonitor<FeatureOptions> features, IOptionsMonitor<ExpenseCheckOptions> schedule,
+    IConfiguration configuration, ILogger<ExpenseAgent> log, TimeProvider clock) : BackgroundService
 {
-    public static readonly TimeSpan Interval = TimeSpan.FromHours(3);
     private static readonly TimeSpan FirstRunDelay = TimeSpan.FromMinutes(2);
+
+    /// <summary>Time between background checks, from Settings.</summary>
+    public TimeSpan Interval => TimeSpan.FromHours(Math.Clamp(schedule.CurrentValue.HoursBetweenChecks, 1, 24));
 
     private readonly SemaphoreSlim wake = new(0);
     private volatile bool syncRequested;
@@ -40,23 +43,28 @@ public sealed class ExpenseAgent(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var next = FirstRunDelay;
-        var scheduled = true;
+        var started = clock.GetUtcNow();
         while (!stoppingToken.IsCancellationRequested)
         {
-            NextRunAt = clock.GetUtcNow() + next;
+            bool woken;
             try
             {
-                // Woken early by CheckNow, or the interval passed.
-                scheduled = !await wake.WaitAsync(next, stoppingToken);
+                // Woken early by CheckNow, or the time came. Looking again every minute lets a new
+                // interval chosen in Settings take effect without a restart.
+                do
+                {
+                    NextRunAt = LastRunAt is { } last ? last + Interval : started + FirstRunDelay;
+                    var wait = NextRunAt.Value - clock.GetUtcNow();
+                    woken = wait > TimeSpan.Zero && await wake.WaitAsync(wait < TimeSpan.FromMinutes(1) ? wait : TimeSpan.FromMinutes(1), stoppingToken);
+                }
+                while (!woken && clock.GetUtcNow() < NextRunAt);
             }
             catch (OperationCanceledException)
             {
                 return;
             }
-            await RunAsync(importFirst: scheduled || syncRequested, stoppingToken);
+            await RunAsync(importFirst: !woken || syncRequested, stoppingToken);
             syncRequested = false;
-            next = Interval;
         }
     }
 
@@ -64,6 +72,8 @@ public sealed class ExpenseAgent(
     {
         if (!features.CurrentValue.ExpenseSuggestions || !features.CurrentValue.Assistant)
         {
+            // Turned off: try again after another interval.
+            LastRunAt = clock.GetUtcNow();
             return;
         }
         IsRunning = true;
@@ -90,6 +100,7 @@ public sealed class ExpenseAgent(
         finally
         {
             LastRunAt = clock.GetUtcNow();
+            NextRunAt = LastRunAt + Interval;
             LastResult = string.Join(" ", notes);
             IsRunning = false;
             Changed?.Invoke();
