@@ -1,0 +1,15 @@
+@* "Working…", the result of the last sync or choice, and any problems, under the Email & calendar page's buttons. *@
+@if (Busy) { <p class="text-muted">Working… (the first sync of a large folder can take a few minutes)</p> }
+@if (Status is not null) { <div class="alert alert-success py-2" style="max-width: 52rem">@Status</div> }
+@if (Error is not null) { <div class="alert alert-warning py-2" style="max-width: 52rem">@Error</div> }
+@foreach (var p in Problems)
+{
+    <div class="small text-warning-emphasis">@p</div>
+}
+
+@code {
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? Status { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public IReadOnlyList<string> Problems { get; set; } = [];
+}

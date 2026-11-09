@@ -11,13 +11,29 @@
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="nav flex-column">
-        @foreach (var (href, label, icon) in Links.Where(l => IsOn(l.Href)))
+        @foreach (var (heading, links) in Groups)
         {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="@href" Match="@(href == "" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
-                    <span class="bi @icon" aria-hidden="true"></span> @LabelFor(href, label)
-                </NavLink>
-            </div>
+            var shown = links.Where(l => IsOn(l.Href)).ToList();
+            if (shown.Count == 0)
+            {
+                continue;
+            }
+            @if (heading is null && links != Groups[0].Links)
+            {
+                <div class="nav-section-gap" aria-hidden="true"></div>
+            }
+            else if (heading is not null)
+            {
+                <div class="nav-group">@heading</div>
+            }
+            @foreach (var (href, label, icon) in shown)
+            {
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="@href" Match="@(href == "" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                        <span class="bi bi-@icon-nav-menu" aria-hidden="true"></span> @LabelFor(href, label)
+                    </NavLink>
+                </div>
+            }
         }
     </nav>
 </div>
@@ -35,22 +51,14 @@
     private string LabelFor(string href, string label) => href != "email" ? label
         : Features.CurrentValue.Email && Features.CurrentValue.Calendar ? label : Features.CurrentValue.Email ? "Email" : "Calendar";
 
-    private static readonly (string Href, string Label, string Icon)[] Links =
+    // The menu in groups; a group whose pages are all turned off isn't shown. A null heading is just a gap.
+    private static readonly (string? Heading, (string Href, string Label, string Icon)[] Links)[] Groups =
     [
-        ("", "Dashboard", "bi-house-door-fill-nav-menu"),
-        ("properties", "Properties", "bi-list-nested-nav-menu"),
-        ("tenants", "Tenants", "bi-list-nested-nav-menu"),
-        ("leases", "Leases", "bi-list-nested-nav-menu"),
-        ("rent", "Rent", "bi-plus-square-fill-nav-menu"),
-        ("expenses", "Expenses", "bi-plus-square-fill-nav-menu"),
-        ("maintenance", "Maintenance", "bi-plus-square-fill-nav-menu"),
-        ("vendors", "Vendors", "bi-list-nested-nav-menu"),
-        ("import", "Import", "bi-plus-square-fill-nav-menu"),
-        ("messages", "Messages", "bi-list-nested-nav-menu"),
-        ("email", "Email & calendar", "bi-list-nested-nav-menu"),
-        ("ask", "Ask", "bi-list-nested-nav-menu"),
-        ("reports", "Reports", "bi-list-nested-nav-menu"),
-        ("documents", "Documents", "bi-list-nested-nav-menu"),
-        ("settings", "Settings", "bi-list-nested-nav-menu"),
+        (null, [("", "Dashboard", "house-door"), ("ask", "Ask", "chat-dots")]),
+        ("Money", [("rent", "Rent", "cash-coin"), ("expenses", "Expenses", "receipt"), ("reports", "Reports", "bar-chart-line"), ("import", "Import", "box-arrow-in-down")]),
+        ("Properties", [("properties", "Properties", "buildings"), ("tenants", "Tenants", "people"), ("leases", "Leases", "file-earmark-text"),
+            ("maintenance", "Maintenance", "tools"), ("vendors", "Vendors", "person-badge")]),
+        ("Inbox", [("messages", "Messages", "chat-left-text"), ("email", "Email & calendar", "envelope")]),
+        (null, [("documents", "Documents", "folder2-open"), ("settings", "Settings", "gear")]),
     ];
 }
