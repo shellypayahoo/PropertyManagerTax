@@ -58,6 +58,7 @@ builder.Services.AddScoped<SettingsService>();
 builder.Services.Configure<FeatureOptions>(builder.Configuration.GetSection(FeatureOptions.Section));
 builder.Services.Configure<BusinessOptions>(builder.Configuration.GetSection(BusinessOptions.Section));
 builder.Services.Configure<ExpenseCheckOptions>(builder.Configuration.GetSection(ExpenseCheckOptions.Section));
+builder.Services.Configure<SyncOptions>(builder.Configuration.GetSection(SyncOptions.Section));
 var configurationProblems = ConfigurationCheck.Run(builder.Configuration);
 builder.Services.AddSingleton(configurationProblems);
 builder.Services.AddScoped<AssistantTools>();
@@ -67,6 +68,8 @@ builder.Services.AddScoped<ExpenseFinder>();
 builder.Services.AddScoped<ExpenseSuggestionService>();
 builder.Services.AddSingleton<PropertyManager.Web.Agents.ExpenseAgent>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PropertyManager.Web.Agents.ExpenseAgent>());
+builder.Services.AddSingleton<PropertyManager.Web.Agents.MailSyncAgent>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PropertyManager.Web.Agents.MailSyncAgent>());
 builder.Services.AddSingleton<AskHistory>();
 
 // Tenant emails from a Hotmail/Outlook.com folder, read-only through Microsoft Graph.

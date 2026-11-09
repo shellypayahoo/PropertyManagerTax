@@ -3,146 +3,67 @@ using Microsoft.Extensions.Options;
 using PropertyManager.Core.Assistant;
 using PropertyManager.Core.Configuration;
 using PropertyManager.Core.Data;
-using PropertyManager.Core.Email;
 using PropertyManager.Core.Messaging;
 
 namespace PropertyManager.Web.Agents;
 
 /// <summary>
-/// Runs in the background while the app is running: every few hours (ExpenseCheck:HoursBetweenChecks) it gets new
-/// emails and texts, then has the
-/// <see cref="ExpenseFinder"/> look through new vendor messages for expenses to suggest. After an import on the Email or
-/// Messages page, <see cref="CheckNow"/> runs the check right away.
+/// Every few hours (ExpenseCheck:HoursBetweenChecks) imports new texts, then has the <see cref="ExpenseFinder"/> look
+/// through new vendor texts and emails for expenses to suggest. New emails come from <see cref="MailSyncAgent"/>, which
+/// calls <see cref="CheckNow"/> when they arrive, as do imports on the Email and Messages pages.
 /// </summary>
 public sealed class ExpenseAgent(
     IServiceScopeFactory scopes, IOptionsMonitor<FeatureOptions> features, IOptionsMonitor<ExpenseCheckOptions> schedule,
-    IConfiguration configuration, ILogger<ExpenseAgent> log, TimeProvider clock) : BackgroundService
+    IConfiguration configuration, ILogger<ExpenseAgent> log, TimeProvider clock) : ScheduledAgent(clock, log)
 {
-    private static readonly TimeSpan FirstRunDelay = TimeSpan.FromMinutes(2);
+    public override TimeSpan Interval => TimeSpan.FromHours(Math.Clamp(schedule.CurrentValue.HoursBetweenChecks, 1, 24));
 
-    /// <summary>Time between background checks, from Settings.</summary>
-    public TimeSpan Interval => TimeSpan.FromHours(Math.Clamp(schedule.CurrentValue.HoursBetweenChecks, 1, 24));
+    /// <summary>Checks new vendor messages now; with <paramref name="importFirst"/>, imports new texts first.</summary>
+    public void CheckNow(bool importFirst = false) => Wake(importFirst);
 
-    private readonly SemaphoreSlim wake = new(0);
-    private volatile bool syncRequested;
-
-    public bool IsRunning { get; private set; }
-    public DateTimeOffset? LastRunAt { get; private set; }
-    public string? LastResult { get; private set; }
-    private DateTimeOffset started;
-
-    /// <summary>When the next background check is due, from the last check and the current setting.</summary>
-    public DateTimeOffset NextRunAt => LastRunAt is { } last ? last + Interval : started + FirstRunDelay;
-
-    /// <summary>Raised when a check starts or finishes, so open pages can refresh.</summary>
-    public event Action? Changed;
-
-    /// <summary>Checks new vendor messages now; with <paramref name="importFirst"/>, gets new emails and texts first.</summary>
-    public void CheckNow(bool importFirst = false)
-    {
-        syncRequested |= importFirst;
-        wake.Release();
-    }
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        started = clock.GetUtcNow();
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            bool woken;
-            try
-            {
-                // Woken early by CheckNow, or the time came. Looking again every minute lets a new
-                // interval chosen in Settings take effect without a restart.
-                do
-                {
-                    var wait = NextRunAt - clock.GetUtcNow();
-                    woken = wait > TimeSpan.Zero && await wake.WaitAsync(wait < TimeSpan.FromMinutes(1) ? wait : TimeSpan.FromMinutes(1), stoppingToken);
-                }
-                while (!woken && clock.GetUtcNow() < NextRunAt);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            await RunAsync(importFirst: !woken || syncRequested, stoppingToken);
-            syncRequested = false;
-        }
-    }
-
-    private async Task RunAsync(bool importFirst, CancellationToken ct)
+    protected override async Task<string?> WorkAsync(bool full, CancellationToken ct)
     {
         if (!features.CurrentValue.ExpenseSuggestions || !features.CurrentValue.Assistant)
         {
-            // Turned off: try again after another interval.
-            LastRunAt = clock.GetUtcNow();
-            return;
+            return null;
         }
-        IsRunning = true;
-        Changed?.Invoke();
         var notes = new List<string>();
-        try
+        await using var scope = scopes.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        if (full)
         {
-            await using var scope = scopes.CreateAsyncScope();
-            var services = scope.ServiceProvider;
-            if (importFirst)
-            {
-                await ImportAsync(services, notes, ct);
-            }
-            var summary = await services.GetRequiredService<ExpenseFinder>().RunAsync(ct);
-            notes.Add(summary.Problem is { } problem && summary.MessagesChecked == 0 && summary.VendorsFailed == 0 ? problem
-                : $"Checked {summary.MessagesChecked} new vendor message(s), {summary.Suggested} suggested expense(s)."
-                  + (summary.Problem is { } failure ? " " + failure : ""));
+            await ImportTextsAsync(services, notes, ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            log.LogError(ex, "Expense check failed");
-            notes.Add($"The check failed: {ex.Message}");
-        }
-        finally
-        {
-            LastRunAt = clock.GetUtcNow();
-            LastResult = string.Join(" ", notes);
-            IsRunning = false;
-            Changed?.Invoke();
-        }
+        var summary = await services.GetRequiredService<ExpenseFinder>().RunAsync(ct);
+        notes.Add(summary.Problem is { } problem && summary.MessagesChecked == 0 && summary.VendorsFailed == 0 ? problem
+            : $"Checked {summary.MessagesChecked} new vendor message(s), {summary.Suggested} suggested expense(s)."
+              + (summary.Problem is { } failure ? " " + failure : ""));
+        return string.Join(" ", notes);
     }
 
-    /// <summary>Gets new emails and texts the same way the Email and Messages pages do; problems are noted, not thrown.</summary>
-    private async Task ImportAsync(IServiceProvider services, List<string> notes, CancellationToken ct)
+    /// <summary>Imports new texts the same way the Messages page does; problems are noted, not thrown.</summary>
+    private async Task ImportTextsAsync(IServiceProvider services, List<string> notes, CancellationToken ct)
     {
-        var db = await services.GetRequiredService<IDbContextFactory<PropertyManagerDbContext>>().CreateDbContextAsync(ct);
-        await using (db)
+        if (!features.CurrentValue.TextMessages || !OperatingSystem.IsMacOS())
         {
-            var on = features.CurrentValue;
-            var signIn = services.GetRequiredService<EmailSignIn>();
-            if (on.Email && signIn.IsConfigured && await db.EmailFolders.AnyAsync(ct) && await signIn.GetSignedInAddressAsync() is not null)
-            {
-                try
-                {
-                    await services.GetRequiredService<EmailSyncService>().SyncAsync(ct);
-                }
-                catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
-                {
-                    log.LogWarning(ex, "Background email sync failed");
-                    notes.Add($"Couldn't get new emails: {ex.Message}");
-                }
-            }
-            if (on.TextMessages && OperatingSystem.IsMacOS() && await db.MessageContacts.AnyAsync(c => c.Included, ct))
-            {
-                try
-                {
-                    var path = configuration["Messages:DatabasePath"] is { Length: > 0 } p ? p : MessagesDatabaseReader.DefaultPath;
-                    await services.GetRequiredService<TextMessageImportService>().ImportAsync(path, ct: ct);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
-                {
-                    log.LogWarning(ex, "Background text import failed");
-                    notes.Add(ex is UnauthorizedAccessException
-                        ? "Couldn't read your texts: give the app Full Disk Access (see the README)."
-                        : $"Couldn't import texts: {ex.Message}");
-                }
-            }
+            return;
+        }
+        await using var db = await services.GetRequiredService<IDbContextFactory<PropertyManagerDbContext>>().CreateDbContextAsync(ct);
+        if (!await db.MessageContacts.AnyAsync(c => c.Included, ct))
+        {
+            return;
+        }
+        try
+        {
+            var path = configuration["Messages:DatabasePath"] is { Length: > 0 } p ? p : MessagesDatabaseReader.DefaultPath;
+            await services.GetRequiredService<TextMessageImportService>().ImportAsync(path, ct: ct);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            log.LogWarning(ex, "Background text import failed");
+            notes.Add(ex is UnauthorizedAccessException
+                ? "Couldn't read your texts: give the app Full Disk Access (see the README)."
+                : $"Couldn't import texts: {ex.Message}");
         }
     }
 }

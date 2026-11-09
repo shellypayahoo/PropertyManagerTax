@@ -33,6 +33,11 @@ public static class ConfigurationCheck
         {
             Error($"ExpenseCheck:HoursBetweenChecks is {expenseCheck.HoursBetweenChecks}; use 1 to 24.");
         }
+        var sync = Bind<SyncOptions>(configuration, SyncOptions.Section, Error) ?? new SyncOptions();
+        if (sync.HoursBetweenSyncs is < 1 or > 24)
+        {
+            Error($"Sync:HoursBetweenSyncs is {sync.HoursBetweenSyncs}; use 1 to 24.");
+        }
         if (!string.IsNullOrWhiteSpace(business.TimeZone) && BusinessTimeZone.Find(business.TimeZone) is null)
         {
             Error($"Business:TimeZone \"{business.TimeZone}\" isn't a time zone; use one like America/New_York.");

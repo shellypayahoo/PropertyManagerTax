@@ -27,6 +27,16 @@ public class FeatureOptions
     public bool ExpenseSuggestions { get; set; } = true;
 }
 
+/// <summary>How often new emails and calendar appointments are fetched in the background.</summary>
+public class SyncOptions
+{
+    public const string Section = "Sync";
+    public static readonly int[] Choices = [1, 2, 3, 6, 12, 24];
+
+    /// <summary>Hours between background syncs (1–24).</summary>
+    public int HoursBetweenSyncs { get; set; } = 1;
+}
+
 /// <summary>How often the expense checker reads new vendor messages (see Features:ExpenseSuggestions).</summary>
 public class ExpenseCheckOptions
 {

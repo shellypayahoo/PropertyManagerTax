@@ -7,6 +7,8 @@
 @inject IMailSource Mail
 @inject EmailSyncService Sync
 @inject PropertyManager.Web.Agents.ExpenseAgent ExpenseAgent
+@inject PropertyManager.Web.Agents.MailSyncAgent MailSync
+@inject TimeProvider Clock
 @inject PropertyManager.Core.Calendar.CalendarSyncService CalendarSync
 @inject IOptionsMonitor<FeatureOptions> Features
 
@@ -67,6 +69,21 @@ else
             }
         </div>
     }
+
+    <div class="small text-muted mb-3">
+        @if (MailSync.IsRunning)
+        {
+            <span>Getting new @(SyncedWhat) now…</span>
+        }
+        else
+        {
+            <span title="@(MailSync.LastRunAt is { } exact ? RelativeTime.Exact(exact) : null)">
+                New @SyncedWhat come in automatically every @(MailSync.Interval.TotalHours == 1 ? "hour" : $"{MailSync.Interval.TotalHours:0} hours")
+                (<a href="settings">change</a>)@(MailSync.LastRunAt is { } at ? $": last {RelativeTime.Ago(at, Clock.GetUtcNow())}" : "")@($", next {RelativeTime.FromNow(MailSync.NextRunAt, Clock.GetUtcNow())}").
+            </span>
+            @if (MailSync.LastResult is { } result) { <span>@result</span> }
+        }
+    </div>
 
     <FeatureGate On="Features.CurrentValue.Email" Quiet="true">
     <h2 class="h5">Folders</h2>
@@ -268,8 +285,21 @@ else
     private IReadOnlyList<string> problems = [];
     private readonly CancellationTokenSource leaving = new();
 
+    private string SyncedWhat => Features.CurrentValue.Email && Features.CurrentValue.Calendar ? "emails and appointments"
+        : Features.CurrentValue.Email ? "emails" : "appointments";
+
+    private void OnSyncChanged() => _ = InvokeAsync(async () =>
+    {
+        if (!MailSync.IsRunning)
+        {
+            await LoadAsync();
+        }
+        StateHasChanged();
+    });
+
     protected override async Task OnInitializedAsync()
     {
+        MailSync.Changed += OnSyncChanged;
         try
         {
             signedInAs = await SignIn.GetSignedInAddressAsync();
@@ -363,7 +393,7 @@ else
 
     private Task SyncAsync() => RunAsync(async () =>
     {
-        var summary = await Sync.SyncAsync(leaving.Token);
+        var summary = await MailSync.RunExclusiveAsync(() => Sync.SyncAsync(leaving.Token), leaving.Token);
         if (summary.Added > 0)
         {
             ExpenseAgent.CheckNow();
@@ -391,13 +421,14 @@ else
 
     private Task SyncCalendarsAsync() => RunAsync(async () =>
     {
-        var summary = await CalendarSync.SyncAsync(leaving.Token);
+        var summary = await MailSync.RunExclusiveAsync(() => CalendarSync.SyncAsync(leaving.Token), leaving.Token);
         await LoadAsync();
         status = $"Calendar: {summary.Added} new event(s), {summary.Updated} updated, {summary.Removed} removed (from a year ago to a year ahead).";
     });
 
     public void Dispose()
     {
+        MailSync.Changed -= OnSyncChanged;
         leaving.Cancel();
         leaving.Dispose();
     }

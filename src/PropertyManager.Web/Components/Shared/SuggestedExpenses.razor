@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject ExpenseSuggestionService Suggestions
 @inject ExpenseAgent Agent
+@inject MailSyncAgent MailSync
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
 
@@ -24,7 +25,7 @@
                     <span title="@RelativeTime.Exact(Agent.NextRunAt)">First check @RelativeTime.FromNow(Agent.NextRunAt, Clock.GetUtcNow()), then every @Every</span>
                 }
             </span>
-            <button class="btn btn-sm btn-outline-secondary" disabled="@Agent.IsRunning" @onclick="() => Agent.CheckNow(importFirst: true)">Check now</button>
+            <button class="btn btn-sm btn-outline-secondary" disabled="@Agent.IsRunning" @onclick="CheckNow">Check now</button>
         </div>
         @if (Agent.LastResult is { } result && !Agent.IsRunning)
         {
@@ -172,6 +173,13 @@
                 editing.Add(s.Id);
             }
         }
+    }
+
+    /// <summary>Imports new texts and checks; new emails are fetched too, and the check runs again if any arrive.</summary>
+    private void CheckNow()
+    {
+        MailSync.SyncNow();
+        Agent.CheckNow(importFirst: true);
     }
 
     private void OnAgentChanged() => _ = InvokeAsync(async () =>

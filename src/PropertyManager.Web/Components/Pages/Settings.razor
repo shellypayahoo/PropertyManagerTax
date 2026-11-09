@@ -6,6 +6,7 @@
 @inject IOptionsMonitor<FeatureOptions> Features
 @inject IOptionsMonitor<BusinessOptions> Business
 @inject IOptionsMonitor<ExpenseCheckOptions> ExpenseCheck
+@inject IOptionsMonitor<SyncOptions> SyncSchedule
 @inject IOptionsMonitor<EmailOptions> EmailSettings
 @inject AssistantService Assistant
 @inject NavigationManager Navigation
@@ -70,6 +71,19 @@
                     <strong>@f.Title</strong> <span class="text-muted">· @f.Description</span>
                     @if (note is not null) { <span class="badge @(ready ? "text-bg-success" : "text-bg-light border") ms-1">@note</span> }
                 </label>
+                @if ((f.Key == "Email" && features["Email"]) || (f.Key == "Calendar" && features["Calendar"] && !features["Email"]))
+                {
+                    <div class="d-flex flex-wrap align-items-center gap-2 small mt-1">
+                        <label for="sync-hours">Get new emails and appointments every</label>
+                        <select id="sync-hours" class="form-select form-select-sm w-auto" @bind="syncHours">
+                            @foreach (var h in SyncOptions.Choices.Append(syncHours).Distinct().Order())
+                            {
+                                <option value="@h">@(h == 1 ? "hour" : $"{h} hours")</option>
+                            }
+                        </select>
+                        <span class="text-muted">(and whenever you click Get new emails or Get calendar events)</span>
+                    </div>
+                }
                 @if (f.Key == "ExpenseSuggestions" && features[f.Key])
                 {
                     <div class="d-flex flex-wrap align-items-center gap-2 small mt-1">
@@ -170,6 +184,7 @@
         (businessName, rentDueDay, lateAfterDays) = (b.Name ?? "", Math.Clamp(b.RentDueDay, 1, 28), Math.Clamp(b.LateAfterDays, 0, 31));
         timeZone = BusinessTimeZone.Find(b.TimeZone) is { } zone ? BusinessTimeZone.IanaId(zone) : "";
         checkHours = Math.Clamp(ExpenseCheck.CurrentValue.HoursBetweenChecks, 1, 24);
+        syncHours = Math.Clamp(SyncSchedule.CurrentValue.HoursBetweenSyncs, 1, 24);
         defaultProvider = Configuration["Assistant:DefaultProvider"] ?? "";
         allowPhotos = Assistant.AllowPhotosByDefault;
         savedHere = await SavedSettings.GetSavedAsync();
@@ -197,6 +212,7 @@
             ["Business:LateAfterDays"] = lateAfterDays.ToString(),
             ["Business:TimeZone"] = timeZone,
             ["ExpenseCheck:HoursBetweenChecks"] = checkHours.ToString(),
+            ["Sync:HoursBetweenSyncs"] = syncHours.ToString(),
             ["Assistant:DefaultProvider"] = string.IsNullOrEmpty(defaultProvider) ? null : defaultProvider,
             ["Assistant:AllowPhotos"] = allowPhotos ? "true" : "false",
         };
@@ -223,6 +239,7 @@
 
     private string timeZone = "";
     private int checkHours = 3;
+    private int syncHours = 1;
 
     // The computer's own zone, read from the system rather than the app's (possibly business) local zone.
     private static readonly string ComputerZone = ReadComputerZone();
