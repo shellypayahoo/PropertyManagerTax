@@ -52,13 +52,10 @@ public class AssistantService(
     public bool AllowPhotosByDefault => options.CurrentValue.AllowPhotos;
 
     /// <summary>The configured default provider, or else the first one that's set up.</summary>
-    public AssistantProviderOptions? DefaultProvider =>
-        Providers.FirstOrDefault(p => p.Name == options.CurrentValue.DefaultProvider)
-        ?? Providers.FirstOrDefault(p => p.IsConfigured)
-        ?? Providers.FirstOrDefault();
+    public AssistantProviderOptions? DefaultProvider => options.CurrentValue.Default();
 
-    public IReadOnlyList<AssistantProviderOptions> Providers =>
-        options.CurrentValue.Providers.Select(p => { p.Value.Name = p.Key; return p.Value; }).ToList();
+    /// <summary>Every model to choose from, each provider's other models included.</summary>
+    public IReadOnlyList<AssistantProviderOptions> Providers => options.CurrentValue.Choices();
 
     /// <param name="allowPhotos">Whether the assistant may look at photos (each one it looks at is an extra request with the image).</param>
     /// <summary>Reads files the owner attached so they can go with a question (photos converted to JPEG where possible).</summary>

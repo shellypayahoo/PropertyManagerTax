@@ -375,7 +375,7 @@ The **Ask** page answers questions about your imported texts and the app's recor
 
 **Changes, with your approval:** the assistant can propose adding or editing an expense (and attaching an uploaded receipt), recording a rent payment, adding or updating a maintenance request, adding a vendor, updating a tenant's phone, email, or notes, and saving an uploaded file as a receipt or lease document. Each proposal appears as a card under its answer listing exactly what will change (with a warning if, say, that month's rent looks already paid), with **Apply** and **Dismiss**. Nothing changes until you click **Apply**; the card then says what was done. It never deletes anything.
 
-Pick the model from the dropdown; you can switch mid-conversation. Under the dropdown the page says where the looked-up texts and records are sent. Only what's needed to answer each question is sent, not the whole database.
+Pick the model from the dropdown; you can switch mid-conversation. To have more than one model on a service, for example several deployments on your Foundry resource, list them under **Settings → Ask → Other models on it**: they use the same endpoint and key, so there's nothing to add in user secrets. On a Foundry resource, **Find deployments** lists them for you when the resource allows that with its key (newer ones may not; then type the names from the Foundry Deployments page), and **Test** asks each one a one-word question to show which names work. **Start the Ask page on** can then be any of them; expense suggestions use that one too. Under the dropdown the page says where the looked-up texts and records are sent. Only what's needed to answer each question is sent, not the whole database.
 
 | Name | Model | Where data goes |
 | --- | --- | --- |

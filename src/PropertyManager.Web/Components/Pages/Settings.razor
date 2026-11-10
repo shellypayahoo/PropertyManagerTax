@@ -9,6 +9,7 @@
 @inject IOptionsMonitor<SyncOptions> SyncSchedule
 @inject IOptionsMonitor<EmailOptions> EmailSettings
 @inject AssistantService Assistant
+@inject ModelCatalog Catalog
 @inject NavigationManager Navigation
 @inject IConfiguration Configuration
 
@@ -118,13 +119,56 @@
                         <label class="form-label" for="model">Start the Ask page on</label>
                         <select id="model" class="form-select" @bind="defaultProvider">
                             <option value="">The first one that's set up</option>
-                            @foreach (var p in Assistant.Providers.Where(p => p.IsConfigured)) { <option value="@p.Name">@p.Name (@p.Model)</option> }
+                            @foreach (var p in Assistant.Providers.Where(p => p.IsConfigured)) { <option value="@p.Name">@p.Label</option> }
                         </select>
+                        <div class="form-text">Also what expense suggestions use.</div>
                     </div>
                     <div class="col-md-6 form-check">
                         <input class="form-check-input" type="checkbox" id="photos" @bind="allowPhotos" />
                         <label class="form-check-label" for="photos">Let it look at photos (uses more of the AI service)</label>
                     </div>
+                    @foreach (var p in Assistant.Providers.Where(p => p.IsConfigured && p.Name == p.ProviderName))
+                    {
+                        <div class="col-12">
+                            <label class="form-label mb-0" for="models-@p.Name"><strong>@p.ProviderName</strong> uses <code>@p.Model</code>. Other models on it to choose from on the Ask page</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <input id="models-@p.Name" class="form-control flex-grow-1 w-auto" placeholder="@ModelsHint(p)" @bind="otherModels[p.Name]" @bind:event="oninput" />
+                                @if (p.Type == AssistantProviderType.AzureFoundry)
+                                {
+                                    <button class="btn btn-outline-secondary" disabled="@(checking is not null)" @onclick="() => FindAsync(p)">@(checking == p.Name + "find" ? "Looking…" : "Find deployments")</button>
+                                }
+                                <button class="btn btn-outline-secondary" disabled="@(checking is not null)" @onclick="() => TestAsync(p)">@(checking == p.Name + "test" ? "Testing…" : "Test")</button>
+                            </div>
+                            @if (found.GetValueOrDefault(p.Name) is { } deployments)
+                            {
+                                <div class="border rounded p-2 mt-1 small">
+                                    @if (deployments.Count == 0)
+                                    {
+                                        <span>No deployments found on this resource.</span>
+                                    }
+                                    @foreach (var d in deployments)
+                                    {
+                                        var isMain = string.Equals(d.Name, p.Model, StringComparison.OrdinalIgnoreCase);
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="checkbox" id="dep-@p.Name-@d.Name" checked="@(isMain || Listed(p.Name).Contains(d.Name, StringComparer.OrdinalIgnoreCase))" disabled="@isMain"
+                                                   @onchange="e => SetListed(p.Name, d.Name, (bool)e.Value!)" />
+                                            <label class="form-check-label" for="dep-@p.Name-@d.Name">@d.Name@(d.Model is { } m && m != d.Name ? $" ({m})" : "")@(isMain ? " (main)" : "")</label>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (notes.GetValueOrDefault(p.Name) is { } note)
+                            {
+                                <div class="small mt-1" style="white-space: pre-line">@note</div>
+                            }
+                            <div class="form-text">
+                                @(p.Type == AssistantProviderType.AzureFoundry
+                                    ? "Deployment names from this Foundry resource's Deployments page, separated by commas. They use the same endpoint and key."
+                                    : "Model names, separated by commas. They use the same key.")
+                                After saving, they're in the Ask page's model list and can be chosen above.
+                            </div>
+                        </div>
+                    }
                 </div>
             }
         </div>
@@ -152,6 +196,73 @@
     private int rentDueDay;
     private int lateAfterDays;
     private string defaultProvider = "";
+    private readonly Dictionary<string, string> otherModels = [];
+    private readonly Dictionary<string, IReadOnlyList<FoundDeployment>> found = [];
+    private readonly Dictionary<string, string> notes = [];
+    private string? checking;
+
+    private List<string> Listed(string provider) =>
+        otherModels.GetValueOrDefault(provider, "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    private void SetListed(string provider, string model, bool on)
+    {
+        var models = Listed(provider).Where(m => !string.Equals(m, model, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (on)
+        {
+            models.Add(model);
+        }
+        otherModels[provider] = string.Join(", ", models);
+    }
+
+    private async Task FindAsync(AssistantProviderOptions p)
+    {
+        checking = p.Name + "find";
+        notes.Remove(p.Name);
+        try
+        {
+            if (await Catalog.FindDeploymentsAsync(p) is { } deployments)
+            {
+                found[p.Name] = deployments;
+            }
+            else
+            {
+                notes[p.Name] = "This Foundry resource doesn't list its deployments with its key. Type the names from the Deployments page in the Foundry portal instead, then click Test.";
+            }
+        }
+        finally
+        {
+            checking = null;
+        }
+    }
+
+    /// <summary>Asks each listed model (and the main one) a one-word question, to show which names work.</summary>
+    private async Task TestAsync(AssistantProviderOptions p)
+    {
+        checking = p.Name + "test";
+        notes[p.Name] = "Testing…";
+        try
+        {
+            var lines = new List<string>();
+            foreach (var model in Listed(p.Name).Prepend(p.Model).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                lines.Add(await Catalog.TestAsync(p, model) is { } problem ? $"✗ {model}: {problem}" : $"✓ {model} answered.");
+                notes[p.Name] = string.Join("\n", lines);
+                StateHasChanged();
+            }
+        }
+        finally
+        {
+            checking = null;
+        }
+    }
+
+    private static string ModelsHint(AssistantProviderOptions p) => p.Type switch
+    {
+        AssistantProviderType.AzureFoundry => "e.g. gpt-5-mini, gpt-4.1",
+        AssistantProviderType.Anthropic or AssistantProviderType.AnthropicFoundry => "e.g. claude-sonnet-5-5, claude-haiku-5-5",
+        AssistantProviderType.Ollama => "e.g. qwen3, mistral",
+        _ => "other model names",
+    };
     private bool allowPhotos;
     private Dictionary<string, bool> features = [];
     private IReadOnlyDictionary<string, string?> savedHere = new Dictionary<string, string?>();
@@ -186,6 +297,10 @@
         checkHours = Math.Clamp(ExpenseCheck.CurrentValue.HoursBetweenChecks, 1, 24);
         syncHours = Math.Clamp(SyncSchedule.CurrentValue.HoursBetweenSyncs, 1, 24);
         defaultProvider = Configuration["Assistant:DefaultProvider"] ?? "";
+        foreach (var p in Assistant.Providers.Where(p => p.Name == p.ProviderName))
+        {
+            otherModels[p.Name] = string.Join(", ", p.Models.Where(m => !string.IsNullOrWhiteSpace(m)));
+        }
         allowPhotos = Assistant.AllowPhotosByDefault;
         savedHere = await SavedSettings.GetSavedAsync();
     }
@@ -219,6 +334,16 @@
         foreach (var (key, on) in features)
         {
             values[$"Features:{key}"] = on ? "true" : "false";
+        }
+        foreach (var p in Assistant.Providers.Where(p => p.Name == p.ProviderName && otherModels.ContainsKey(p.Name)))
+        {
+            var models = otherModels[p.Name].Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            // Saved as a list (Models:0, Models:1, ...); entries past the new end are cleared.
+            for (var i = 0; i < Math.Max(models.Count, p.Models.Count) + 5; i++)
+            {
+                values[$"Assistant:Providers:{p.Name}:Models:{i}"] = i < models.Count ? models[i] : null;
+            }
         }
         await SavedSettings.SaveAsync(values);
         BusinessTimeZone.Apply(timeZone.Length == 0 ? ComputerZone : timeZone);

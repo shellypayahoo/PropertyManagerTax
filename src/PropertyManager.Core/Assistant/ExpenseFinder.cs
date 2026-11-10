@@ -46,9 +46,8 @@ public class ExpenseFinder(
     {
         get
         {
-            var all = options.CurrentValue.Providers.Select(p => { p.Value.Name = p.Key; return p.Value; }).ToList();
-            var chosen = all.FirstOrDefault(p => p.Name == options.CurrentValue.DefaultProvider) ?? all.FirstOrDefault(p => p.IsConfigured);
-            return chosen is { IsConfigured: true } ? chosen : null;
+            var chosen = options.CurrentValue.Default();
+            return chosen is { IsConfigured: true } ? chosen : options.CurrentValue.Choices().FirstOrDefault(p => p.IsConfigured);
         }
     }
 

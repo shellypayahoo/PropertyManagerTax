@@ -56,7 +56,7 @@ public static class ConfigurationCheck
                     Error($"Assistant provider \"{name}\" has Type \"{type}\"; use one of {string.Join(", ", Enum.GetNames<AssistantProviderType>())}.");
                 }
             }
-            var defaultProvider = configuration["Assistant:DefaultProvider"];
+            var defaultProvider = configuration["Assistant:DefaultProvider"]?.Split('/')[0];
             if (!string.IsNullOrWhiteSpace(defaultProvider) && !names.Contains(defaultProvider))
             {
                 Error($"Assistant:DefaultProvider is \"{defaultProvider}\", but there's no provider with that name under Assistant:Providers.");

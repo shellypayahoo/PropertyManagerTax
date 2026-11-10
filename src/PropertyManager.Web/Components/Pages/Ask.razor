@@ -28,7 +28,7 @@ else
         <select id="provider" class="form-select form-select-sm w-auto" @bind="providerName" disabled="@busy">
             @foreach (var p in Assistant.Providers)
             {
-                <option value="@p.Name">@p.Name: @p.Model@(p.IsConfigured ? "" : " (not set up)")</option>
+                <option value="@p.Name">@p.Label@(p.IsConfigured ? "" : " (not set up)")</option>
             }
         </select>
         <div class="form-check ms-2">
@@ -50,7 +50,7 @@ else
             else
             {
                 <span class="text-warning-emphasis">
-                    Not set up yet. Missing: @string.Join(", ", selected.MissingSettings.Select(m => $"Assistant:Providers:{selected.Name}:{m}")).
+                    Not set up yet. Missing: @string.Join(", ", selected.MissingSettings.Select(m => $"Assistant:Providers:{selected.ProviderName}:{m}")).
                     Set @(selected.MissingSettings.Count == 1 ? "it" : "them") with <code>dotnet user-secrets set</code> (see the README's Ask section), then restart the app.
                 </span>
             }
