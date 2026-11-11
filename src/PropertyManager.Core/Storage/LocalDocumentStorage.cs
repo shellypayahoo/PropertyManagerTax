@@ -5,6 +5,9 @@ public class LocalDocumentStorage : IDocumentStorage
 {
     private readonly string rootPath;
 
+    /// <summary>The folder the files are in (for backups).</summary>
+    public string RootPath => rootPath;
+
     public LocalDocumentStorage(string rootPath)
     {
         this.rootPath = Path.GetFullPath(rootPath);

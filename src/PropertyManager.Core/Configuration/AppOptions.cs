@@ -27,6 +27,19 @@ public class FeatureOptions
     public bool ExpenseSuggestions { get; set; } = true;
 }
 
+/// <summary>Automatic daily backups of the database and documents.</summary>
+public class BackupOptions
+{
+    public const string Section = "Backup";
+    public static readonly int[] KeepChoices = [7, 14, 30, 90];
+
+    /// <summary>Where backups go, e.g. a folder in iCloud Drive or OneDrive. Blank turns backups off.</summary>
+    public string? Folder { get; set; }
+
+    /// <summary>How many days of database copies (and of files since deleted in the app) to keep.</summary>
+    public int KeepDays { get; set; } = 30;
+}
+
 /// <summary>How often new emails and calendar appointments are fetched in the background.</summary>
 public class SyncOptions
 {

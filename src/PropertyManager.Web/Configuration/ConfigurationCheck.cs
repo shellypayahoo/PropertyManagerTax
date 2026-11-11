@@ -33,6 +33,11 @@ public static class ConfigurationCheck
         {
             Error($"ExpenseCheck:HoursBetweenChecks is {expenseCheck.HoursBetweenChecks}; use 1 to 24.");
         }
+        var backup = Bind<BackupOptions>(configuration, BackupOptions.Section, Error) ?? new BackupOptions();
+        if (backup.KeepDays < 1)
+        {
+            Error($"Backup:KeepDays is {backup.KeepDays}; use 1 or more.");
+        }
         var sync = Bind<SyncOptions>(configuration, SyncOptions.Section, Error) ?? new SyncOptions();
         if (sync.HoursBetweenSyncs is < 1 or > 24)
         {

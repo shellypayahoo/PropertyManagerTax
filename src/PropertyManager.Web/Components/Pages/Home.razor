@@ -3,6 +3,7 @@
 @inject NavigationManager Navigation
 @inject IOptionsMonitor<FeatureOptions> Features
 @inject ExpenseSuggestionService ExpenseSuggestions
+@inject BackupService Backups
 @inject IReadOnlyList<PropertyManager.Web.Configuration.ConfigurationProblem> SettingsProblems
 
 <PageTitle>Dashboard</PageTitle>
@@ -36,6 +37,14 @@ else
         <StatCard Label="Expenses year to date" Value="@summary.ExpensesYearToDate.ToString("C0")" Href="expenses" />
     </div>
 
+    @if (backupNotice is not null)
+    {
+        <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2" style="max-width: 60rem">
+            <span>💾 @backupNotice</span>
+            <a class="btn btn-sm btn-outline-dark ms-auto" href="settings#backups">Backup settings</a>
+        </div>
+    }
+
     @if (suggestedExpenses > 0)
     {
         <div class="alert alert-primary d-flex flex-wrap align-items-center gap-2 py-2" style="max-width: 60rem">
@@ -59,10 +68,15 @@ else
 @code {
     private DashboardSummary? summary;
     private int suggestedExpenses;
+    private string? backupNotice;
 
     protected override async Task OnInitializedAsync()
     {
         summary = await Dashboard.GetSummaryAsync();
+        var backup = Backups.Status();
+        backupNotice = !backup.IsOn ? "Your records are only on this computer. Choose a backup folder so a copy is kept somewhere else."
+            : backup.LastBackupAt is { } last && DateTimeOffset.UtcNow - last > TimeSpan.FromDays(2) ? $"The last backup was {RelativeTime.Ago(last, DateTimeOffset.UtcNow)}. Check the backup folder is still available."
+            : null;
         if (Features.CurrentValue.ExpenseSuggestions && Features.CurrentValue.Assistant)
         {
             suggestedExpenses = await ExpenseSuggestions.PendingCountAsync();

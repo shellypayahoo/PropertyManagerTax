@@ -186,6 +186,25 @@ Settings live in `src/PropertyManager.Web/appsettings.json`; the ones on the Set
 
 When the app starts it checks these settings. Mistakes, such as an unknown provider type, a `DefaultProvider` that isn't listed, or a rent due day of 31, are logged in the terminal and listed at the top of the Dashboard in plain words. Change settings while the app is stopped, then start it again.
 
+## Backups
+
+Everything the app keeps is on one computer: the database, and the documents folder with receipts, leases, tax papers, and attachments. **Settings → Backups** copies both to a folder you choose once a day. Pick a folder that syncs to the cloud (the page offers iCloud Drive, OneDrive, or Dropbox when it finds them), so a copy exists off the computer.
+
+- **When:** the first backup runs as soon as you save the folder; after that, one a day (soon after midnight, or as soon as the app is running that day). **Back up now** makes one any time.
+- **What's in the folder:**
+  - `database/propertymanager-<date>.zip`: a complete copy of the database for each day, kept for the number of days you choose (30 by default; the newest three are always kept).
+  - `documents/`: every stored file. Only new files are copied each day.
+  - `documents-removed/<date>/`: files you deleted in the app since the previous backup, kept the same number of days in case a delete was a mistake.
+- **Not included:** API keys and the Microsoft sign-in (they live in user secrets and the Keychain, not in the app's data). Keep your keys somewhere safe separately.
+- **If something's wrong:** the Dashboard warns when no backup folder is set or the last backup is more than two days old, and Settings shows why an automatic backup failed.
+
+**Restoring** (after a disk failure, or to move to a new computer):
+
+1. Install the app as usual and stop it (`scripts/mac/autostart.sh stop`, or Ctrl+C).
+2. Unzip the newest `database/propertymanager-<date>.zip` and put `propertymanager.db` in `src/PropertyManager.Web/`, replacing the one there.
+3. Copy everything in the backup's `documents/` folder into `src/PropertyManager.Web/App_Data/documents/`.
+4. Start the app, add your API keys again (user secrets), and sign in to Microsoft on the Email & calendar page.
+
 ## Tests
 
 ```sh
@@ -448,4 +467,4 @@ Add vendors at the top of the **Vendors** page, and click **Edit** on a vendor t
 
 - On the report, click a line name (e.g. Cleaning and maintenance, or Rents received) to list every item behind it, or click one property's amount to see just that property's items, including its share of shared expenses. Each list ends with a total that matches the report.
 - The report's income is rent actually received in the year (by date received). Scheduled rent from leases, in whole months, is shown beside it for comparison.
-- Back up `propertymanager.db` and `App_Data/documents` (which also holds email attachments). Both are excluded from git.
+- Turn on automatic backups (see [Backups](#backups)): the database and `App_Data/documents` are excluded from git and otherwise exist only on this computer.

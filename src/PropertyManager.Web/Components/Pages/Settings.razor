@@ -10,6 +10,9 @@
 @inject IOptionsMonitor<EmailOptions> EmailSettings
 @inject AssistantService Assistant
 @inject ModelCatalog Catalog
+@inject BackupService Backups
+@inject PropertyManager.Web.Agents.BackupAgent BackupAgent
+@inject IOptionsMonitor<BackupOptions> BackupSettings
 @inject NavigationManager Navigation
 @inject IConfiguration Configuration
 
@@ -175,6 +178,57 @@
     </div>
 }
 
+<div class="card mb-3" style="max-width: 52rem" id="backups">
+    <div class="card-body">
+        <h2 class="h5">Backups</h2>
+        <p class="text-muted small">
+            Once a day the app copies its database and every stored file (receipts, leases, tax papers, attachments) to this folder.
+            Pick one that syncs to the cloud, so a copy exists off this computer. API keys and sign-ins aren't included.
+        </p>
+        <div class="row g-3">
+            <div class="col-md-9">
+                <label class="form-label" for="backup-folder">Backup folder</label>
+                <input id="backup-folder" class="form-control" placeholder="Blank: no backups" @bind="backupFolder" @bind:event="oninput" />
+                @if (suggestedFolders.Count > 0)
+                {
+                    <div class="d-flex flex-wrap gap-2 mt-1">
+                        @foreach (var (label, path) in suggestedFolders)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => backupFolder = path">Use @label</button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="backup-keep">Keep daily copies for</label>
+                <select id="backup-keep" class="form-select" @bind="backupKeepDays">
+                    @foreach (var d in BackupOptions.KeepChoices.Append(backupKeepDays).Distinct().Order()) { <option value="@d">@d days</option> }
+                </select>
+            </div>
+        </div>
+        <FormError Message="@backupError" />
+        @{ var backup = Backups.Status(); }
+        @if (backup.IsOn)
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-3 small">
+                <span>
+                    @if (backup.LastBackupAt is { } at)
+                    {
+                        <span title="@RelativeTime.Exact(at)">Last backup <strong>@RelativeTime.Ago(at, DateTimeOffset.UtcNow)</strong>: @backup.DatabaseCopies daily database cop@(backup.DatabaseCopies == 1 ? "y" : "ies") and @backup.Documents.ToString("N0") document(s) in @backup.Folder.</span>
+                    }
+                    else
+                    {
+                        <span>No backup yet in @backup.Folder. The first one runs within the hour.</span>
+                    }
+                </span>
+                <button class="btn btn-sm btn-outline-primary" disabled="@backingUp" @onclick="BackUpNowAsync">@(backingUp ? "Backing up…" : "Back up now")</button>
+            </div>
+            @if (backupResult is not null) { <div class="alert alert-success py-1 px-2 small mt-2 mb-0">@backupResult</div> }
+            @if (BackupAgent.LastFailed) { <div class="alert alert-warning py-1 px-2 small mt-2 mb-0">The last automatic backup didn't work. @BackupAgent.LastResult</div> }
+        }
+    </div>
+</div>
+
 <div class="d-flex gap-2 align-items-center" style="max-width: 52rem">
     <button class="btn btn-primary" disabled="@saving" @onclick="SaveAsync">@(saving ? "Saving…" : "Save")</button>
     @if (savedHere.Count > 0)
@@ -296,6 +350,9 @@
         timeZone = BusinessTimeZone.Find(b.TimeZone) is { } zone ? BusinessTimeZone.IanaId(zone) : "";
         checkHours = Math.Clamp(ExpenseCheck.CurrentValue.HoursBetweenChecks, 1, 24);
         syncHours = Math.Clamp(SyncSchedule.CurrentValue.HoursBetweenSyncs, 1, 24);
+        backupFolder = BackupSettings.CurrentValue.Folder ?? "";
+        backupKeepDays = Math.Clamp(BackupSettings.CurrentValue.KeepDays, 1, 3650);
+        suggestedFolders = BackupService.SuggestedFolders();
         defaultProvider = Configuration["Assistant:DefaultProvider"] ?? "";
         foreach (var p in Assistant.Providers.Where(p => p.Name == p.ProviderName))
         {
@@ -319,6 +376,12 @@
 
     private async Task SaveAsync()
     {
+        backupError = Backups.Problem(backupFolder);
+        if (backupError is not null)
+        {
+            return;
+        }
+        var previousBackupFolder = Backups.Folder;
         saving = true;
         var values = new Dictionary<string, string?>
         {
@@ -328,6 +391,8 @@
             ["Business:TimeZone"] = timeZone,
             ["ExpenseCheck:HoursBetweenChecks"] = checkHours.ToString(),
             ["Sync:HoursBetweenSyncs"] = syncHours.ToString(),
+            ["Backup:Folder"] = backupFolder.Trim(),
+            ["Backup:KeepDays"] = backupKeepDays.ToString(),
             ["Assistant:DefaultProvider"] = string.IsNullOrEmpty(defaultProvider) ? null : defaultProvider,
             ["Assistant:AllowPhotos"] = allowPhotos ? "true" : "false",
         };
@@ -347,6 +412,11 @@
         }
         await SavedSettings.SaveAsync(values);
         BusinessTimeZone.Apply(timeZone.Length == 0 ? ComputerZone : timeZone);
+        // A newly chosen folder gets its first backup right away.
+        if (BackupService.Expand(backupFolder) is { } chosen && chosen != previousBackupFolder)
+        {
+            BackupAgent.BackupNow();
+        }
         // Reload the page so the menu shows the parts that are on.
         Navigation.NavigateTo("/settings?saved=1", forceLoad: true);
     }
@@ -365,6 +435,30 @@
     private string timeZone = "";
     private int checkHours = 3;
     private int syncHours = 1;
+    private string backupFolder = "";
+    private int backupKeepDays = 30;
+    private string? backupError;
+    private string? backupResult;
+    private bool backingUp;
+    private IReadOnlyList<(string Label, string Path)> suggestedFolders = [];
+
+    private async Task BackUpNowAsync()
+    {
+        backingUp = true;
+        backupResult = backupError = null;
+        try
+        {
+            backupResult = PropertyManager.Web.Agents.BackupAgent.Describe(await Backups.RunAsync());
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            backupError = $"The backup didn't work: {ex.Message}";
+        }
+        finally
+        {
+            backingUp = false;
+        }
+    }
 
     // The computer's own zone, read from the system rather than the app's (possibly business) local zone.
     private static readonly string ComputerZone = ReadComputerZone();
