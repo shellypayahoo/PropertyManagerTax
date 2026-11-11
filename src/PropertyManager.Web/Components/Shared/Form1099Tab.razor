@@ -1,0 +1,111 @@
+@using PropertyManager.Core.Reports
+@inject Form1099Report Report
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+
+<p class="text-muted" style="max-width: 56rem">
+    Vendors you paid in @Year and whether they look to need a <strong>Form 1099-NEC</strong>: paid at least the threshold for
+    services, not counting card payments (the card company reports those) or interest, insurance, taxes, and utilities.
+    Tick <strong>Exempt</strong> for corporations, stores, and utilities, which don't get one. A W-9 counts as on file when
+    you tick it here or a 1099/W-9 document on the <a href="documents">Documents</a> page mentions the vendor's name.
+</p>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <label for="threshold" class="mb-0">Threshold</label>
+    <div class="input-group input-group-sm w-auto">
+        <span class="input-group-text">$</span>
+        <input id="threshold" type="number" step="100" min="0" class="form-control" style="width: 7rem" @bind="threshold" @bind:after="LoadAsync" />
+    </div>
+    <span class="small text-muted">(@Form1099Report.DefaultThreshold(Year).ToString("C0") for @Year payments: $600 through 2025, $2,000 from 2026)</span>
+    <a class="btn btn-sm btn-outline-primary ms-auto" href="reports/@Year/1099-vendors.csv?threshold=@threshold">Download spreadsheet</a>
+</div>
+
+@if (rows is not null)
+{
+    var needed = rows.Where(r => r.Needs1099).ToList();
+    @if (needed.Count > 0)
+    {
+        <div class="alert @(needed.Any(r => !r.HasW9) ? "alert-warning" : "alert-success") py-2" style="max-width: 56rem">
+            @needed.Count vendor@(needed.Count == 1 ? "" : "s") look@(needed.Count == 1 ? "s" : "") to need a 1099-NEC for @Year.
+            @if (needed.Count(r => !r.HasW9) is > 0 and var noW9)
+            {
+                <span>@noW9 of them @(noW9 == 1 ? "has" : "have") no W-9 on file yet; ask for one before January.</span>
+            }
+            The forms are due to the vendors and the IRS by January 31 (the next business day when that's a weekend).
+        </div>
+    }
+    @if (rows.Count == 0)
+    {
+        <p class="text-muted">No expenses with a vendor in @Year.</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle" style="max-width: 72rem">
+            <thead>
+                <tr>
+                    <th>Vendor</th><th class="text-end">Counts toward 1099</th><th class="text-end">Card</th><th class="text-end">Not for services</th>
+                    <th>1099-NEC</th><th class="text-center">W-9</th><th class="text-center">Exempt</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in rows)
+                {
+                    <tr class="@(r.Needs1099 && !r.HasW9 ? "table-warning" : "")">
+                        <td>
+                            <a href="expenses?vendor=@r.Vendor.Id">@r.Vendor.Name</a>
+                            @if (r.Vendor.Trade is not null) { <div class="small text-muted">@r.Vendor.Trade</div> }
+                        </td>
+                        <td class="text-end">@r.Reportable.ToString("C")</td>
+                        <td class="text-end text-muted">@(r.PaidByCard == 0 ? "" : r.PaidByCard.ToString("C"))</td>
+                        <td class="text-end text-muted">@(r.NotForServices == 0 ? "" : r.NotForServices.ToString("C"))</td>
+                        <td>
+                            @if (r.Vendor.Exempt1099) { <span class="text-muted">Exempt</span> }
+                            else if (r.Needs1099) { <span class="badge text-bg-primary">Needed</span> }
+                            else { <span class="text-muted small">Under threshold</span> }
+                        </td>
+                        <td class="text-center">
+                            <input class="form-check-input" type="checkbox" aria-label="W-9 on file" checked="@r.HasW9" disabled="@(r.W9InDocuments && !r.Vendor.HasW9)"
+                                   title="@(r.W9InDocuments ? "Found on the Documents page" : "Tick when you have their W-9")"
+                                   @onchange="e => SetAsync(r.Vendor.Id, hasW9: (bool)e.Value!)" />
+                        </td>
+                        <td class="text-center">
+                            <input class="form-check-input" type="checkbox" aria-label="Exempt from 1099" checked="@r.Vendor.Exempt1099"
+                                   @onchange="e => SetAsync(r.Vendor.Id, exempt: (bool)e.Value!)" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    <p class="small text-muted">A bookkeeping aid, not tax advice: confirm who needs a 1099 with your tax preparer. Attorneys get one even when they're a corporation.</p>
+}
+
+@code {
+    [Parameter] public int Year { get; set; }
+
+    private List<Vendor1099>? rows;
+    private decimal threshold;
+    private int loadedYear;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Year != loadedYear)
+        {
+            loadedYear = Year;
+            threshold = Form1099Report.DefaultThreshold(Year);
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync() => rows = await Report.GetAsync(Year, threshold);
+
+    private async Task SetAsync(int vendorId, bool? hasW9 = null, bool? exempt = null)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (await db.Vendors.FindAsync(vendorId) is { } vendor)
+        {
+            vendor.HasW9 = hasW9 ?? vendor.HasW9;
+            vendor.Exempt1099 = exempt ?? vendor.Exempt1099;
+            await db.SaveChangesAsync();
+        }
+        await LoadAsync();
+    }
+}

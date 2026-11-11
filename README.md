@@ -443,6 +443,27 @@ The **Reports** page has tabs next to **Profit & loss**, each for the chosen yea
 - **Rent collection**: a grid of every lease by month: paid on time, paid late (with how many days after the 1st), partly paid, not paid, or due. Rent is treated as due on the 1st; choose the grace period (none, 3, 5, 7, or 10 days). Each row totals rent due so far, paid, the balance owed, and the number of late and missed months.
 - **Vendors**: total paid to each vendor across all categories, largest first, with its share of spending, categories, and properties. Click a vendor to list the items. Expenses without a vendor are grouped as "No vendor recorded"; set vendors on the Expenses page.
 
+## Packet for your accountant
+
+**Reports → Download <year> packet for your accountant** makes one zip with the year's books:
+
+- **Profit and loss <year>.pdf**, by property and Schedule E line, with the items behind each line.
+- **Expenses <year>.csv** and **Rent received <year>.csv**: every expense and rent payment, for Excel or Numbers. Each expense lists its receipt files.
+- **1099 vendors <year>.csv** (see below).
+- **Receipts/**: every receipt and invoice attached to the year's expenses, named by date, vendor, and amount (e.g. `2026-03-10 Ace Plumbing 1500.00.pdf`).
+- **Read me first.txt**: what's in the zip and the year's totals (rent received, deductible expenses, mortgage principal and escrow), plus how many expenses have no receipt.
+
+## 1099s
+
+**Reports → 1099s** lists the vendors you paid in the year and who looks to need a **Form 1099-NEC**: paid at least the threshold for services ($600 for payments through 2025; $2,000 for payments made in 2026 and later, the default for those years; you can change it). Card payments are left out (the card company reports them), as are interest, insurance, taxes, utilities, and mortgage principal or escrow.
+
+- Tick **Exempt** for vendors that never get one: corporations, stores, utilities, lenders.
+- Tick **W-9** when you have their W-9. A 1099s/W-9s document on the Documents page that mentions the vendor's name counts too.
+- Vendors needing a 1099 without a W-9 are highlighted; ask for one before January. Forms are due to the vendors and the IRS by January 31.
+- **Download spreadsheet** gives the list with each vendor's phone and email.
+
+It's a bookkeeping aid, not tax advice; confirm the list with your tax preparer (attorneys, for example, get a 1099 even as a corporation).
+
 ## PDF for your accountant
 
 On **Reports → Profit & loss**, the **Period** choice shows the P&L for the full year, year to date, one quarter (Q1–Q4 of the selected year), the **last 3 completed quarters** (on Oct 26, 2026 that's Jan 1 – Sep 30, 2026), or any **custom dates**. The table, the item lists behind each line, and the PDF all use the chosen period; scheduled rent counts every month the period touches. The Ask page can answer for a period too ("what was my net income for the first three quarters?").

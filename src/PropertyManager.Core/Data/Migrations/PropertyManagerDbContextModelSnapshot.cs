@@ -1307,6 +1307,12 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Property<string>("Email")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("Exempt1099")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("HasW9")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateOnly?>("KeepMessagesUntil")
                         .HasColumnType("TEXT");
 

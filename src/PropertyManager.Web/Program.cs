@@ -32,6 +32,8 @@ builder.Services.AddScoped<BusinessDocumentService>();
 builder.Services.AddHttpClient<PropertyPhotoService>(c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<PropertyManager.Core.Reports.ProfitAndLossPdf>();
 builder.Services.AddScoped<PropertyManager.Core.Reports.OperatingReports>();
+builder.Services.AddScoped<PropertyManager.Core.Reports.Form1099Report>();
+builder.Services.AddScoped<PropertyManager.Core.Reports.AccountantPacket>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<MortgageImportService>();
@@ -197,6 +199,27 @@ app.MapGet("/documents/{id:int}", async (int id, bool? download, IDbContextFacto
         : Results.File(stream, document!.ContentType);
 });
 // A calendar year, or any period with ?from=yyyy-MM-dd&to=yyyy-MM-dd.
+app.MapGet("/reports/{year:int}/1099-vendors.csv", async (int year, decimal? threshold, PropertyManager.Core.Reports.Form1099Report report, CancellationToken ct) =>
+    Results.File(await report.CsvAsync(year, threshold, ct), "text/csv", $"1099 vendors {year}.csv"));
+
+// The year's books in one zip for the tax preparer. Built in a temporary file (receipts can add up), deleted once sent.
+app.MapGet("/reports/{year:int}/accountant-packet.zip", async (int year, PropertyManager.Core.Reports.AccountantPacket packet, CancellationToken ct) =>
+{
+    var path = Path.Combine(Path.GetTempPath(), $"pm-packet-{Guid.NewGuid():N}.zip");
+    var file = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+    try
+    {
+        await packet.WriteAsync(year, file, ct);
+        file.Position = 0;
+        return Results.File(file, "application/zip", PropertyManager.Core.Reports.AccountantPacket.FileName(year));
+    }
+    catch
+    {
+        await file.DisposeAsync();
+        throw;
+    }
+});
+
 app.MapGet("/reports/{year:int}/profit-and-loss.pdf", async (int year, bool? detail, DateOnly? from, DateOnly? to, PropertyManager.Core.Reports.ProfitAndLossPdf pdf, CancellationToken ct) =>
 {
     var period = from is { } f && to is { } t && f <= t

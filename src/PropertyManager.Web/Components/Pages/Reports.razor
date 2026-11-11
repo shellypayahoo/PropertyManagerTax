@@ -5,7 +5,10 @@
 
 <PageTitle>Reports</PageTitle>
 
-<h1>Reports</h1>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <h1 class="me-auto mb-0">Reports</h1>
+    <a class="btn btn-primary" href="reports/@year/accountant-packet.zip" title="Profit and loss PDF, expenses and rent as spreadsheets, the 1099 list, and every receipt">Download @year packet for your accountant</a>
+</div>
 
 <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
     <select class="form-select w-auto" @bind="year" @bind:after="LoadAsync">
@@ -35,6 +38,10 @@ else if (tab == "rent")
 else if (tab == "vendors")
 {
     <VendorSpendingReport Year="year" />
+}
+else if (tab == "1099")
+{
+    <Form1099Tab Year="year" />
 }
 else
 {
@@ -190,7 +197,7 @@ else
     private string tab = "pnl";
 
     private static readonly (string Key, string Label)[] Tabs =
-        [("pnl", "Profit & loss"), ("cash", "Cash flow"), ("rent", "Rent collection"), ("vendors", "Vendors")];
+        [("pnl", "Profit & loss"), ("cash", "Cash flow"), ("rent", "Rent collection"), ("vendors", "Vendors"), ("1099", "1099s")];
 
     private IEnumerable<ExpenseCategory> UsedCategories =>
         statements!.SelectMany(s => s.Expenses).Select(e => e.Category).Distinct().Order();
