@@ -70,6 +70,7 @@ builder.Services.AddHttpClient<ModelCatalog>();
 builder.Services.AddScoped<ExpenseSuggestionService>();
 builder.Services.AddSingleton<PropertyManager.Web.Agents.ExpenseAgent>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PropertyManager.Web.Agents.ExpenseAgent>());
+builder.Services.Configure<AccessOptions>(builder.Configuration.GetSection(AccessOptions.Section));
 builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection(BackupOptions.Section));
 builder.Services.AddSingleton<BackupService>();
 builder.Services.AddSingleton<PropertyManager.Web.Agents.BackupAgent>();
@@ -123,6 +124,30 @@ await using (var scope = app.Services.CreateAsyncScope())
     // Documents uploaded before text reading existed are read once, so the Ask page can search them.
     await scope.ServiceProvider.GetRequiredService<LeaseDocumentService>().ReadMissingTextAsync();
 }
+
+// The app has no sign-in: unless Settings allows the local network, only this computer and the owner's Tailscale
+// devices get in. Everything else (pages, files, the live connection) is refused before anything runs.
+app.Use(async (context, next) =>
+{
+    var access = context.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<AccessOptions>>().CurrentValue;
+    if (AccessPolicy.IsAllowed(context.Connection.RemoteIpAddress, access))
+    {
+        await next();
+        return;
+    }
+    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+    context.Response.ContentType = "text/html; charset=utf-8";
+    await context.Response.WriteAsync("""
+        <!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not available</title>
+        <body style="font-family: system-ui, sans-serif; max-width: 34rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5">
+        <h1 style="font-size: 1.4rem">This device isn't allowed to open Property Manager</h1>
+        <p>The app only answers the computer it runs on and devices on its owner's Tailscale network.</p>
+        <p><strong>If it's yours:</strong> turn on Tailscale on this device, then open the app with the computer's Tailscale
+        name (for example <code>http://your-mac-name:5220</code>) instead of this address.</p>
+        <p>To let every device on your Wi-Fi in again, open the app on the computer itself and change
+        <strong>Settings → Who can open the app</strong>.</p></body>
+        """);
+});
 
 if (!app.Environment.IsDevelopment())
 {

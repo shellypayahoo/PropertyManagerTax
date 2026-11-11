@@ -11,6 +11,7 @@
 @inject AssistantService Assistant
 @inject ModelCatalog Catalog
 @inject BackupService Backups
+@inject IOptionsMonitor<AccessOptions> Access
 @inject PropertyManager.Web.Agents.BackupAgent BackupAgent
 @inject IOptionsMonitor<BackupOptions> BackupSettings
 @inject NavigationManager Navigation
@@ -177,6 +178,29 @@
         </div>
     </div>
 }
+
+<div class="card mb-3" style="max-width: 52rem" id="access">
+    <div class="card-body">
+        <h2 class="h5">Who can open the app</h2>
+        <p class="text-muted small">The app has no password, so this is what keeps other people's devices out.</p>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="access" id="access-private" checked="@(!allowLocalNetwork)" @onchange="() => allowLocalNetwork = false" />
+            <label class="form-check-label" for="access-private">
+                <strong>Only this computer and my Tailscale devices</strong> <span class="text-muted">· recommended. Your phone needs Tailscale on, even at home.</span>
+            </label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="access" id="access-network" checked="@allowLocalNetwork" @onchange="() => allowLocalNetwork = true" />
+            <label class="form-check-label" for="access-network">
+                <strong>Any device on my network</strong> <span class="text-muted">· anyone on your Wi-Fi who knows the address can open it, including guests.</span>
+            </label>
+        </div>
+        <div class="small text-muted mt-2">
+            With the first choice, a device that isn't using Tailscale sees a "not allowed" page. The computer the app runs on can always open it
+            (at <code>http://localhost:5220</code>) to change this.
+        </div>
+    </div>
+</div>
 
 <div class="card mb-3" style="max-width: 52rem" id="backups">
     <div class="card-body">
@@ -350,6 +374,7 @@
         timeZone = BusinessTimeZone.Find(b.TimeZone) is { } zone ? BusinessTimeZone.IanaId(zone) : "";
         checkHours = Math.Clamp(ExpenseCheck.CurrentValue.HoursBetweenChecks, 1, 24);
         syncHours = Math.Clamp(SyncSchedule.CurrentValue.HoursBetweenSyncs, 1, 24);
+        allowLocalNetwork = Access.CurrentValue.AllowLocalNetwork;
         backupFolder = BackupSettings.CurrentValue.Folder ?? "";
         backupKeepDays = Math.Clamp(BackupSettings.CurrentValue.KeepDays, 1, 3650);
         suggestedFolders = BackupService.SuggestedFolders();
@@ -391,6 +416,7 @@
             ["Business:TimeZone"] = timeZone,
             ["ExpenseCheck:HoursBetweenChecks"] = checkHours.ToString(),
             ["Sync:HoursBetweenSyncs"] = syncHours.ToString(),
+            ["Access:AllowLocalNetwork"] = allowLocalNetwork ? "true" : "false",
             ["Backup:Folder"] = backupFolder.Trim(),
             ["Backup:KeepDays"] = backupKeepDays.ToString(),
             ["Assistant:DefaultProvider"] = string.IsNullOrEmpty(defaultProvider) ? null : defaultProvider,
@@ -435,6 +461,7 @@
     private string timeZone = "";
     private int checkHours = 3;
     private int syncHours = 1;
+    private bool allowLocalNetwork;
     private string backupFolder = "";
     private int backupKeepDays = 30;
     private string? backupError;

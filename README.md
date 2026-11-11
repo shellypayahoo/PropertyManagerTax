@@ -121,11 +121,11 @@ While the app runs on your Mac or Windows computer, your phone can open it over 
 2. Find the computer's address: on a Mac run `ipconfig getifaddr en0`; on Windows run `ipconfig` and use the IPv4 address (for example `10.0.0.154`).
 3. On the phone, open `http://<that address>:5220` (type the `http://`). Allow the connection if macOS or Windows Defender Firewall asks. In Safari, Share → **Add to Home Screen** gives it an icon.
 
-The app has no sign-in, so anyone on your Wi-Fi who knows the address can open it while it runs this way; stop it with Ctrl+C when you're done.
+**Who can open it:** the app has no sign-in. By default it answers only the computer it runs on and devices on your Tailscale network (next section); any other device, such as a guest's phone on your Wi-Fi, gets a "not allowed" page, for pages and files alike. To use it from a phone over plain Wi-Fi without Tailscale, as in the steps above, open the app on the computer itself and choose **Settings → Who can open the app → Any device on my network** (then anyone on your Wi-Fi who knows the address can open it). In a settings file that's `"Access": { "AllowLocalNetwork": true }`.
 
 ### Use it away from home (Tailscale)
 
-[Tailscale](https://tailscale.com) (free for personal use) puts your Mac and phone on a private, encrypted network of their own, so the phone reaches the Mac at home from anywhere, over cellular or any Wi-Fi, without opening anything on your router. Only devices signed in to your Tailscale account can connect, which is what keeps the app (which has no password) private.
+[Tailscale](https://tailscale.com) (free for personal use) puts your Mac and phone on a private, encrypted network of their own, so the phone reaches the Mac at home from anywhere, over cellular or any Wi-Fi, without opening anything on your router. Only devices signed in to your Tailscale account can connect, and the app itself refuses everything except those devices and its own computer, which is what keeps it (it has no password) private.
 
 1. Install **Tailscale** on the Mac (App Store) and sign in (for example with your Microsoft account; choose **Personal**). Allow the VPN configuration, startup at login, and notifications when asked.
 2. Install **Tailscale** on the iPhone and sign in with the **same** account; leave its switch on.
