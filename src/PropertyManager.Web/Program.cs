@@ -334,9 +334,11 @@ app.MapGet("/text-attachments/{id:int}", async (int id, string? size, bool? down
 
     http.Response.Headers.XContentTypeOptions = "nosniff";
     http.Response.Headers.CacheControl = "private, max-age=86400";
-    return download == true
-        ? Results.File(stream, attachment!.ContentType, attachment.FileName)
-        : Results.File(stream, type ?? "application/octet-stream", enableRangeProcessing: true);
+    // Texted files can be anything. Only pictures, video, audio, and PDFs open in the browser; a web page or script
+    // someone texted is downloaded instead, so it can never run as part of this app.
+    return download == true || !SafeFiles.OpensInBrowser(type)
+        ? Results.File(stream, "application/octet-stream", attachment!.FileName)
+        : Results.File(stream, type!, enableRangeProcessing: true);
 });
 
 app.MapGet("/email-attachments/{id:int}", async (int id, bool? download, IDbContextFactory<PropertyManagerDbContext> dbFactory,
@@ -351,9 +353,9 @@ app.MapGet("/email-attachments/{id:int}", async (int id, bool? download, IDbCont
     }
 
     http.Response.Headers.XContentTypeOptions = "nosniff";
-    return download == true
-        ? Results.File(stream, attachment!.ContentType, attachment.FileName)
-        : Results.File(stream, attachment!.ContentType);
+    return download == true || !SafeFiles.OpensInBrowser(attachment!.ContentType)
+        ? Results.File(stream, "application/octet-stream", attachment!.FileName)
+        : Results.File(stream, attachment.ContentType);
 });
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

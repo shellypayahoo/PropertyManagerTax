@@ -102,7 +102,7 @@ public class AssistantService(
         var remembered = new ChatMessage(ChatRole.User, attached.Count == 0 ? question
             : $"{question}\n[Attached: {string.Join(", ", attached.Select(f => f.Name))}. read_uploaded_file reads them again.]");
 
-        List<ChatMessage> messages = [new(ChatRole.System, SystemPrompt(DateTime.Now)), .. conversation.History, userMessage];
+        List<ChatMessage> messages = [new(ChatRole.System, SystemPrompt(DateTime.Now)), .. Recent(conversation.History), userMessage];
         using var client = createClient(provider);
         tools.PhotoDescriber = allowPhotos ? (bytes, mediaType, ask, token) => DescribePhotoAsync(client, bytes, mediaType, ask, token) : null;
         conversation.NewProposals.Clear();
@@ -137,6 +137,22 @@ public class AssistantService(
             conversation.History.Add(new ChatMessage(ChatRole.Assistant, text));
         }
         return new AssistantReply(text, lookups, declined, provider.Name, [.. conversation.NewProposals]);
+    }
+
+    /// <summary>How many earlier messages (questions, answers, change notes) go with each new question.</summary>
+    public const int MaxRememberedMessages = 40;
+
+    /// <summary>
+    /// The recent part of a long conversation: sending all of it with every question gets slower and costlier as it
+    /// grows, and the page still shows the whole thing. Starts at a question, never mid-exchange.
+    /// </summary>
+    internal static IEnumerable<ChatMessage> Recent(IReadOnlyList<ChatMessage> history)
+    {
+        if (history.Count <= MaxRememberedMessages)
+        {
+            return history;
+        }
+        return history.Skip(history.Count - MaxRememberedMessages).SkipWhile(m => m.Role != ChatRole.User);
     }
 
     /// <summary>Carries out a proposed change the owner approved. Returns what happened.</summary>

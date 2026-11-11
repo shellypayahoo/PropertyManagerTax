@@ -71,7 +71,24 @@ public class TextMessageImportService(IDbContextFactory<PropertyManagerDbContext
     /// <paramref name="maxAttachmentBytes"/> each). Messages already imported are skipped, but their attachments are
     /// filled in if they weren't copied before, including files Messages has since downloaded to the Mac.
     /// </summary>
+    // One import at a time across the app: the background job and the Messages page would otherwise both try to
+    // add the same new messages.
+    private static readonly SemaphoreSlim ImportGate = new(1, 1);
+
     public async Task<TextImportSummary> ImportAsync(string messagesDatabasePath, long maxAttachmentBytes = DefaultMaxAttachmentBytes, CancellationToken ct = default)
+    {
+        await ImportGate.WaitAsync(ct);
+        try
+        {
+            return await ImportOnceAsync(messagesDatabasePath, maxAttachmentBytes, ct);
+        }
+        finally
+        {
+            ImportGate.Release();
+        }
+    }
+
+    private async Task<TextImportSummary> ImportOnceAsync(string messagesDatabasePath, long maxAttachmentBytes, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var included = await db.MessageContacts.AsNoTracking().Where(c => c.Included).ToDictionaryAsync(c => c.Handle, ct);
