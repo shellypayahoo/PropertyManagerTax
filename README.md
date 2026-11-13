@@ -455,6 +455,18 @@ The **Reports** page has tabs next to **Profit & loss**, each for the chosen yea
 - **Receipts/**: every receipt and invoice attached to the year's expenses, named by date, vendor, and amount (e.g. `2026-03-10 Ace Plumbing 1500.00.pdf`).
 - **Read me first.txt**: what's in the zip and the year's totals (rent received, deductible expenses, mortgage principal and escrow), plus how many expenses have no receipt.
 
+## Depreciation
+
+The app works out each rental's depreciation and puts it on the profit and loss as **Depreciation expense or depletion** (Schedule E line 18).
+
+- **The building:** on a property's page, fill in the **purchase date**, **purchase price**, and **land value** (land isn't depreciated; the land and building split on your tax assessment is a common way to divide the price). **Closing costs added** (title, recording, legal fees, transfer taxes) raise what the building cost, and **First rented** is for a property that became a rental later than you bought it. The building is deducted over 27.5 years, with half a month for the month it starts (IRS Publication 946, mid-month convention).
+- **Improvements and equipment:** add them under **Depreciation** on the property's page with the date, cost, and how long they're deducted over: 27.5 years for things that are part of the building (roof, HVAC system, remodel), 5 years for appliances and carpet, 15 years for fences, driveways, and landscaping. A repair, or something you write off all at once, is entered as an ordinary expense instead.
+- **Reports → Depreciation** shows the schedule for the year: each item's cost, what was deducted before, this year's amount, and what's left. It also says which properties still need a land value.
+- A period shorter than a year gets its share of the year's amount. The cash flow report isn't affected, since depreciation isn't a payment.
+- **Your preparer's numbers win.** Bonus depreciation, Section 179, and adjustments from earlier returns aren't included. If your past returns used different figures, enter the year's amount as a **Depreciation** expense for the property and the app uses that instead of its own calculation.
+
+The accountant packet includes the schedule as `Depreciation <year>.csv`.
+
 ## 1099s
 
 **Reports → 1099s** lists the vendors you paid in the year and who looks to need a **Form 1099-NEC**: paid at least the threshold for services ($600 for payments through 2025; $2,000 for payments made in 2026 and later, the default for those years; you can change it). Card payments are left out (the card company reports them), as are interest, insurance, taxes, utilities, and mortgage principal or escrow.

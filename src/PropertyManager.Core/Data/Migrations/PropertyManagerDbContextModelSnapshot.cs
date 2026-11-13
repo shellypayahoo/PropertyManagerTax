@@ -337,6 +337,38 @@ namespace PropertyManager.Core.Data.Migrations
                     b.ToTable("CategorizationRules");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.DepreciableAsset", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Cost")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Life")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("PlacedInService")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.ToTable("DepreciableAssets");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.DismissedSuggestion", b =>
                 {
                     b.Property<int>("MaintenanceRequestId")
@@ -933,8 +965,14 @@ namespace PropertyManager.Core.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<decimal?>("BasisAdditions")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("City")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("LandValue")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
@@ -958,6 +996,9 @@ namespace PropertyManager.Core.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<decimal?>("PurchasePrice")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("RentalStartDate")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("State")
@@ -1411,6 +1452,17 @@ namespace PropertyManager.Core.Data.Migrations
                     b.Navigation("Vendor");
                 });
 
+            modelBuilder.Entity("PropertyManager.Core.Entities.DepreciableAsset", b =>
+                {
+                    b.HasOne("PropertyManager.Core.Entities.Property", "Property")
+                        .WithMany("Assets")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Property");
+                });
+
             modelBuilder.Entity("PropertyManager.Core.Entities.DismissedSuggestion", b =>
                 {
                     b.HasOne("PropertyManager.Core.Entities.CalendarEvent", "CalendarEvent")
@@ -1799,6 +1851,8 @@ namespace PropertyManager.Core.Data.Migrations
 
             modelBuilder.Entity("PropertyManager.Core.Entities.Property", b =>
                 {
+                    b.Navigation("Assets");
+
                     b.Navigation("Expenses");
 
                     b.Navigation("Units");

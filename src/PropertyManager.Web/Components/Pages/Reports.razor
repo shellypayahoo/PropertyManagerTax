@@ -43,6 +43,10 @@ else if (tab == "1099")
 {
     <Form1099Tab Year="year" />
 }
+else if (tab == "depreciation")
+{
+    <DepreciationTab Year="year" />
+}
 else
 {
 <p class="text-muted">
@@ -197,7 +201,7 @@ else
     private string tab = "pnl";
 
     private static readonly (string Key, string Label)[] Tabs =
-        [("pnl", "Profit & loss"), ("cash", "Cash flow"), ("rent", "Rent collection"), ("vendors", "Vendors"), ("1099", "1099s")];
+        [("pnl", "Profit & loss"), ("cash", "Cash flow"), ("rent", "Rent collection"), ("vendors", "Vendors"), ("1099", "1099s"), ("depreciation", "Depreciation")];
 
     private IEnumerable<ExpenseCategory> UsedCategories =>
         statements!.SelectMany(s => s.Expenses).Select(e => e.Category).Distinct().Order();

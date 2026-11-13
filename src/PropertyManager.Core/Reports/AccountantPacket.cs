@@ -81,6 +81,19 @@ public class AccountantPacket(
         ]), ct);
         await AddAsync(zip, $"1099 vendors {year}.csv", await form1099.CsvAsync(year, ct: ct), ct);
 
+        var properties = await db.Properties.AsNoTracking().Include(p => p.Assets).OrderBy(p => p.Name).ToListAsync(ct);
+        // Depreciation entered by hand as an expense replaces the calculated amount for that property.
+        var enteredByHand = expenses.Where(e => e.Category == ExpenseCategory.Depreciation && e.PropertyId != null).Select(e => e.PropertyId!.Value).ToHashSet();
+        var schedule = properties.Where(p => !enteredByHand.Contains(p.Id)).SelectMany(p => Depreciation.Schedule(p, year)).ToList();
+        if (schedule.Count > 0)
+        {
+            await AddAsync(zip, $"Depreciation {year}.csv", Csv.File(
+            [
+                Csv.Line("Property", "Item", "Placed in service", "Cost or basis", "Recovery period", $"Before {year}", $"{year} deduction", "Total so far", "Remaining"),
+                .. schedule.Select(l => Csv.Line(l.PropertyName, l.Item, l.PlacedInService, l.Basis, l.Life.ShortName(), l.PriorYears, l.ThisYear, l.Accumulated, l.Remaining)),
+            ]), ct);
+        }
+
         var deductible = expenses.Where(e => e.Category.IsDeductible()).Sum(e => e.Amount);
         var readme = string.Create(Us, $"""
             {(string.IsNullOrWhiteSpace(business?.CurrentValue.Name) ? "Rental properties" : business!.CurrentValue.Name)}: books for {year}
@@ -92,16 +105,18 @@ public class AccountantPacket(
             - Rent received {year}.csv: all {payments.Count} rent payments, by the date received.
             - 1099 vendors {year}.csv: what each vendor was paid and who looks to need a Form 1099-NEC
               (threshold used: {Form1099Report.DefaultThreshold(year):C0}; card payments and non-service payments left out).
+            - Depreciation {year}.csv: {(schedule.Count > 0 ? "the depreciation schedule (MACRS, calculated by the app) for each building and improvement." : "not included; nothing is set up to be depreciated.")}
             - Receipts: {receiptNames.Values.Sum(v => v.Count)} receipt and invoice files, named by date, vendor, and amount.{(missing > 0 ? $"\n  ({missing} receipt file(s) couldn't be found and were left out.)" : "")}
 
             Totals
             - Rent received: {payments.Sum(p => p.Amount):C}
-            - Deductible expenses: {deductible:C}
+            - Deductible expenses paid: {deductible:C}{(schedule.Count > 0 ? $"\n- Depreciation (calculated, not a payment): {schedule.Sum(l => l.ThisYear):C}" : "")}
             - Not deductible (mortgage principal, escrow deposits): {expenses.Sum(e => e.Amount) - deductible:C}
 
             Notes
             - Expenses marked "All properties (shared)" are split across the properties by number of units on the profit and loss.
-            - Depreciation isn't calculated here unless it was entered as an expense.
+            - Depreciation is calculated from each property's purchase details and improvements (see the schedule), unless it
+              was entered by hand as an expense. Bonus depreciation and Section 179 aren't included.
             - {expenses.Count(e => e.Receipts.Count == 0)} expense(s) have no receipt attached.
             - This is a bookkeeping summary, not tax advice.
             """);

@@ -1,0 +1,95 @@
+@using PropertyManager.Core.Reports
+@inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+
+<p class="text-muted" style="max-width: 56rem">
+    What's deducted in @Year for each building and improvement, worked out the standard way (IRS Publication 946). These
+    amounts are on the profit and loss as <em>Depreciation expense or depletion</em>. Set a property's purchase details and
+    improvements on its page.
+</p>
+@if (lines is not null)
+{
+    @foreach (var p in missing)
+    {
+        <div class="alert alert-warning py-2" style="max-width: 56rem">
+            <a href="properties/@p.Id#depreciation">@p.Name</a>: add the
+            @string.Join(", ", new[] { p.PurchaseDate is null && p.RentalStartDate is null ? "purchase date" : null, p.PurchasePrice is null ? "purchase price" : null, p.LandValue is null ? "land value" : null }.OfType<string>())
+            to have the building's depreciation worked out.
+        </div>
+    }
+    @if (manual.Count > 0)
+    {
+        <div class="alert alert-info py-2" style="max-width: 56rem">
+            @string.Join(", ", manual) @(manual.Count == 1 ? "has" : "have") depreciation entered by hand as an expense in @Year, so the
+            profit and loss uses that amount instead of the one below.
+        </div>
+    }
+    @if (lines.Count == 0)
+    {
+        <p class="text-muted">Nothing is being depreciated in @Year.</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle" style="max-width: 76rem">
+            <thead>
+                <tr>
+                    <th>Property</th><th>Item</th><th>In service</th><th class="text-end">Cost</th><th>Over</th>
+                    <th class="text-end">Before @Year</th><th class="text-end">@Year</th><th class="text-end">Total so far</th><th class="text-end">Left</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var group in lines.GroupBy(l => (l.PropertyId, l.PropertyName)))
+                {
+                    @foreach (var l in group)
+                    {
+                        <tr>
+                            <td><a href="properties/@l.PropertyId#depreciation">@l.PropertyName</a></td>
+                            <td>@l.Item</td>
+                            <td>@l.PlacedInService.ToString("MMM d, yyyy")</td>
+                            <td class="text-end">@l.Basis.ToString("C")</td>
+                            <td>@l.Life.ShortName()</td>
+                            <td class="text-end">@l.PriorYears.ToString("C")</td>
+                            <td class="text-end fw-semibold">@l.ThisYear.ToString("C")</td>
+                            <td class="text-end">@l.Accumulated.ToString("C")</td>
+                            <td class="text-end">@l.Remaining.ToString("C")</td>
+                        </tr>
+                    }
+                    @if (group.Count() > 1)
+                    {
+                        <tr class="table-light">
+                            <td colspan="6" class="text-end">@group.Key.PropertyName total</td>
+                            <td class="text-end fw-semibold">@group.Sum(l => l.ThisYear).ToString("C")</td><td colspan="2"></td>
+                        </tr>
+                    }
+                }
+            </tbody>
+            <tfoot>
+                <tr class="fw-semibold"><td colspan="6" class="text-end">All properties, @Year</td><td class="text-end">@lines.Sum(l => l.ThisYear).ToString("C")</td><td colspan="2"></td></tr>
+            </tfoot>
+        </table>
+    }
+    <p class="small text-muted" style="max-width: 56rem">
+        Not tax advice. Bonus depreciation, Section 179, and prior adjustments aren't included; if your past returns used different
+        figures, go by your preparer's schedule (you can enter that amount as a Depreciation expense and it replaces this one).
+    </p>
+}
+
+@code {
+    [Parameter] public int Year { get; set; }
+
+    private List<DepreciationLine>? lines;
+    private List<Property> missing = [];
+    private List<string> manual = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var properties = await db.Properties.AsNoTracking().Include(p => p.Assets).OrderBy(p => p.Name).ToListAsync();
+        lines = properties.SelectMany(p => Depreciation.Schedule(p, Year)).ToList();
+        missing = properties.Where(p => Depreciation.BuildingBasis(p) is null).ToList();
+        var (from, to) = (new DateOnly(Year, 1, 1), new DateOnly(Year, 12, 31));
+        var entered = await db.Expenses.AsNoTracking()
+            .Where(e => e.Category == ExpenseCategory.Depreciation && e.Date >= from && e.Date <= to && e.PropertyId != null)
+            .Select(e => e.PropertyId!.Value).Distinct().ToListAsync();
+        manual = properties.Where(p => entered.Contains(p.Id)).Select(p => p.Name).ToList();
+    }
+}

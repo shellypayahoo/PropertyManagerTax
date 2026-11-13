@@ -35,6 +35,7 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
     public DbSet<DismissedSuggestion> DismissedSuggestions => Set<DismissedSuggestion>();
     public DbSet<ExpenseSuggestion> ExpenseSuggestions => Set<ExpenseSuggestion>();
+    public DbSet<DepreciableAsset> DepreciableAssets => Set<DepreciableAsset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -202,6 +203,13 @@ public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext>
             e.Property(c => c.Name).HasMaxLength(200).IsRequired();
             e.Property(c => c.LastSyncedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
             e.Property(c => c.LastAddedToAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+        });
+
+        modelBuilder.Entity<DepreciableAsset>(e =>
+        {
+            e.Property(a => a.Description).HasMaxLength(200).IsRequired();
+            e.Property(a => a.Life).HasConversion<string>().HasMaxLength(30);
+            e.HasOne(a => a.Property).WithMany(p => p.Assets).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ExpenseSuggestion>(e =>

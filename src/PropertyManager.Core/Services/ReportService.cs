@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PropertyManager.Core.Data;
 using PropertyManager.Core.Entities;
+using PropertyManager.Core.Reports;
 
 namespace PropertyManager.Core.Services;
 
@@ -16,7 +17,8 @@ public record PropertyProfitAndLoss(
     decimal SharedExpenses,
     IReadOnlyList<CategoryTotal> NotDeductible,
     DateOnly From = default,
-    DateOnly To = default)
+    DateOnly To = default,
+    decimal CalculatedDepreciation = 0m)
 {
     public decimal TotalExpenses => Expenses.Sum(e => e.Amount);
     public decimal NetIncome => RentReceived - TotalExpenses;
@@ -53,6 +55,7 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
         var properties = await db.Properties
             .AsNoTracking()
             .Include(p => p.Units).ThenInclude(u => u.Leases)
+            .Include(p => p.Assets)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
 
@@ -77,6 +80,11 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
                     .Select(e => (e.Category, e.Amount))
                     .Concat(shared.Where(s => s.PropertyId == p.Id).Select(s => (s.Category, s.Amount)))
                     .ToList();
+                var depreciation = CalculatedDepreciation(p, expenses, from, to).Sum(d => d.Amount);
+                if (depreciation > 0)
+                {
+                    all.Add((ExpenseCategory.Depreciation, depreciation));
+                }
                 return new PropertyProfitAndLoss(
                     p.Id,
                     p.Name,
@@ -97,10 +105,20 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
                         .Select(g => new CategoryTotal(g.Key, g.Sum(e => e.Amount)))
                         .ToList(),
                     from,
-                    to);
+                    to,
+                    depreciation);
             })
             .ToList();
     }
+
+    /// <summary>
+    /// Depreciation worked out from the property's purchase details and improvements. Not used when depreciation was
+    /// entered by hand as an expense for the property in the period, so it's never counted twice.
+    /// </summary>
+    private static List<(string Item, decimal Amount)> CalculatedDepreciation(Property property, IEnumerable<Expense> expenses, DateOnly from, DateOnly to) =>
+        expenses.Any(e => e.PropertyId == property.Id && e.Category == ExpenseCategory.Depreciation)
+            ? []
+            : Depreciation.ForPeriod(property, from, to);
 
     /// <summary>The expenses in a category (or, when <paramref name="category"/> is null, the rent received) behind a report cell.</summary>
     public Task<ReportDetail> GetDetailAsync(int year, ExpenseCategory? category, int? propertyId, CancellationToken ct = default) =>
@@ -144,13 +162,20 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
             e.Amount,
             e.IsShared);
 
+        var properties = await db.Properties.AsNoTracking().Include(p => p.Units).Include(p => p.Assets).OrderBy(p => p.Name).ToListAsync(ct);
+        // Calculated depreciation has no expense records; show what it's made of instead.
+        var calculated = category != ExpenseCategory.Depreciation ? []
+            : properties.Where(p => propertyId is null || p.Id == propertyId)
+                .SelectMany(p => CalculatedDepreciation(p, expenses, from, to)
+                    .Select(d => new ReportDetailLine(to, p.Name, $"{d.Item} (calculated; see Reports → Depreciation)", null, d.Amount, false)))
+                .ToList();
+
         if (propertyId is null)
         {
-            var all = expenses.OrderBy(e => e.Date).Select(Line).ToList();
+            var all = expenses.OrderBy(e => e.Date).Select(Line).Concat(calculated).ToList();
             return new ReportDetail(all, 0m, all.Sum(l => l.Amount));
         }
 
-        var properties = await db.Properties.AsNoTracking().Include(p => p.Units).OrderBy(p => p.Name).ToListAsync(ct);
         var share = AllocateSharedExpenses(properties, expenses.Where(e => e.IsShared))
             .Where(a => a.PropertyId == propertyId)
             .Sum(a => a.Amount);
@@ -158,6 +183,7 @@ public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory
             .Where(e => e.PropertyId == propertyId || e.IsShared)
             .OrderBy(e => e.IsShared).ThenBy(e => e.Date)
             .Select(Line)
+            .Concat(calculated)
             .ToList();
         return new ReportDetail(lines, share, lines.Where(l => !l.Shared).Sum(l => l.Amount) + share);
     }

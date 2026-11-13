@@ -132,12 +132,78 @@ else
         <div class="col-md-1"><label class="form-label">ZIP</label><InputText @bind-Value="property.PostalCode" class="form-control" /></div>
         <div class="col-md-3"><label class="form-label">Purchase date</label><InputDate @bind-Value="property.PurchaseDate" class="form-control" /></div>
         <div class="col-md-3"><label class="form-label">Purchase price</label><InputNumber @bind-Value="property.PurchasePrice" class="form-control" /></div>
+        <div class="col-md-3">
+            <label class="form-label" title="The part of the price that was the land, e.g. from the tax assessment's land and building split. Land isn't depreciated.">Land value</label>
+            <InputNumber @bind-Value="property.LandValue" class="form-control" placeholder="for depreciation" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" title="Closing costs that add to what the building cost: title, recording, legal fees, transfer taxes.">Closing costs added</label>
+            <InputNumber @bind-Value="property.BasisAdditions" class="form-control" placeholder="optional" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" title="When it was first available to rent, if later than the purchase date.">First rented (if later)</label>
+            <InputDate @bind-Value="property.RentalStartDate" class="form-control" />
+        </div>
         <div class="col-12"><label class="form-label">Notes</label><InputTextArea @bind-Value="property.Notes" class="form-control" rows="3" /></div>
         <div class="col-12">
             <button type="submit" class="btn btn-primary">Save details</button>
             @if (saved) { <span class="text-success ms-2">Saved.</span> }
         </div>
     </EditForm>
+
+    <h2 class="h4 mt-5" id="depreciation">Depreciation</h2>
+    var schedule = PropertyManager.Core.Reports.Depreciation.Schedule(property, today.Year);
+    @if (PropertyManager.Core.Reports.Depreciation.BuildingBasis(property) is null)
+    {
+        <p class="text-muted" style="max-width: 52rem">
+            To have the building's depreciation worked out and put on the profit and loss, fill in the <strong>purchase date</strong>,
+            <strong>purchase price</strong>, and <strong>land value</strong> above (land isn't depreciated; your tax assessment's land and
+            building split is a common way to divide the price). Improvements below are depreciated either way.
+        </p>
+    }
+    <table class="table table-sm align-middle" style="max-width: 64rem">
+        <thead>
+            <tr><th>Item</th><th>In service</th><th class="text-end">Cost</th><th>Over</th><th class="text-end">@today.Year deduction</th><th class="text-end">Deducted so far</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var line in schedule)
+            {
+                var asset = property.Assets.FirstOrDefault(a => a.Description == line.Item && a.PlacedInService == line.PlacedInService && line.Item != "Building");
+                <tr>
+                    <td>@line.Item</td>
+                    <td>@line.PlacedInService.ToString("MMM d, yyyy")</td>
+                    <td class="text-end">@line.Basis.ToString("C")</td>
+                    <td>@line.Life.ShortName()</td>
+                    <td class="text-end">@line.ThisYear.ToString("C")</td>
+                    <td class="text-end">@line.Accumulated.ToString("C")</td>
+                    <td class="text-end">@if (asset is not null) { <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveAssetAsync(asset.Id)">Remove</button> }</td>
+                </tr>
+            }
+            @if (schedule.Count == 0)
+            {
+                <tr><td colspan="7" class="text-muted">Nothing being depreciated yet.</td></tr>
+            }
+        </tbody>
+    </table>
+    <div class="row g-2 align-items-end" style="max-width: 64rem">
+        <div class="col-md-4"><label class="form-label small mb-0">Add an improvement or equipment</label><input class="form-control form-control-sm" placeholder="e.g. New roof, Refrigerator" @bind="newAsset.Description" /></div>
+        <div class="col-md-2"><label class="form-label small mb-0">In service</label><input type="date" class="form-control form-control-sm" @bind="newAsset.PlacedInService" /></div>
+        <div class="col-md-2"><label class="form-label small mb-0">Cost</label><input type="number" step="0.01" class="form-control form-control-sm" @bind="newAsset.Cost" /></div>
+        <div class="col-md-3">
+            <label class="form-label small mb-0">Deducted over</label>
+            <select class="form-select form-select-sm" @bind="newAsset.Life">
+                @foreach (var life in Enum.GetValues<AssetLife>().OrderByDescending(l => l)) { <option value="@life">@life.DisplayName()</option> }
+            </select>
+        </div>
+        <div class="col-md-1"><button class="btn btn-sm btn-outline-primary w-100" @onclick="AddAssetAsync">Add</button></div>
+    </div>
+    <FormError Message="@assetError" />
+    <p class="small text-muted mt-2" style="max-width: 64rem">
+        Calculated the standard way (IRS Publication 946): the building and anything that's part of it over 27.5 years, appliances and
+        carpet over 5, fences and driveways over 15. The yearly amounts go on the <a href="reports">profit and loss</a> automatically.
+        A repair or something written off all at once is entered as an expense instead, not here. Not tax advice: if your past
+        returns used different figures, use your preparer's schedule.
+    </p>
 }
 
 @code {
@@ -218,6 +284,10 @@ else
     protected override async Task OnParametersSetAsync()
     {
         today = DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+        if (newAsset.PlacedInService == default)
+        {
+            newAsset.PlacedInService = today;
+        }
         await LoadAsync();
     }
 
@@ -226,6 +296,7 @@ else
         await using var db = await DbFactory.CreateDbContextAsync();
         property = await db.Properties.AsNoTracking()
             .Include(p => p.Units).ThenInclude(u => u.Leases).ThenInclude(l => l.Tenants)
+            .Include(p => p.Assets)
             .FirstOrDefaultAsync(p => p.Id == Id);
         loaded = true;
     }
@@ -302,6 +373,33 @@ else
             : null;
     }
 
+    private DepreciableAsset newAsset = new();
+    private string? assetError;
+
+    private async Task AddAssetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newAsset.Description) || newAsset.Cost <= 0 || newAsset.PlacedInService == default)
+        {
+            assetError = "Give a description, the date it went into service, and what it cost.";
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        newAsset.PropertyId = property!.Id;
+        newAsset.Description = newAsset.Description.Trim();
+        db.DepreciableAssets.Add(newAsset);
+        await db.SaveChangesAsync();
+        newAsset = new() { PlacedInService = today };
+        assetError = null;
+        await LoadAsync();
+    }
+
+    private async Task RemoveAssetAsync(int assetId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.DepreciableAssets.Where(a => a.Id == assetId).ExecuteDeleteAsync();
+        await LoadAsync();
+    }
+
     private async Task SavePropertyAsync()
     {
         if (property is null)
@@ -320,6 +418,9 @@ else
             entity.PostalCode = property.PostalCode;
             entity.PurchaseDate = property.PurchaseDate;
             entity.PurchasePrice = property.PurchasePrice;
+            entity.LandValue = property.LandValue;
+            entity.BasisAdditions = property.BasisAdditions;
+            entity.RentalStartDate = property.RentalStartDate;
             entity.Notes = property.Notes;
             await db.SaveChangesAsync();
             saved = true;
