@@ -58,3 +58,17 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+/* Email & calendar: the list scrolls on its own beside the reading pane on wide screens. */
+@media (min-width: 992px) {
+    .email-list {
+        max-height: calc(100vh - 16rem);
+        overflow-y: auto;
+    }
+
+    .email-reader {
+        position: sticky;
+        top: 1rem;
+        max-height: calc(100vh - 16rem);
+        overflow-y: auto;
+    }
+}

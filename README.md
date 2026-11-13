@@ -339,6 +339,8 @@ Photos, videos, and files sent in those conversations are copied too (up to 50 M
 
 The **Email** page copies emails from the Hotmail / Outlook.com folders you choose (for example a "Tenants" folder) into the app, so the **Ask** page can search them alongside texts and records. Mail access is read-only (Microsoft Graph `Mail.Read`); nothing in the mailbox is changed. The only thing the app ever writes is calendar appointments you add (see [Calendar](#calendar)).
 
+**The page has three tabs.** **Emails** works like a mail app: emails are grouped by day (Today, Yesterday, Earlier this week, then by month), with search, a filter for tenants, vendors, or everyone else, and a folder filter; click one to read it beside the list (on a phone it opens under its row), and **Show older emails** loads more. **Calendar** lists the next 60 days of appointments, with **+ Add appointment**. **Setup** holds the sign-in, the folders and calendars to copy, and when it last synced; a ! on the tab means it needs you (not signed in, a permission to accept, or nothing chosen yet).
+
 **Automatic sync:** while the app runs, new emails and calendar appointments come in by themselves every hour; change that under **Settings → Email → Get new emails and appointments every** (1 to 24 hours). **Get new emails** and **Get calendar events** still work any time. The top of the Email & calendar page says when it last synced and when it syncs next. New vendor emails are checked for expenses as soon as they arrive (see Expenses).
 
 - Emails are linked to a tenant or vendor by the email address on their Tenants/Vendors page.

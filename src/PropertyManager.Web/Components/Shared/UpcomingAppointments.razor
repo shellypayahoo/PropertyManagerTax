@@ -47,7 +47,8 @@
 }
 
 @code {
-    private const int Days = 14;
+    /// <summary>How far ahead to look.</summary>
+    [Parameter] public int Days { get; set; } = 14;
     private bool synced;
     private List<(CalendarEvent Event, Property? Property, MaintenanceRequest? Request)> events = [];
 

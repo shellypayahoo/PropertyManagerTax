@@ -15,248 +15,398 @@
 <PageTitle>Email &amp; calendar</PageTitle>
 
 <h1>@(Features.CurrentValue.Email && Features.CurrentValue.Calendar ? "Email & calendar" : Features.CurrentValue.Email ? "Email" : "Calendar")</h1>
-<p class="text-muted" style="max-width: 52rem">
-    Emails with tenants and vendors, copied from the Hotmail / Outlook.com folders you choose (read-only; nothing in
-    your mailbox is changed). PDF and Word attachments are read so the <a href="ask">Ask</a> page can search them;
-    pictures are kept so you can open them here. Appointments from the calendars you choose show on the
-    <a href="">Dashboard</a> and are suggested on <a href="maintenance">Maintenance</a> requests.
+<p class="text-muted small mb-2" style="max-width: 60rem">
+    Emails with tenants and vendors and your appointments, copied from Outlook.com / Hotmail. Nothing in your mailbox is
+    changed; the only thing the app adds is appointments you create here.
 </p>
 
 <FeatureGate On="Features.CurrentValue.Email || Features.CurrentValue.Calendar" Name="Email and calendar" Setting="Email and Features:Calendar">
-@if (!SignIn.IsConfigured)
-{
-    <div class="alert alert-info" style="max-width: 52rem">
-        Email isn't set up yet. It needs a free app registration in the Azure portal (about five minutes); the steps are
-        in the <strong>Email</strong> section of the README. Then set its client id and restart the app:
-        <pre class="mb-0 mt-2"><code>dotnet user-secrets set "Email:ClientId" "&lt;Application (client) ID&gt;" --project src/PropertyManager.Web</code></pre>
-    </div>
-}
-else if (signedInAs is null)
-{
-    @if (deviceCode is { } signInCode)
+<ul class="nav nav-tabs mb-3">
+    @foreach (var (key, label) in Tabs)
     {
-        <div class="alert alert-primary" style="max-width: 52rem">
-            Go to <a href="@signInCode.Url" target="_blank" rel="noopener">@signInCode.Url</a> and enter the code
-            <strong class="font-monospace fs-5 mx-1">@signInCode.Code</strong>, then sign in with your Hotmail account and accept the
-            permissions (read mail, read your calendar, and add appointments to it). This page continues by itself once you're done.
+        <li class="nav-item">
+            <button class="nav-link @(tab == key ? "active" : "")" @onclick="() => tab = key">
+                @label
+                @if (key == "setup" && NeedsAttention) { <span class="badge text-bg-warning ms-1">!</span> }
+            </button>
+        </li>
+    }
+</ul>
+<SyncAlerts Busy="busy" Status="@status" Error="@error" Problems="problems" />
+
+@if (tab == "emails")
+{
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <input class="form-control w-auto flex-grow-1" style="max-width: 20rem" placeholder="Search emails" @bind="search" @bind:after="ResetListAsync" aria-label="Search emails" />
+        <div class="btn-group" role="group" aria-label="Who">
+            @foreach (var (key, label) in WhoChoices)
+            {
+                <button class="btn btn-sm @(who == key ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => SetWhoAsync(key)">@label</button>
+            }
         </div>
+        @if (folders.Count > 1)
+        {
+            <select class="form-select form-select-sm w-auto" @bind="folderFilter" @bind:after="ResetListAsync" aria-label="Folder">
+                <option value="0">All folders</option>
+                @foreach (var f in folders) { <option value="@f.Id">@f.Path</option> }
+            </select>
+        }
+        <span class="ms-auto small text-muted" title="@(MailSync.LastRunAt is { } exact ? RelativeTime.Exact(exact) : null)">
+            @(MailSync.IsRunning ? "Getting new emails…" : MailSync.LastRunAt is { } at ? $"Synced {RelativeTime.Ago(at, Clock.GetUtcNow())}" : "")
+        </span>
+        <button class="btn btn-sm btn-primary" disabled="@(busy || folders.Count == 0 || signedInAs is null)" @onclick="SyncAsync">Get new emails</button>
+    </div>
+
+    @if (emailCount == 0)
+    {
+        <p class="text-muted">
+            No emails yet.
+            @if (signedInAs is null || folders.Count == 0) { <span>Sign in and choose folders on the <button class="btn btn-link p-0 align-baseline" @onclick="@(() => tab = "setup")">Setup</button> tab.</span> }
+        </p>
+    }
+    else if (emails.Count == 0)
+    {
+        <p class="text-muted">No emails match.</p>
     }
     else
     {
-        <button class="btn btn-primary mb-3" disabled="@busy" @onclick="SignInAsync">Sign in to Microsoft</button>
+        var selected = emails.FirstOrDefault(m => m.Id == open);
+        <div class="row g-3">
+            <div class="col-lg-5">
+                <div class="list-group list-group-flush border rounded email-list">
+                    @{ string? lastGroup = null; }
+                    @foreach (var m in emails)
+                    {
+                        var group = GroupOf(m.SentAt);
+                        if (group != lastGroup)
+                        {
+                            lastGroup = group;
+                            <div class="list-group-item py-1 small text-uppercase text-muted bg-body-tertiary fw-semibold">@group</div>
+                        }
+                        <button type="button" class="list-group-item list-group-item-action py-2 @(open == m.Id ? "active" : "")" @onclick="() => Open(m.Id)">
+                            <div class="d-flex gap-2">
+                                <span class="fw-semibold text-truncate">@(m.IsFromMe ? "To " + ShortName(m.To) : m.FromName is { Length: > 0 } n ? n : m.FromAddress)</span>
+                                @if ((m.Tenant?.FullName ?? m.Vendor?.Name) is { } person)
+                                {
+                                    <span class="badge @(open == m.Id ? "text-bg-light" : m.Tenant is not null ? "text-bg-info" : "text-bg-secondary") align-self-center">@person</span>
+                                }
+                                <span class="ms-auto small text-nowrap @(open == m.Id ? "" : "text-muted")">@(m.Attachments.Count > 0 ? "📎 " : "")@TimeOf(m.SentAt)</span>
+                            </div>
+                            <div class="text-truncate">@(m.Subject.Length > 0 ? m.Subject : "(no subject)")</div>
+                            <div class="small text-truncate @(open == m.Id ? "" : "text-muted")">@Snippet(m.Text)</div>
+                        </button>
+                        @if (open == m.Id)
+                        {
+                            @* On a phone the email opens right under its row; on a wide screen it's in the pane beside the list. *@
+                            <div class="list-group-item d-lg-none">@Reader(m)</div>
+                        }
+                    }
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-2 small text-muted">
+                    <span>Showing @emails.Count of @matching</span>
+                    @if (emails.Count < matching)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ShowOlderAsync">Show older emails</button>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-7 d-none d-lg-block">
+                <div class="border rounded p-3 email-reader">
+                    @if (selected is null)
+                    {
+                        <p class="text-muted mb-0">Choose an email to read it here.</p>
+                    }
+                    else
+                    {
+                        @Reader(selected)
+                    }
+                </div>
+            </div>
+        </div>
     }
+}
+else if (tab == "calendar")
+{
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="small text-muted me-auto">
+            @(calendars.Count == 0 ? "No calendars chosen yet." : $"From {string.Join(", ", calendars.Select(c => c.Name))}.")
+            @if (calendars.Count == 0 || signedInAs is null) { <span> Sign in and choose calendars on the <button class="btn btn-link btn-sm p-0 align-baseline" @onclick="@(() => tab = "setup")">Setup</button> tab.</span> }
+        </span>
+        <button class="btn btn-sm btn-primary" disabled="@(busy || calendars.Count == 0 || needsSignInAgain || signedInAs is null)" @onclick="SyncCalendarsAsync">Get calendar events</button>
+    </div>
+    <UpcomingAppointments @key="calendarVersion" Days="60" />
 }
 else
 {
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <span>Signed in as <strong>@signedInAs</strong></span>
-        <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="SignOutAsync">Sign out</button>
-    </div>
-    @if (needsSignInAgain)
+    @if (!SignIn.IsConfigured)
     {
         <div class="alert alert-info" style="max-width: 52rem">
-            The app can now read your calendar too, which needs your permission once.
-            @if (deviceCode is { } againCode)
-            {
-                <div class="mt-2">
-                    Go to <a href="@againCode.Url" target="_blank" rel="noopener">@againCode.Url</a> and enter the code
-                    <strong class="font-monospace fs-5 mx-1">@againCode.Code</strong>, then sign in and accept.
-                </div>
-            }
-            else
-            {
-                <button class="btn btn-sm btn-primary ms-2" disabled="@busy" @onclick="SignInAsync">Sign in again</button>
-            }
+            Email isn't set up yet. It needs a free app registration in the Azure portal (about five minutes); the steps are
+            in the <strong>Email</strong> section of the README. Then set its client id and restart the app:
+            <pre class="mb-0 mt-2"><code>dotnet user-secrets set "Email:ClientId" "&lt;Application (client) ID&gt;" --project src/PropertyManager.Web</code></pre>
         </div>
     }
-
-    <div class="small text-muted mb-3">
-        @if (MailSync.IsRunning)
+    else if (signedInAs is null)
+    {
+        @if (deviceCode is { } signInCode)
         {
-            <span>Getting new @(SyncedWhat) now…</span>
+            <div class="alert alert-primary" style="max-width: 52rem">
+                Go to <a href="@signInCode.Url" target="_blank" rel="noopener">@signInCode.Url</a> and enter the code
+                <strong class="font-monospace fs-5 mx-1">@signInCode.Code</strong>, then sign in with your Hotmail account and accept the
+                permissions (read mail, read your calendar, and add appointments to it). This page continues by itself once you're done.
+            </div>
         }
         else
         {
-            <span title="@(MailSync.LastRunAt is { } exact ? RelativeTime.Exact(exact) : null)">
-                New @SyncedWhat come in automatically every @(MailSync.Interval.TotalHours == 1 ? "hour" : $"{MailSync.Interval.TotalHours:0} hours")
-                (<a href="settings">change</a>)@(MailSync.LastRunAt is { } at ? $": last {RelativeTime.Ago(at, Clock.GetUtcNow())}" : "")@($", next {RelativeTime.FromNow(MailSync.NextRunAt, Clock.GetUtcNow())}").
-            </span>
-            @if (MailSync.LastResult is { } result) { <span>@result</span> }
+            <button class="btn btn-primary mb-3" disabled="@busy" @onclick="SignInAsync">Sign in to Microsoft</button>
         }
-    </div>
-
-    <div class="d-flex flex-wrap gap-2 mb-3">
-        @if (Features.CurrentValue.Email)
-        {
-            <button class="btn btn-primary" disabled="@(busy || folders.Count == 0)" @onclick="SyncAsync">Get new emails</button>
-            <button class="btn btn-outline-primary" disabled="@busy" @onclick="ChooseFoldersAsync">Choose folders</button>
-        }
-        @if (Features.CurrentValue.Calendar)
-        {
-            <span class="vr mx-1 d-none d-sm-inline-block"></span>
-            <button class="btn btn-primary" disabled="@(busy || calendars.Count == 0 || needsSignInAgain)" @onclick="SyncCalendarsAsync">Get calendar events</button>
-            <button class="btn btn-outline-primary" disabled="@(busy || needsSignInAgain)" @onclick="ChooseCalendarsAsync">Choose calendars</button>
-            @if (calendars.Count > 0 && canAddEvents && adding is null)
-            {
-                <button class="btn btn-outline-primary" disabled="@busy" @onclick="() => adding = CalendarEvents.Blank()">+ Add appointment</button>
-            }
-        }
-    </div>
-    <SyncAlerts Busy="busy" Status="@status" Error="@error" Problems="problems" />
-    @if (adding is not null)
-    {
-        <div class="mb-3"><AddAppointment Draft="adding" OnAdded="AppointmentAddedAsync" OnCancel="() => adding = null" /></div>
-    }
-
-    <FeatureGate On="Features.CurrentValue.Email" Quiet="true">
-    <h2 class="h5">Folders</h2>
-    @if (choosing)
-    {
-        <div class="border rounded p-2 mb-2" style="max-width: 40rem; max-height: 50vh; overflow-y: auto">
-            @foreach (var f in mailFolders)
-            {
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="f-@f.Id.GetHashCode()" checked="@picked.Contains(f.Id)"
-                           @onchange="e => { if ((bool)e.Value!) picked.Add(f.Id); else picked.Remove(f.Id); }" />
-                    <label class="form-check-label" for="f-@f.Id.GetHashCode()">@f.Path <span class="text-muted small">(@f.TotalCount)</span></label>
-                </div>
-            }
-        </div>
-        <div class="d-flex gap-2 mb-3">
-            <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="SaveFoldersAsync">Save</button>
-            <button class="btn btn-outline-secondary btn-sm" disabled="@busy" @onclick="() => choosing = false">Cancel</button>
-            @if (folders.Any(f => !picked.Contains(f.GraphId)))
-            {
-                <span class="small text-warning-emphasis align-self-center">Emails from unticked folders will be removed from the app.</span>
-            }
-        </div>
     }
     else
     {
-        @if (folders.Count == 0)
-        {
-            <p class="text-muted">No folders chosen yet.</p>
-        }
-        else
-        {
-            <ul>
-                @foreach (var f in folders)
-                {
-                    <li>@f.Path <span class="text-muted small">(@f.Messages.Count emails@(f.LastSyncedAt is { } at ? $", last synced {RelativeTime.Ago(at, DateTimeOffset.UtcNow)}" : ", not synced yet"))</span></li>
-                }
-            </ul>
-        }
-    }
-    </FeatureGate>
-
-    <FeatureGate On="Features.CurrentValue.Calendar" Quiet="true">
-    <h2 class="h5 mt-4">Calendars</h2>
-    @if (choosingCalendars)
-    {
-        <div class="border rounded p-2 mb-2" style="max-width: 40rem">
-            @foreach (var c in mailCalendars)
-            {
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="c-@c.Id.GetHashCode()" checked="@pickedCalendars.Contains(c.Id)"
-                           @onchange="e => { if ((bool)e.Value!) pickedCalendars.Add(c.Id); else pickedCalendars.Remove(c.Id); }" />
-                    <label class="form-check-label" for="c-@c.Id.GetHashCode()">@c.Name</label>
+        <div class="card mb-3" style="max-width: 52rem">
+            <div class="card-body">
+                <h2 class="h5">Account</h2>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span>Signed in as <strong>@signedInAs</strong></span>
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="SignOutAsync">Sign out</button>
                 </div>
-            }
-        </div>
-        <div class="d-flex gap-2 mb-3">
-            <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="SaveCalendarsAsync">Save</button>
-            <button class="btn btn-outline-secondary btn-sm" disabled="@busy" @onclick="() => choosingCalendars = false">Cancel</button>
-        </div>
-    }
-    else
-    {
-        @if (calendars.Count == 0)
-        {
-            <p class="text-muted">No calendars chosen yet. Choose the calendar you keep rental appointments in.</p>
-        }
-        else
-        {
-            <ul>
-                @foreach (var c in calendars)
+                @if (needsSignInAgain || (calendars.Count > 0 && !canAddEvents))
                 {
-                    <li>@c.Name <span class="text-muted small">(@c.Events.Count events@(c.LastSyncedAt is { } at ? $", last synced {RelativeTime.Ago(at, DateTimeOffset.UtcNow)}" : ", not synced yet"))</span></li>
-                }
-            </ul>
-        }
-        @if (calendars.Count > 0 && !canAddEvents && !needsSignInAgain)
-        {
-            <div class="alert alert-info small" style="max-width: 52rem">
-                The app can now add appointments to your calendar (from here, the Dashboard, Maintenance, leases, and Ask).
-                That needs your permission once: click <strong>Sign in again</strong> and accept the permission to add to your calendar.
-                @if (deviceCode is { } writeCode)
-                {
-                    <div class="mt-2">
-                        Go to <a href="@writeCode.Url" target="_blank" rel="noopener">@writeCode.Url</a> and enter the code
-                        <strong class="font-monospace fs-6 mx-1">@writeCode.Code</strong>, then sign in and accept.
+                    <div class="alert alert-info small mt-2 mb-0">
+                        @(needsSignInAgain
+                            ? "The app can now read your calendar too, which needs your permission once."
+                            : "The app can add appointments to your calendar (from here, the Dashboard, Maintenance, leases, and Ask). That needs your permission once.")
+                        @if (deviceCode is { } againCode)
+                        {
+                            <div class="mt-2">
+                                Go to <a href="@againCode.Url" target="_blank" rel="noopener">@againCode.Url</a> and enter the code
+                                <strong class="font-monospace fs-5 mx-1">@againCode.Code</strong>, then sign in and accept.
+                            </div>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-primary ms-2" disabled="@busy" @onclick="SignInAsync">Sign in again</button>
+                        }
                     </div>
+                }
+                <div class="small text-muted mt-2">
+                    @if (MailSync.IsRunning)
+                    {
+                        <span>Getting new @(SyncedWhat) now…</span>
+                    }
+                    else
+                    {
+                        <span title="@(MailSync.LastRunAt is { } exact ? RelativeTime.Exact(exact) : null)">
+                            New @SyncedWhat come in automatically every @(MailSync.Interval.TotalHours == 1 ? "hour" : $"{MailSync.Interval.TotalHours:0} hours")
+                            (<a href="settings">change</a>)@(MailSync.LastRunAt is { } at ? $": last {RelativeTime.Ago(at, Clock.GetUtcNow())}" : "")@($", next {RelativeTime.FromNow(MailSync.NextRunAt, Clock.GetUtcNow())}").
+                        </span>
+                        @if (MailSync.LastResult is { } result) { <span>@result</span> }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <FeatureGate On="Features.CurrentValue.Email" Quiet="true">
+        <div class="card mb-3" style="max-width: 52rem">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <h2 class="h5 mb-0 me-auto">Email folders</h2>
+                    @if (!choosing) { <button class="btn btn-sm btn-outline-primary" disabled="@busy" @onclick="ChooseFoldersAsync">Choose folders</button> }
+                </div>
+                @if (choosing)
+                {
+                    <div class="border rounded p-2 mb-2" style="max-height: 50vh; overflow-y: auto">
+                        @foreach (var f in mailFolders)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="f-@f.Id.GetHashCode()" checked="@picked.Contains(f.Id)"
+                                       @onchange="e => { if ((bool)e.Value!) picked.Add(f.Id); else picked.Remove(f.Id); }" />
+                                <label class="form-check-label" for="f-@f.Id.GetHashCode()">@f.Path <span class="text-muted small">(@f.TotalCount)</span></label>
+                            </div>
+                        }
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="SaveFoldersAsync">Save</button>
+                        <button class="btn btn-outline-secondary btn-sm" disabled="@busy" @onclick="() => choosing = false">Cancel</button>
+                        @if (folders.Any(f => !picked.Contains(f.GraphId)))
+                        {
+                            <span class="small text-warning-emphasis align-self-center">Emails from unticked folders will be removed from the app.</span>
+                        }
+                    </div>
+                }
+                else if (folders.Count == 0)
+                {
+                    <p class="text-muted mb-0">No folders chosen yet. Choose the folders you keep tenant and vendor emails in.</p>
                 }
                 else
                 {
-                    <button class="btn btn-sm btn-primary ms-2" disabled="@busy" @onclick="SignInAsync">Sign in again</button>
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            @foreach (var f in folders)
+                            {
+                                <tr>
+                                    <td>@f.Path</td>
+                                    <td class="text-end">@f.Messages.Count emails</td>
+                                    <td class="text-end text-muted small">@(f.LastSyncedAt is { } at ? $"synced {RelativeTime.Ago(at, DateTimeOffset.UtcNow)}" : "not synced yet")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
                 }
             </div>
-        }
-    }
-    </FeatureGate>
-}
+        </div>
+        </FeatureGate>
 
-@if (signedInAs is null)
-{
-    <SyncAlerts Busy="busy" Status="@status" Error="@error" Problems="problems" />
-}
-
-@if (emailCount > 0 && Features.CurrentValue.Email)
-{
-    <h2 class="h5 mt-4">Emails (@emailCount)</h2>
-    <input class="form-control form-control-sm mb-2" style="max-width: 24rem" placeholder="Search subject and text" @bind="search" @bind:after="LoadEmailsAsync" />
-    <table class="table table-sm align-middle">
-        <thead><tr><th>Date</th><th>From / to</th><th>Subject</th><th>Is</th><th></th></tr></thead>
-        <tbody>
-            @foreach (var m in emails)
-            {
-                <tr class="@(open == m.Id ? "table-active" : "")" style="cursor: pointer" @onclick="() => open = open == m.Id ? null : m.Id">
-                    <td class="text-nowrap">@m.SentAt.ToLocalTime().ToString("MMM d, yyyy")</td>
-                    <td>@(m.IsFromMe ? "To " + m.To : m.FromDisplay)</td>
-                    <td>@m.Subject</td>
-                    <td>@(m.Tenant?.FullName ?? m.Vendor?.Name)</td>
-                    <td>@(m.Attachments.Count > 0 ? $"📎 {m.Attachments.Count}" : "")</td>
-                </tr>
-                @if (open == m.Id)
+        <FeatureGate On="Features.CurrentValue.Calendar" Quiet="true">
+        <div class="card mb-3" style="max-width: 52rem">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <h2 class="h5 mb-0 me-auto">Calendars</h2>
+                    @if (!choosingCalendars) { <button class="btn btn-sm btn-outline-primary" disabled="@(busy || needsSignInAgain)" @onclick="ChooseCalendarsAsync">Choose calendars</button> }
+                </div>
+                @if (choosingCalendars)
                 {
-                    <tr>
-                        <td colspan="5">
-                            <div class="small text-muted mb-1">
-                                From @m.FromDisplay · To @m.To@(m.Cc.Length > 0 ? " · Cc " + m.Cc : "") · @m.SentAt.ToLocalTime().ToString("f")
+                    <div class="border rounded p-2 mb-2">
+                        @foreach (var c in mailCalendars)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="c-@c.Id.GetHashCode()" checked="@pickedCalendars.Contains(c.Id)"
+                                       @onchange="e => { if ((bool)e.Value!) pickedCalendars.Add(c.Id); else pickedCalendars.Remove(c.Id); }" />
+                                <label class="form-check-label" for="c-@c.Id.GetHashCode()">@c.Name</label>
                             </div>
-                            <div style="white-space: pre-wrap">@(showFull ? m.FullText : m.Text)</div>
-                            @if (m.FullText.Length > m.Text.Length + 10)
-                            {
-                                <button class="btn btn-link btn-sm p-0" @onclick="() => showFull = !showFull" @onclick:stopPropagation>@(showFull ? "Hide earlier conversation" : "Show earlier conversation")</button>
-                            }
-                            @foreach (var a in m.Attachments)
-                            {
-                                <div>
-                                    <a href="email-attachments/@a.Id" target="_blank" @onclick:stopPropagation>@a.FileName</a>
-                                    <span class="small text-muted">@(a.HasText ? "" : a.ContentType.StartsWith("image/") ? "(picture)" : "(no readable text)")</span>
-                                </div>
-                            }
-                        </td>
-                    </tr>
+                        }
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="SaveCalendarsAsync">Save</button>
+                        <button class="btn btn-outline-secondary btn-sm" disabled="@busy" @onclick="() => choosingCalendars = false">Cancel</button>
+                    </div>
                 }
-            }
-        </tbody>
-    </table>
-    @if (emails.Count == Shown) { <p class="small text-muted">Showing the newest @Shown; search to narrow down.</p> }
+                else if (calendars.Count == 0)
+                {
+                    <p class="text-muted mb-0">No calendars chosen yet. Choose the calendar you keep rental appointments in.</p>
+                }
+                else
+                {
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            @foreach (var c in calendars)
+                            {
+                                <tr>
+                                    <td>@c.Name</td>
+                                    <td class="text-end">@c.Events.Count appointments</td>
+                                    <td class="text-end text-muted small">@(c.LastSyncedAt is { } at ? $"synced {RelativeTime.Ago(at, DateTimeOffset.UtcNow)}" : "not synced yet")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+        </FeatureGate>
+    }
 }
 </FeatureGate>
 
 @code {
-    private const int Shown = 100;
+    private const int PageSize = 50;
+    private int shown = PageSize;
+    private int matching;
+    private string tab = "emails";
+    private string who = "all";
+    private int folderFilter;
+    private int calendarVersion;
+
+    private static readonly (string Key, string Label)[] WhoChoices = [("all", "All"), ("tenants", "Tenants"), ("vendors", "Vendors"), ("other", "Other")];
+
+    private IEnumerable<(string Key, string Label)> Tabs =>
+        new[] { ("emails", "Emails", Features.CurrentValue.Email), ("calendar", "Calendar", Features.CurrentValue.Calendar), ("setup", "Setup", true) }
+            .Where(t => t.Item3).Select(t => (t.Item1, t.Item2));
+
+    /// <summary>Whether Setup has something for the owner to do (sign in, grant a permission, or choose what to sync).</summary>
+    private bool NeedsAttention => SignIn.IsConfigured
+        && (signedInAs is null || needsSignInAgain || (Features.CurrentValue.Email && folders.Count == 0) || (Features.CurrentValue.Calendar && calendars.Count == 0));
+
+    private DateOnly Today => DateOnly.FromDateTime(Clock.GetLocalNow().DateTime);
+
+    private string GroupOf(DateTimeOffset sentAt)
+    {
+        var day = DateOnly.FromDateTime(sentAt.ToLocalTime().DateTime);
+        var age = Today.DayNumber - day.DayNumber;
+        return age <= 0 ? "Today" : age == 1 ? "Yesterday" : age < 7 ? "Earlier this week" : day.ToString("MMMM yyyy");
+    }
+
+    private string TimeOf(DateTimeOffset sentAt)
+    {
+        var local = sentAt.ToLocalTime();
+        var age = Today.DayNumber - DateOnly.FromDateTime(local.DateTime).DayNumber;
+        return age <= 0 ? local.ToString("h:mm tt") : age < 7 ? local.ToString("ddd") : local.ToString("MMM d");
+    }
+
+    private static string Snippet(string text)
+    {
+        var line = string.Join(' ', text.Split((char[]?)null, 40, StringSplitOptions.RemoveEmptyEntries).Take(39));
+        return line.Length > 140 ? line[..140] : line;
+    }
+
+    private static string ShortName(string recipients)
+    {
+        var first = recipients.Split(',', ';')[0].Trim();
+        var angle = first.IndexOf('<');
+        return angle > 0 ? first[..angle].Trim() : first;
+    }
+
+    private void Open(int id)
+    {
+        open = open == id ? null : id;
+        showFull = false;
+    }
+
+    private async Task SetWhoAsync(string value)
+    {
+        who = value;
+        await ResetListAsync();
+    }
+
+    private async Task ResetListAsync()
+    {
+        shown = PageSize;
+        await LoadEmailsAsync();
+    }
+
+    private async Task ShowOlderAsync()
+    {
+        shown += PageSize;
+        await LoadEmailsAsync();
+    }
+
+    private RenderFragment Reader(EmailMessage m) => @<div>
+        <h2 class="h5 mb-1">@(m.Subject.Length > 0 ? m.Subject : "(no subject)")</h2>
+        <div class="small text-muted mb-2">
+            <div>From @m.FromDisplay</div>
+            <div>To @m.To@(m.Cc.Length > 0 ? " · Cc " + m.Cc : "")</div>
+            <div>
+                @m.SentAt.ToLocalTime().ToString("dddd, MMM d, yyyy h:mm tt")
+                @if (m.Tenant is not null) { <a class="ms-2" href="tenants">@m.Tenant.FullName (tenant)</a> }
+                @if (m.Vendor is not null) { <a class="ms-2" href="expenses?vendor=@m.Vendor.Id">@m.Vendor.Name (vendor)</a> }
+            </div>
+        </div>
+        @if (m.Attachments.Count > 0)
+        {
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                @foreach (var a in m.Attachments)
+                {
+                    <a class="btn btn-sm btn-outline-secondary" href="email-attachments/@a.Id" target="_blank"
+                       title="@(a.HasText ? "" : a.ContentType.StartsWith("image/") ? "Picture" : "No readable text")">📎 @a.FileName</a>
+                }
+            </div>
+        }
+        <div style="white-space: pre-wrap; overflow-wrap: anywhere">@(showFull ? m.FullText : m.Text)</div>
+        @if (m.FullText.Length > m.Text.Length + 10)
+        {
+            <button class="btn btn-link btn-sm p-0 mt-1" @onclick="() => showFull = !showFull">@(showFull ? "Hide earlier conversation" : "Show earlier conversation")</button>
+        }
+    </div>;
+
     private string? signedInAs;
     private bool needsSignInAgain;
     private bool canAddEvents;
@@ -297,6 +447,7 @@ else
         if (!MailSync.IsRunning)
         {
             await LoadAsync();
+            calendarVersion++;
         }
         StateHasChanged();
     });
@@ -315,6 +466,10 @@ else
             error = $"Couldn't check the email sign-in: {ex.Message}";
         }
         await LoadAsync();
+        // Start where there's something to do: Setup until emails or calendars exist, else the first tab.
+        tab = emailCount > 0 && Features.CurrentValue.Email ? "emails"
+            : calendars.Count > 0 && Features.CurrentValue.Calendar ? "calendar"
+            : "setup";
     }
 
     private async Task LoadAsync()
@@ -335,7 +490,24 @@ else
             var pattern = $"%{word.Replace("%", "").Replace("_", "")}%";
             query = query.Where(m => EF.Functions.Like(m.Subject, pattern) || EF.Functions.Like(m.Text, pattern) || EF.Functions.Like(m.FromName ?? "", pattern) || EF.Functions.Like(m.FromAddress, pattern));
         }
-        emails = await query.OrderByDescending(m => m.SentAt).Take(Shown).ToListAsync();
+        query = who switch
+        {
+            "tenants" => query.Where(m => m.TenantId != null),
+            "vendors" => query.Where(m => m.VendorId != null),
+            "other" => query.Where(m => m.TenantId == null && m.VendorId == null),
+            _ => query,
+        };
+        if (folderFilter != 0)
+        {
+            query = query.Where(m => m.EmailFolderId == folderFilter);
+        }
+        matching = await query.CountAsync();
+        emails = await query.OrderByDescending(m => m.SentAt).Take(shown).ToListAsync();
+        // An email that's no longer in the list can't stay open.
+        if (emails.All(m => m.Id != open))
+        {
+            open = null;
+        }
     }
 
     private async Task RunAsync(Func<Task> action)
@@ -427,6 +599,7 @@ else
     {
         var summary = await MailSync.RunExclusiveAsync(() => CalendarSync.SyncAsync(leaving.Token), leaving.Token);
         await LoadAsync();
+        calendarVersion++;
         status = $"Calendar: {summary.Added} new event(s), {summary.Updated} updated, {summary.Removed} removed (from a year ago to a year ahead).";
     });
 
