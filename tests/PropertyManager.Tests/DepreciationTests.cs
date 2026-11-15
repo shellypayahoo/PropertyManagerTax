@@ -104,6 +104,38 @@ public sealed class DepreciationTests : IDisposable
     }
 
     [Fact]
+    public async Task Several_improvements_dont_change_the_rent_figures()
+    {
+        await using (var db = dbFactory.CreateDbContext())
+        {
+            foreach (var unit in db.Units.Where(u => u.PropertyId == taylorId).ToList())
+            {
+                var lease = new Lease { UnitId = unit.Id, Tenants = [new Tenant { FirstName = "T", LastName = unit.Label }], StartDate = new(2026, 1, 1), MonthlyRent = 1_000m };
+                lease.Payments.Add(new RentPayment { Date = new(2026, 1, 3), ForMonth = new(2026, 1, 1), Amount = 1_000m });
+                db.Leases.Add(lease);
+            }
+            await db.SaveChangesAsync();
+        }
+        var reports = new ReportService(dbFactory);
+        var before = (await reports.GetAnnualProfitAndLossAsync(2026)).Single(p => p.PropertyId == taylorId);
+
+        await using (var db = dbFactory.CreateDbContext())
+        {
+            db.DepreciableAssets.AddRange(
+                new DepreciableAsset { PropertyId = taylorId, Description = "Roof", PlacedInService = new(2024, 5, 1), Cost = 20_000m },
+                new DepreciableAsset { PropertyId = taylorId, Description = "Fence", PlacedInService = new(2024, 6, 1), Cost = 5_000m, Life = AssetLife.FifteenYear },
+                new DepreciableAsset { PropertyId = taylorId, Description = "Washer", PlacedInService = new(2026, 2, 1), Cost = 900m, Life = AssetLife.FiveYear });
+            await db.SaveChangesAsync();
+        }
+        var after = (await reports.GetAnnualProfitAndLossAsync(2026)).Single(p => p.PropertyId == taylorId);
+
+        Assert.Equal((24_000m, 2_000m), (before.ScheduledRent, before.RentReceived));
+        Assert.Equal((before.ScheduledRent, before.RentReceived), (after.ScheduledRent, after.RentReceived));
+        // Building 16,000 + refrigerator 640 + roof 727.27 + fence 427.50 + washer 180.
+        Assert.Equal(17_974.77m, after.CalculatedDepreciation);
+    }
+
+    [Fact]
     public async Task Depreciation_entered_by_hand_replaces_the_calculation()
     {
         await using (var db = dbFactory.CreateDbContext())
