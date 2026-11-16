@@ -112,7 +112,7 @@
 
 @if (features["Assistant"])
 {
-    <div class="card mb-3" style="max-width: 52rem">
+    <div class="card mb-3" style="max-width: 52rem" id="ask">
         <div class="card-body">
             <h2 class="h5">Ask (AI assistant)</h2>
             @if (!Assistant.Providers.Any(p => p.IsConfigured))
@@ -127,6 +127,7 @@
                         <select id="model" class="form-select" @bind="defaultProvider">
                             <option value="">The first one that's set up</option>
                             @foreach (var p in Assistant.Providers.Where(p => p.IsConfigured)) { <option value="@p.Name">@p.Label</option> }
+                            @foreach (var (name, label) in UnsavedModels) { <option value="@name">@label (not saved yet)</option> }
                         </select>
                         <div class="form-text">Also what expense suggestions use.</div>
                     </div>
@@ -172,10 +173,20 @@
                                 @(p.Type == AssistantProviderType.AzureFoundry
                                     ? "Deployment names from this Foundry resource's Deployments page, separated by commas. They use the same endpoint and key."
                                     : "Model names, separated by commas. They use the same key.")
-                                After saving, they're in the Ask page's model list and can be chosen above.
                             </div>
                         </div>
                     }
+                    <div class="col-12 d-flex flex-wrap align-items-center gap-2">
+                        <button class="btn btn-primary" disabled="@saving" @onclick="SaveModelsAsync">Save models</button>
+                        @if (ModelsChanged)
+                        {
+                            <span class="small text-warning-emphasis">Not saved yet: click <strong>Save models</strong> to put the changes in the Ask page's model list.</span>
+                        }
+                        else if (Saved == 2)
+                        {
+                            <span class="small text-success">Saved. The Ask page's model list is up to date.</span>
+                        }
+                    </div>
                 </div>
             }
         </div>
@@ -281,6 +292,54 @@
     private readonly Dictionary<string, IReadOnlyList<FoundDeployment>> found = [];
     private readonly Dictionary<string, string> notes = [];
     private string? checking;
+
+    /// <summary>The models on each service as typed or ticked here (may differ from what's saved).</summary>
+    private IEnumerable<string> ModelsOf(string provider) =>
+        otherModels.GetValueOrDefault(provider, "").Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    private IEnumerable<AssistantProviderOptions> MainProviders => Assistant.Providers.Where(p => p.Name == p.ProviderName);
+
+    /// <summary>Models ticked or typed but not saved yet, so they can already be picked as the default.</summary>
+    private IEnumerable<(string Name, string Label)> UnsavedModels =>
+        MainProviders.Where(p => p.IsConfigured)
+            .SelectMany(p => ModelsOf(p.Name)
+                .Where(m => !string.Equals(m, p.Model, StringComparison.OrdinalIgnoreCase) && Assistant.Providers.All(c => c.Name != $"{p.Name}/{m}"))
+                .Select(m => ($"{p.Name}/{m}", $"{p.Name}: {m}")));
+
+    /// <summary>Whether the model lists or the default differ from what's saved.</summary>
+    private bool ModelsChanged =>
+        MainProviders.Any(p => otherModels.ContainsKey(p.Name)
+            && !ModelsOf(p.Name).SequenceEqual(p.Models.Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()), StringComparer.OrdinalIgnoreCase))
+        || defaultProvider != (Configuration["Assistant:DefaultProvider"] ?? "");
+
+    private void AddModelValues(Dictionary<string, string?> values)
+    {
+        foreach (var p in MainProviders.Where(p => otherModels.ContainsKey(p.Name)))
+        {
+            var models = ModelsOf(p.Name).ToList();
+            // Saved as a list (Models:0, Models:1, ...); entries past the new end are cleared.
+            for (var i = 0; i < Math.Max(models.Count, p.Models.Count) + 5; i++)
+            {
+                values[$"Assistant:Providers:{p.Name}:Models:{i}"] = i < models.Count ? models[i] : null;
+            }
+        }
+    }
+
+    /// <summary>Saves only the AI model lists and the default, without the rest of the page.</summary>
+    private async Task SaveModelsAsync()
+    {
+        saving = true;
+        var values = new Dictionary<string, string?>
+        {
+            ["Assistant:DefaultProvider"] = string.IsNullOrEmpty(defaultProvider) ? null : defaultProvider,
+            ["Assistant:AllowPhotos"] = allowPhotos ? "true" : "false",
+        };
+        AddModelValues(values);
+        await SavedSettings.SaveAsync(values);
+        // Reload so the model lists here and on the Ask page show the saved settings.
+        Navigation.NavigateTo("/settings?saved=2#ask", forceLoad: true);
+    }
 
     private List<string> Listed(string provider) =>
         otherModels.GetValueOrDefault(provider, "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
@@ -429,16 +488,7 @@
         {
             values[$"Features:{key}"] = on ? "true" : "false";
         }
-        foreach (var p in Assistant.Providers.Where(p => p.Name == p.ProviderName && otherModels.ContainsKey(p.Name)))
-        {
-            var models = otherModels[p.Name].Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            // Saved as a list (Models:0, Models:1, ...); entries past the new end are cleared.
-            for (var i = 0; i < Math.Max(models.Count, p.Models.Count) + 5; i++)
-            {
-                values[$"Assistant:Providers:{p.Name}:Models:{i}"] = i < models.Count ? models[i] : null;
-            }
-        }
+        AddModelValues(values);
         await SavedSettings.SaveAsync(values);
         BusinessTimeZone.Apply(timeZone.Length == 0 ? ComputerZone : timeZone);
         // A newly chosen folder gets its first backup right away.
@@ -459,7 +509,7 @@
 
     [SupplyParameterFromQuery] public int Saved { get; set; }
 
-    protected override void OnParametersSet() => status = Saved == 1 ? "Settings saved." : null;
+    protected override void OnParametersSet() => status = Saved is 1 ? "Settings saved." : null;
 
     private string timeZone = "";
     private int checkHours = 3;

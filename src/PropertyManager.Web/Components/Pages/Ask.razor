@@ -34,6 +34,7 @@ else
                 <option value="@p.Name">@p.Label@(p.IsConfigured ? "" : " (not set up)")</option>
             }
         </select>
+        <a class="small" href="settings#ask" title="Choose other models on your AI services, such as a new Foundry deployment">Add a model</a>
         <div class="form-check ms-2">
             <input class="form-check-input" type="checkbox" id="photos" @bind="allowPhotos" disabled="@busy" />
             <label class="form-check-label" for="photos" title="Each photo it looks at is sent to the model, which uses more of your rate limit.">Let it look at photos</label>
