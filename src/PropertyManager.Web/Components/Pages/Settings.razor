@@ -16,6 +16,9 @@
 @inject IOptionsMonitor<BackupOptions> BackupSettings
 @inject NavigationManager Navigation
 @inject IConfiguration Configuration
+@* Settings the owner can change without editing files: business details and time zone, which parts of the app to use,
+   AI models, who can open the app, and backups. Saved to the database (SettingsService), which overrides
+   appsettings.json; most changes apply right away. *@
 
 <PageTitle>Settings</PageTitle>
 

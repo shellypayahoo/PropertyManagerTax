@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>Whether a file sent by text was copied into the app.</summary>
 public enum TextAttachmentStatus
 {
     /// <summary>The file is copied into document storage.</summary>

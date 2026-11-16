@@ -9,11 +9,13 @@ using PropertyManager.Core.Storage;
 
 namespace PropertyManager.Core.Services;
 
+/// <summary>Where backups go, when the last one was made, and how much is in the backup folder.</summary>
 public record BackupStatus(string? Folder, DateTimeOffset? LastBackupAt, int DatabaseCopies, int Documents)
 {
     public bool IsOn => Folder is not null;
 }
 
+/// <summary>What one backup wrote.</summary>
 public record BackupResult(string DatabaseCopy, long DatabaseBytes, int DocumentsCopied, int DocumentsTotal);
 
 /// <summary>

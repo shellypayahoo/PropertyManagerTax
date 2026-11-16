@@ -1,6 +1,8 @@
 @page "/rent"
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
+@* Rent for every lease in one month: what's due, paid, and outstanding, with a quick way to record a payment. Warnings
+   flag likely mistakes such as a payment entered twice. *@
 
 <PageTitle>Rent</PageTitle>
 

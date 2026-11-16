@@ -1,3 +1,6 @@
+@* The coloured Paid / Partial / Unpaid / Upcoming badge for one lease month, with a warning badge when the payments
+   look wrong. *@
+
 @if (Month.Warning is not null)
 {
     <span class="badge text-bg-warning me-1" title="@Month.Warning">⚠ @(Month.Warning.Length > 20 ? "Check payments" : Month.Warning)</span>

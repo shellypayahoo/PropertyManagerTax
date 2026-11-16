@@ -2,6 +2,8 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
 @inject CalendarEventService CalendarEvents
+@* Appointments from the synced calendars for the next few days (14 on the Dashboard, 60 on the Calendar tab), each
+   shown in its own time zone, with + Add appointment. *@
 
 @if (synced)
 {

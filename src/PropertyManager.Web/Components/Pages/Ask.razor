@@ -3,6 +3,9 @@
 @inject AssistantService Assistant
 @inject AskHistory History
 @inject IOptionsMonitor<FeatureOptions> Features
+@* The Ask page: questions in plain English, answered by the AI model chosen here (AssistantService). The conversation
+   is kept in the database by AskHistory, shared by every device, until cleared. The model looks things up read-only and
+   can propose changes, which appear as cards; nothing changes until Apply. *@
 
 <PageTitle>Ask</PageTitle>
 

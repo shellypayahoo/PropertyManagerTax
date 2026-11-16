@@ -32,6 +32,7 @@ public enum ExpenseCategory
     EscrowDeposit = 101,
 }
 
+/// <summary>Display names, Schedule E line numbers, and whether a category is deductible.</summary>
 public static class ExpenseCategoryExtensions
 {
     public static string DisplayName(this ExpenseCategory category) => category switch

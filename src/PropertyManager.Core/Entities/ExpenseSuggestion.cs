@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>Where an <see cref="ExpenseSuggestion"/> stands: waiting for the owner, turned into an expense, or set aside.</summary>
 public enum SuggestionStatus
 {
     Pending,

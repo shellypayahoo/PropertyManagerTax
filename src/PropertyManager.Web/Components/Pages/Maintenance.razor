@@ -4,6 +4,8 @@
 @inject TimeProvider Clock
 @inject IOptionsMonitor<FeatureOptions> Features
 @inject CalendarEventService CalendarEvents
+@* Maintenance requests: add, edit, change status and vendor, and schedule visits. Upcoming calendar appointments that
+   look like the visit for an open request are suggested (EventMatcher); "Not this" is remembered. *@
 
 <PageTitle>Maintenance</PageTitle>
 

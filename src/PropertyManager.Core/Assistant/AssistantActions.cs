@@ -11,6 +11,7 @@ using PropertyManager.Core.Services;
 
 namespace PropertyManager.Core.Assistant;
 
+/// <summary>Where a change proposed on the Ask page stands. Expired means the app restarted before it was applied.</summary>
 public enum ProposalState { Pending, Applied, Dismissed, Failed, Expired }
 
 /// <summary>

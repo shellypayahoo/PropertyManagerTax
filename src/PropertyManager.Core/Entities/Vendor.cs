@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>Someone the owner pays: a contractor, store, utility, or lender. Linked to expenses, maintenance, texts, and emails.</summary>
 public class Vendor
 {
     public int Id { get; set; }

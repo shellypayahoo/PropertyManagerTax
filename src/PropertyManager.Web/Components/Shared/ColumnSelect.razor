@@ -1,3 +1,5 @@
+@* A dropdown of a CSV file's column headers, for matching columns on the import pages. *@
+
 <select class="form-select" value="@Value" @onchange="e => ValueChanged.InvokeAsync(string.IsNullOrEmpty(e.Value as string) ? null : (string)e.Value!)">
     <option value="">—</option>
     @foreach (var h in Headers)

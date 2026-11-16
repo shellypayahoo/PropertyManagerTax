@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Email;
 
+/// <summary>Settings for signing in to Outlook.com / Hotmail (section "Email"): the Azure app registration's client id and tenant.</summary>
 public class EmailOptions
 {
     public const string Section = "Email";

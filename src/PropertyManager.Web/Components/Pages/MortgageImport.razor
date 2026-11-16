@@ -2,6 +2,8 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject MortgageImportService ImportService
 @using PropertyManager.Core.Import.Pdf
+@* Imports a lender's payment history so each mortgage payment is split into interest (deductible), principal, and
+   escrow, either splitting the payment already imported from the bank or adding new expenses. *@
 
 <PageTitle>Mortgage import</PageTitle>
 

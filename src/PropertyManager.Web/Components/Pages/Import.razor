@@ -1,6 +1,8 @@
 @page "/import"
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject ImportService ImportService
+@* Bank and Zelle CSV import in three steps: upload, match the columns, then review every row (each pre-filled from
+   rules and past choices) before anything is saved. Rows already imported into the same account are skipped. *@
 
 <PageTitle>Import</PageTitle>
 

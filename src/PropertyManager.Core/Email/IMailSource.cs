@@ -1,12 +1,15 @@
 namespace PropertyManager.Core.Email;
 
+/// <summary>A folder in the mailbox, with its full path and message count.</summary>
 public record MailFolderInfo(string Id, string Path, int TotalCount);
 
+/// <summary>An email address with the display name that came with it.</summary>
 public record MailAddress(string Address, string? Name)
 {
     public override string ToString() => string.IsNullOrWhiteSpace(Name) ? Address : $"{Name} <{Address}>";
 }
 
+/// <summary>One email as read from the mailbox.</summary>
 public record MailItem(
     string Id, string? ConversationId, string Subject, MailAddress? From, IReadOnlyList<MailAddress> To, IReadOnlyList<MailAddress> Cc,
     DateTimeOffset SentAt, string Body, bool HasAttachments, bool IsDraft);
@@ -14,8 +17,10 @@ public record MailItem(
 /// <summary>Messages added or changed in a folder since the last sync, ids of messages removed from it, and where to resume next time.</summary>
 public record MailChanges(IReadOnlyList<MailItem> Changed, IReadOnlyList<string> Removed, string DeltaLink);
 
+/// <summary>A file attached to an email (inline pictures in the body are marked).</summary>
 public record MailAttachmentInfo(string Id, string Name, string ContentType, long Size, bool IsInline);
 
+/// <summary>A calendar in the mailbox.</summary>
 public record CalendarInfo(string Id, string Name);
 
 /// <summary>

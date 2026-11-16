@@ -11,6 +11,7 @@ using PropertyManager.Core.Storage;
 
 namespace PropertyManager.Core.Assistant;
 
+/// <summary>What one check of vendor messages found.</summary>
 public record ExpenseCheckSummary(int MessagesChecked, int Suggested, int VendorsFailed, string? Problem = null)
 {
     public static ExpenseCheckSummary Skipped(string reason) => new(0, 0, 0, reason);

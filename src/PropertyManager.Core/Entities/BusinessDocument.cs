@@ -13,6 +13,7 @@ public enum BusinessDocumentKind
     Other,
 }
 
+/// <summary>Display names and privacy defaults for <see cref="BusinessDocumentKind"/>.</summary>
 public static class BusinessDocumentKindExtensions
 {
     public static string DisplayName(this BusinessDocumentKind kind) => kind switch

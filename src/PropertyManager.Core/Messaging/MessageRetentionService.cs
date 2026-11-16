@@ -5,6 +5,7 @@ using PropertyManager.Core.Storage;
 
 namespace PropertyManager.Core.Messaging;
 
+/// <summary>How many texts and emails (and their files) a retention cleanup removed.</summary>
 public record RetentionResult(int TextsRemoved, int EmailsRemoved);
 
 /// <summary>

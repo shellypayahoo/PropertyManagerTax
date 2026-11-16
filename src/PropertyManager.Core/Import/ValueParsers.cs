@@ -2,6 +2,7 @@ using System.Globalization;
 
 namespace PropertyManager.Core.Import;
 
+/// <summary>Reads dates and amounts in the many formats banks and lenders use in their CSV exports.</summary>
 public static class ValueParsers
 {
     private static readonly string[] DateFormats =

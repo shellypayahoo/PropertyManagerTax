@@ -6,8 +6,10 @@ using PropertyManager.Core.Storage;
 
 namespace PropertyManager.Core.Messaging;
 
+/// <summary>What a scan of Messages for contacts found.</summary>
 public record ContactScanSummary(int Contacts, int NewContacts, int Included);
 
+/// <summary>What a text message import brought in, including attachments it couldn't copy.</summary>
 public record TextImportSummary(int ChatsMatched, int MessagesAdded, int ContactsIncluded, int AttachmentsSaved = 0, int AttachmentsNotOnMac = 0, int AttachmentsTooLarge = 0);
 
 /// <summary>

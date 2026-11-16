@@ -89,6 +89,7 @@ public class SetupOptions
     public List<PropertySetup> Properties { get; set; } = [];
 }
 
+/// <summary>A property entered during first-run setup.</summary>
 public class PropertySetup
 {
     public string Name { get; set; } = "";
@@ -102,6 +103,7 @@ public class PropertySetup
     public List<UnitSetup> Units { get; set; } = [];
 }
 
+/// <summary>A unit entered during first-run setup.</summary>
 public class UnitSetup
 {
     public string Label { get; set; } = "";

@@ -1,5 +1,6 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
+@* Records a rent payment for one lease and month, warning first when it looks like a payment already entered. *@
 
 <div class="d-flex flex-wrap gap-2 align-items-end py-1">
     <div>

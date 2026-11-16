@@ -6,8 +6,10 @@ using PropertyManager.Core.Storage;
 
 namespace PropertyManager.Core.Services;
 
+/// <summary>How many uploaded files were saved, and why any weren't.</summary>
 public record DocumentUploadResult(int Saved, IReadOnlyList<string> Problems);
 
+/// <summary>Stores files uploaded to a lease (signed lease, addenda, inspections) and reads their text for the Ask page.</summary>
 public class LeaseDocumentService(
     IDbContextFactory<PropertyManagerDbContext> dbFactory, IDocumentStorage storage, TimeProvider clock, ITextRecognizer? recognizer = null)
 {

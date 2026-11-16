@@ -34,11 +34,13 @@ public sealed class DatabaseSettingsProvider(string connectionString) : Configur
     }
 }
 
+/// <summary>Plugs the settings saved on the Settings page (the AppSettings table) into the app's configuration.</summary>
 public sealed class DatabaseSettingsSource(string connectionString) : IConfigurationSource
 {
     public IConfigurationProvider Build(IConfigurationBuilder builder) => new DatabaseSettingsProvider(connectionString);
 }
 
+/// <summary>Adds the database settings as the last (highest-priority) configuration source.</summary>
 public static class DatabaseSettingsExtensions
 {
     public static IConfigurationBuilder AddDatabaseSettings(this IConfigurationBuilder builder, string? connectionString) =>

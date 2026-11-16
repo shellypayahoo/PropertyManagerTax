@@ -3,6 +3,8 @@
 @inject TimeProvider Clock
 @inject PropertyPhotoService Photos
 @inject IOptionsMonitor<FeatureOptions> Features
+@* One property: units (with bedrooms, baths, and market rent), photo, address and purchase details, and its
+   depreciation schedule (land value, improvements). Changes to purchase details change the P&L's depreciation. *@
 
 <PageTitle>@(property?.Name ?? "Property")</PageTitle>
 

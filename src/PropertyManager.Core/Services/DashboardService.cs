@@ -4,6 +4,7 @@ using PropertyManager.Core.Entities;
 
 namespace PropertyManager.Core.Services;
 
+/// <summary>The numbers on the Dashboard's cards.</summary>
 public record DashboardSummary(
     int PropertyCount,
     int UnitCount,
@@ -16,6 +17,7 @@ public record DashboardSummary(
     int LeasesPaidThisMonth,
     int LeasesDueThisMonth);
 
+/// <summary>Works out the Dashboard's numbers: rent paid this month, occupancy, lease and market rent, open maintenance, and expenses so far this year.</summary>
 public class DashboardService(IDbContextFactory<PropertyManagerDbContext> dbFactory, TimeProvider clock)
 {
     public async Task<DashboardSummary> GetSummaryAsync(CancellationToken ct = default)

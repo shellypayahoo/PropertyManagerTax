@@ -4,8 +4,10 @@ using PropertyManager.Core.Entities;
 
 namespace PropertyManager.Core.Import;
 
+/// <summary>One transaction from a bank or Zelle CSV export.</summary>
 public record BankRow(int LineNumber, DateOnly Date, string Description, decimal Amount, string Fingerprint);
 
+/// <summary>The transactions read from a bank CSV, the columns used, and any lines that couldn't be read.</summary>
 public record BankCsvResult(IReadOnlyList<string> Headers, IReadOnlyList<BankRow> Rows, IReadOnlyList<string> Errors);
 
 /// <summary>Reads a bank's CSV export using an account's column mapping.</summary>

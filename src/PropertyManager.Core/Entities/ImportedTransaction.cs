@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>What a bank transaction was imported as.</summary>
 public enum TransactionKind
 {
     /// <summary>Money out for a rental expense.</summary>

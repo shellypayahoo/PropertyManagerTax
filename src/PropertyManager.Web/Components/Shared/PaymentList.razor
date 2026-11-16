@@ -1,5 +1,6 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
+@* The rent payments for one month of a lease, each editable or removable in place. *@
 
 @foreach (var p in Payments)
 {

@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>How a rent payment or expense was paid. Card payments are left out of 1099 totals.</summary>
 public enum PaymentMethod { Zelle, BankTransfer, Check, Cash, Card, Other }
 
 /// <summary>Rent actually received from a tenant under a lease.</summary>

@@ -2,6 +2,9 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject BusinessDocumentService DocumentService
 @inject IOptionsMonitor<FeatureOptions> Features
+@* Business documents (LLC papers, tax returns, insurance, closing papers). Uploads are a plain form post to
+   /business-documents, not the live connection, which is more reliable for big files. Documents ticked "Keep out of
+   Ask" are never shown to the AI model. *@
 
 <PageTitle>Documents</PageTitle>
 

@@ -2,6 +2,7 @@ using PropertyManager.Core.Entities;
 
 namespace PropertyManager.Core.Services;
 
+/// <summary>A lease's rent for one month: not due (outside the lease), due later this month, unpaid, partly paid, or paid.</summary>
 public enum RentStatus { NotDue, Upcoming, Unpaid, Partial, Paid }
 
 /// <summary>Rent due and paid under one lease for one month.</summary>

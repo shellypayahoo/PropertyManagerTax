@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>One rentable unit in a property (e.g. "A" or the basement "B"), with its market rent and leases.</summary>
 public class Unit
 {
     public int Id { get; set; }

@@ -4,8 +4,10 @@ using PropertyManager.Core.Entities;
 
 namespace PropertyManager.Core.Import;
 
+/// <summary>How many bank transactions an import added as expenses and rent payments, and how many were transfers or ignored.</summary>
 public record ImportSummary(int Expenses, int RentPayments, int Transfers, int Ignored);
 
+/// <summary>Imports a bank or Zelle CSV: suggests what each transaction is (with the owner's rules and past choices), skips ones already imported, and saves the reviewed result.</summary>
 public class ImportService(IDbContextFactory<PropertyManagerDbContext> dbFactory, TimeProvider clock)
 {
     public async Task<ClassifierContext> LoadContextAsync(CancellationToken ct = default)

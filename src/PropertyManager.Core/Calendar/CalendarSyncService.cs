@@ -5,6 +5,7 @@ using PropertyManager.Core.Entities;
 
 namespace PropertyManager.Core.Calendar;
 
+/// <summary>Appointments added, changed, and removed by a calendar sync.</summary>
 public record CalendarSyncSummary(int Added, int Updated, int Removed);
 
 /// <summary>Copies events from the chosen calendars, from a year back to a year ahead.</summary>

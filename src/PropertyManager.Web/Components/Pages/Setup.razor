@@ -3,6 +3,8 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject SettingsService Settings
 @inject NavigationManager Navigation
+@* First-run setup for a new install: business name, properties and units, and which parts of the app to use. The
+   Dashboard sends a new install here while there are no properties yet. *@
 
 <PageTitle>Welcome</PageTitle>
 

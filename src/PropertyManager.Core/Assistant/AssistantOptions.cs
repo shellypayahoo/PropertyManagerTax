@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Assistant;
 
+/// <summary>Which kind of AI service a provider is, which decides how the app talks to it.</summary>
 public enum AssistantProviderType
 {
     /// <summary>Claude through the Anthropic API (official Anthropic SDK).</summary>
@@ -100,6 +101,7 @@ public class AssistantProviderOptions
     internal static bool IsFilled(string? value) => !string.IsNullOrWhiteSpace(value) && !value.Contains('<');
 }
 
+/// <summary>The Ask page's settings (section "Assistant"): the AI services and models to choose from, the default, and whether photos are allowed.</summary>
 public class AssistantOptions
 {
     public const string Section = "Assistant";

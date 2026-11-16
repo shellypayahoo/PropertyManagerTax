@@ -1,6 +1,8 @@
 @using PropertyManager.Core.Reports
 @inject Form1099Report Report
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@* Reports → 1099s: who looks to need a Form 1099-NEC for the year (Form1099Report), with W-9 and exempt checkboxes
+   saved on each vendor. *@
 
 <p class="text-muted" style="max-width: 56rem">
     Vendors you paid in @Year and whether they look to need a <strong>Form 1099-NEC</strong>: paid at least the threshold for

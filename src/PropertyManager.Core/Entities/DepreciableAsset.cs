@@ -13,6 +13,7 @@ public enum AssetLife
     ResidentialBuilding = 27,
 }
 
+/// <summary>Display names for <see cref="AssetLife"/>.</summary>
 public static class AssetLifeExtensions
 {
     public static string DisplayName(this AssetLife life) => life switch

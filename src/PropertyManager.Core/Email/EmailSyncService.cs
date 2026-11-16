@@ -9,6 +9,7 @@ using PropertyManager.Core.Storage;
 
 namespace PropertyManager.Core.Email;
 
+/// <summary>What an email sync added, changed, and removed, and any problems with single messages.</summary>
 public record EmailSyncSummary(int Added, int Updated, int Removed, int Attachments, IReadOnlyList<string> Problems);
 
 /// <summary>Copies the chosen mail folders into the app, and on later syncs only what changed.</summary>

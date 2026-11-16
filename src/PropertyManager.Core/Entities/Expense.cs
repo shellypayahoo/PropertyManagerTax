@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>Money spent on the rentals: a repair, a utility bill, a mortgage payment's interest. A property of null means shared by all properties (split by unit count on reports).</summary>
 public class Expense
 {
     public int Id { get; set; }

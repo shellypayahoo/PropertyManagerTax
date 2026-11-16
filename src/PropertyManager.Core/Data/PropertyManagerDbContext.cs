@@ -4,6 +4,7 @@ using PropertyManager.Core.Entities;
 
 namespace PropertyManager.Core.Data;
 
+/// <summary>The app's SQLite database. Pages get short-lived instances from an IDbContextFactory; column rules (lengths, how dates are stored, what's deleted with what) are set in OnModelCreating.</summary>
 public class PropertyManagerDbContext(DbContextOptions<PropertyManagerDbContext> options) : DbContext(options)
 {
     public DbSet<Property> Properties => Set<Property>();

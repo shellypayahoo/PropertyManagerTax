@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Import;
 
+/// <summary>Suggests the text an import rule should match, from a bank transaction's description.</summary>
 public static class RuleSuggestions
 {
     private static readonly HashSet<string> NoiseWords = new(StringComparer.OrdinalIgnoreCase)

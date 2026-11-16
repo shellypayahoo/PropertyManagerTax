@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>An agreement for one unit: its tenants, dates, monthly rent, deposit, rent payments, and documents. No end date means month-to-month.</summary>
 public class Lease
 {
     public int Id { get; set; }

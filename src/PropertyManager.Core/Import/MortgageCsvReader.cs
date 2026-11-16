@@ -4,6 +4,7 @@ using PropertyManager.Core.Entities;
 
 namespace PropertyManager.Core.Import;
 
+/// <summary>What a line of a lender's payment history is.</summary>
 public enum MortgageRowKind
 {
     /// <summary>A monthly payment, broken down into principal, interest, and escrow.</summary>
@@ -19,11 +20,13 @@ public enum MortgageRowKind
     Other,
 }
 
+/// <summary>One line of a lender's payment history, with the interest, principal, and escrow parts.</summary>
 public record MortgageRow(
     int LineNumber, DateOnly Date, string Description,
     decimal Total, decimal Principal, decimal Interest, decimal Escrow,
     MortgageRowKind Kind, string Fingerprint);
 
+/// <summary>The lines read from a lender's payment history and any that couldn't be read.</summary>
 public record MortgageCsvResult(IReadOnlyList<string> Headers, IReadOnlyList<MortgageRow> Rows, IReadOnlyList<string> Errors);
 
 /// <summary>Reads a lender's payment-history CSV using a loan account's column mapping.</summary>

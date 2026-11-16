@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>A person renting, possibly on several leases over time. <see cref="KeepMessagesUntil"/> limits how long texts and emails with a former tenant are kept.</summary>
 public class Tenant
 {
     public int Id { get; set; }

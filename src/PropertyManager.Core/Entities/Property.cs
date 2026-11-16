@@ -1,5 +1,6 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>A rental building with its units, purchase details (for the P&amp;L and depreciation), and photo.</summary>
 public class Property
 {
     public int Id { get; set; }

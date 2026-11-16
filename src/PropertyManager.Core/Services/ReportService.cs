@@ -5,8 +5,10 @@ using PropertyManager.Core.Reports;
 
 namespace PropertyManager.Core.Services;
 
+/// <summary>One Schedule E line's total on the profit and loss.</summary>
 public record CategoryTotal(ExpenseCategory Category, decimal Amount);
 
+/// <summary>A property's profit and loss for a period: rent received and scheduled, expenses by Schedule E line (shared ones split in), what isn't deductible, and calculated depreciation.</summary>
 public record PropertyProfitAndLoss(
     int PropertyId,
     string PropertyName,
@@ -34,6 +36,7 @@ public record ReportDetailLine(DateOnly Date, string Where, string Description, 
 /// </summary>
 public record ReportDetail(IReadOnlyList<ReportDetailLine> Lines, decimal SharedShare, decimal Total);
 
+/// <summary>Builds the profit and loss (by property and Schedule E line) and the items behind each number.</summary>
 public class ReportService(IDbContextFactory<PropertyManagerDbContext> dbFactory)
 {
     /// <summary>

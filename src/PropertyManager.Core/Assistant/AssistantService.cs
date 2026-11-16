@@ -7,6 +7,7 @@ namespace PropertyManager.Core.Assistant;
 /// <summary>A tool the assistant called while answering, shown on the Ask page so it's clear what was looked up.</summary>
 public record AssistantLookup(string Tool, string Arguments);
 
+/// <summary>An answer on the Ask page: the text, the lookups made for it, whether the model declined, and any changes it proposed.</summary>
 public record AssistantReply(string Text, IReadOnlyList<AssistantLookup> Lookups, bool Declined, string Provider, IReadOnlyList<ProposedChange>? Proposals = null)
 {
     public IReadOnlyList<ProposedChange> Changes => Proposals ?? [];
@@ -43,6 +44,7 @@ public class AssistantConversation
     internal List<ProposedChange> NewProposals { get; } = [];
 }
 
+/// <summary>Answers questions on the Ask page: sends the question with the conversation so far to the chosen model, lets it look things up with <see cref="AssistantTools"/> and propose changes with <see cref="AssistantActions"/>, and applies the ones the owner approves.</summary>
 public class AssistantService(
     IOptionsMonitor<AssistantOptions> options, AssistantTools tools, Func<AssistantProviderOptions, IChatClient>? clientFactory = null,
     AssistantActions? actions = null, Messaging.IImageConverter? images = null)

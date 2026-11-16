@@ -1,6 +1,8 @@
 @using PropertyManager.Core.Reports
 @inject OperatingReports Reports
 @inject IOptionsMonitor<BusinessOptions> Business
+@* Reports → Rent collection: each lease month by month, marking months paid late or not at all, by the rent due day and
+   a grace period. *@
 
 <p class="text-muted" style="max-width: 52rem">
     Rent for each lease, month by month. Rent is due on the @DueDay@Suffix(DueDay); a month is <span class="badge text-bg-warning">late</span>

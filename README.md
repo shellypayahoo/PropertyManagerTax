@@ -205,6 +205,10 @@ Everything the app keeps is on one computer: the database, and the documents fol
 3. Copy everything in the backup's `documents/` folder into `src/PropertyManager.Web/App_Data/documents/`.
 4. Start the app, add your API keys again (user secrets), and sign in to Microsoft on the Email & calendar page.
 
+## For developers
+
+How the code is organized, the conventions to keep, and how to change the database are in [docs/developer-guide.md](docs/developer-guide.md). `CLAUDE.md` gives AI coding assistants the same essentials.
+
 ## Tests
 
 ```sh

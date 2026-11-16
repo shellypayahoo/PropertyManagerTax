@@ -5,6 +5,7 @@ using PropertyManager.Core.Services;
 
 namespace PropertyManager.Core.Import;
 
+/// <summary>What to do with one line of a lender's payment history on the review screen.</summary>
 public enum MortgageAction
 {
     /// <summary>Split the matching mortgage payment already imported from the bank into interest, principal, and escrow.</summary>
@@ -43,6 +44,7 @@ public class MortgageImportRow(MortgageRow row)
     public decimal Unexplained => Row.Total - Row.Principal - Row.Interest - Row.Escrow;
 }
 
+/// <summary>What a mortgage history import changed.</summary>
 public record MortgageImportSummary(int PaymentsSplit, int PaymentsAdded, int Payouts, int Ignored);
 
 /// <summary>

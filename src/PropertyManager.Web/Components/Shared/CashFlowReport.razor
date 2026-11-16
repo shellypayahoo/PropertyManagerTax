@@ -1,6 +1,8 @@
 @using PropertyManager.Core.Reports
 @inject OperatingReports Reports
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@* Reports → Cash flow: money in and out each month by the date paid, including mortgage principal and escrow that the
+   P&L leaves out. *@
 
 <p class="text-muted" style="max-width: 52rem">
     Money in and out each month: rent by the date received, and everything paid out by the date paid, including

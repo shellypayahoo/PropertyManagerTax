@@ -1,5 +1,7 @@
 @using PropertyManager.Core.Reports
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
+@* Reports → Depreciation: each building and improvement's cost, earlier deductions, this year's amount, and what's left
+   (Depreciation), plus which properties still need a land value. *@
 
 <p class="text-muted" style="max-width: 56rem">
     What's deducted in @Year for each building and improvement, worked out the standard way (IRS Publication 946). These

@@ -2,11 +2,13 @@ using Microsoft.Data.Sqlite;
 
 namespace PropertyManager.Core.Messaging;
 
+/// <summary>A conversation in the Mac's Messages database, with the handles (phone numbers or emails) in it.</summary>
 public record MessagesChat(long Id, string Identifier, bool IsGroup, IReadOnlyList<string> Participants);
 
 /// <summary>How much someone appears in Messages: messages in conversations they're part of, and the latest one.</summary>
 public record MessagesHandleStats(string Handle, int MessageCount, DateTimeOffset LastMessageAt);
 
+/// <summary>One message as read from the Mac's Messages database, before it's filed under a contact.</summary>
 public record MessagesRow(
     long RowId, string Guid, long ChatId, string? SenderHandle, bool IsFromMe, DateTimeOffset SentAt, string Text, int AttachmentCount);
 

@@ -2,6 +2,7 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject RecurringExpenseService Recurring
 @inject TimeProvider Clock
+@* Monthly bills the app adds by itself (RecurringExpenseService), including months missed while the app wasn't running. *@
 
 <PageTitle>Recurring expenses</PageTitle>
 

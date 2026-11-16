@@ -1,9 +1,12 @@
 namespace PropertyManager.Core.Entities;
 
+/// <summary>How urgent a maintenance request is; Low ones are counted separately on the Dashboard.</summary>
 public enum MaintenancePriority { Low, Normal, High, Emergency }
 
+/// <summary>Where a maintenance request stands. Open, Scheduled, and InProgress count as open.</summary>
 public enum MaintenanceStatus { Open, Scheduled, InProgress, Completed, Cancelled }
 
+/// <summary>A repair or upkeep job for a unit, optionally with a vendor, a linked calendar appointment, and the expenses it cost.</summary>
 public class MaintenanceRequest
 {
     public int Id { get; set; }

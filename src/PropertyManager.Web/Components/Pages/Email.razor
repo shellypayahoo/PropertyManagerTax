@@ -11,6 +11,9 @@
 @inject TimeProvider Clock
 @inject PropertyManager.Core.Calendar.CalendarSyncService CalendarSync
 @inject IOptionsMonitor<FeatureOptions> Features
+@* Email & calendar, in three tabs: Emails (a mail-app style list grouped by day, with a reading pane), Calendar
+   (upcoming appointments), and Setup (Microsoft sign-in, which folders and calendars to copy). Background syncing is
+   MailSyncAgent; the buttons here go through it so two syncs never overlap. *@
 
 <PageTitle>Email &amp; calendar</PageTitle>
 

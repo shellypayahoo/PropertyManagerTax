@@ -21,6 +21,7 @@ public record RentCollectionCell(DateOnly Month, decimal Due, decimal Paid, Rent
     public bool IsLate => DaysLate > 0;
 }
 
+/// <summary>One lease's row on the rent collection report: each month's status, with totals and counts of late, missed, and partial months.</summary>
 public record RentCollectionRow(Lease Lease, IReadOnlyList<RentCollectionCell> Months)
 {
     public decimal Due => Months.Where(m => m.Status != RentStatus.Upcoming).Sum(m => m.Due);

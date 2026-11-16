@@ -2,6 +2,7 @@
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject TimeProvider Clock
 @inject NavigationManager Navigation
+@* All leases (ended ones hidden unless ticked), with a form to start a new one; its rent starts at the unit's market rent. *@
 
 <PageTitle>Leases</PageTitle>
 

@@ -15,8 +15,10 @@ public class AccessOptions
     public bool AllowLocalNetwork { get; set; }
 }
 
+/// <summary>Decides whether a request may reach the app, from the address it comes from.</summary>
 public static class AccessPolicy
 {
+    /// <summary>Where a request comes from.</summary>
     public enum Origin
     {
         ThisComputer,
