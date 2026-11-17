@@ -9,7 +9,7 @@ namespace PropertyManager.Core.Email;
 /// app can add appointments). The sign-in is kept in
 /// the macOS Keychain (Windows: DPAPI) so it survives restarts; the app never sees the password.
 /// </summary>
-public class EmailSignIn(IOptions<EmailOptions> options) : IMailTokenProvider
+public class EmailSignIn(IOptionsMonitor<EmailOptions> options) : IMailTokenProvider
 {
     private static readonly string[] Scopes = ["Mail.Read", "Calendars.Read"];
 
@@ -17,8 +17,9 @@ public class EmailSignIn(IOptions<EmailOptions> options) : IMailTokenProvider
     private static readonly string[] WriteScopes = ["Calendars.ReadWrite"];
     private readonly SemaphoreSlim gate = new(1, 1);
     private IPublicClientApplication? app;
+    private string? appClientId;
 
-    public bool IsConfigured => options.Value.IsConfigured;
+    public bool IsConfigured => options.CurrentValue.IsConfigured;
 
     /// <summary>The signed-in address, or null.</summary>
     public async Task<string?> GetSignedInAddressAsync()
@@ -125,25 +126,28 @@ public class EmailSignIn(IOptions<EmailOptions> options) : IMailTokenProvider
 
     private async Task<IPublicClientApplication> AppAsync()
     {
-        if (app is not null)
+        // The registration's client id can be entered in the app (setup wizard), so follow it when it changes.
+        var settings = options.CurrentValue;
+        if (app is not null && appClientId == settings.ClientId)
         {
             return app;
         }
         await gate.WaitAsync();
         try
         {
-            if (app is null)
+            if (app is null || appClientId != settings.ClientId)
             {
                 if (!IsConfigured)
                 {
                     throw new InvalidOperationException("Email isn't set up: add the app registration's client id (see the README).");
                 }
-                var client = PublicClientApplicationBuilder.Create(options.Value.ClientId)
-                    .WithAuthority(AzureCloudInstance.AzurePublic, options.Value.Tenant)
+                var client = PublicClientApplicationBuilder.Create(settings.ClientId)
+                    .WithAuthority(AzureCloudInstance.AzurePublic, settings.Tenant)
                     .WithDefaultRedirectUri()
                     .Build();
                 await PersistCacheAsync(client);
                 app = client;
+                appClientId = settings.ClientId;
             }
             return app;
         }

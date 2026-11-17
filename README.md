@@ -162,9 +162,20 @@ While it's running this way, don't also start it from Terminal; the second copy 
 
 ## First-run setup and Settings
 
-When the app starts with no properties, it opens a three-step **setup**: the business name and when rent is due and late; each property's address and units with their monthly rent; and which parts of the app to use (receipts, property photos, email, calendar, the Ask assistant, and, on a Mac, text messages). No files need editing.
+When the app starts with no properties, it opens the **setup guide**, which walks a new owner through everything without editing any files:
 
-The **Settings** page (bottom of the menu) changes the same things later, plus which AI model the Ask page starts on and whether it can look at photos. It shows whether email, calendar, and the assistant are set up; their keys and IDs (see **Ask** and **Email**) are still added by whoever installs the app. Choices made in the app are saved in the database and override `appsettings.json`; **Undo all changes made here** goes back to the file's values.
+1. **Welcome:** what the app does on this computer. On a PC it says up front that text messages, reading scanned papers, and iPhone photo previews need a Mac.
+2. **Your business:** name, and when rent is due and late.
+3. **Your properties:** each address and its units with their monthly rent. The business and properties are saved here, so the app is ready to use even if the rest is left for later.
+4. **AI assistant** (optional): pick a service (Microsoft Azure, OpenAI, Anthropic, or Ollama), with step-by-step instructions from creating the account to copying the key, then **Test** and **Save**. Keys are stored encrypted on that computer.
+5. **Email & calendar** (optional): the one-time Microsoft app registration, step by step, ending with pasting the Application (client) ID. Signing in then happens on the Email & calendar page.
+6. **Text messages** (optional, Mac only): turn on, and how to give the app Full Disk Access.
+7. **Backups** (recommended): pick a cloud folder (iCloud Drive, OneDrive, or Dropbox are offered when found).
+8. **Your phone** (optional): how to reach the app from a phone with Tailscale.
+
+Every optional step has **Skip for now**. The guide can be opened again any time from **Settings → Open the setup guide**; then it starts at the optional steps.
+
+The **Settings** page (bottom of the menu) changes all of this later, plus which AI model the Ask page starts on and whether it can look at photos. Choices made in the app are saved in the database and override `appsettings.json`; **Undo all changes made here** goes back to the file's values.
 
 ## Configuration
 

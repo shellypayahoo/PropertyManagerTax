@@ -1,163 +1,387 @@
 @page "/setup"
+@using PropertyManager.Core.Assistant
+@using PropertyManager.Core.Email
 @using PropertyManager.Web.Configuration
 @inject IDbContextFactory<PropertyManagerDbContext> DbFactory
 @inject SettingsService Settings
+@inject AssistantService Assistant
+@inject BackupService Backups
+@inject EmailSignIn SignIn
+@inject IOptionsMonitor<EmailOptions> EmailSettings
+@inject IOptionsMonitor<FeatureOptions> Features
+@inject IOptionsMonitor<BackupOptions> BackupSettings
 @inject NavigationManager Navigation
-@* First-run setup for a new install: business name, properties and units, and which parts of the app to use. The
-   Dashboard sends a new install here while there are no properties yet. *@
+@* The setup guide. A new install is sent here by the Dashboard and goes through every step; the basics (business and
+   properties) are saved as soon as they're entered, so the optional steps after them (AI, email, texts, backups, phone)
+   can each be skipped and done later. Opened again from Settings, it starts at the optional steps. What it offers
+   depends on the computer: text messages need a Mac. *@
 
-<PageTitle>Welcome</PageTitle>
+<PageTitle>Setup</PageTitle>
 
-@if (alreadySetUp is null)
+@if (!loaded)
 {
     <p><em>Loading…</em></p>
 }
-else if (alreadySetUp == true)
-{
-    <h1>You're set up</h1>
-    <p>Your properties are already in the app. Change your business details and which parts of the app are on in <a href="settings">Settings</a>.</p>
-}
 else
 {
-    <h1>Welcome to Property Manager</h1>
-    <p class="text-muted" style="max-width: 46rem">Three quick steps and you're ready. You can change all of this later in Settings.</p>
+    <h1>@(startedSetUp ? "Add to your setup" : "Welcome to Property Manager")</h1>
 
-    <div class="d-flex gap-2 mb-3">
-        @foreach (var (n, label) in new[] { (1, "Your business"), (2, "Your properties"), (3, "What to use") })
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        @for (var i = 0; i < steps.Count; i++)
         {
-            <span class="badge rounded-pill @(step == n ? "text-bg-primary" : step > n ? "text-bg-success" : "text-bg-light border")">@n. @label</span>
+            var n = i;
+            <span class="badge rounded-pill @(n == index ? "text-bg-primary" : n < index ? "text-bg-success" : "text-bg-light border")">@(n + 1). @Title(steps[n])</span>
         }
     </div>
 
-    <div class="card" style="max-width: 52rem">
+    <div class="card" style="max-width: 56rem">
         <div class="card-body">
-            @if (step == 1)
+            @switch (Step)
             {
-                <h2 class="h5">Your business</h2>
-                <div class="mb-3">
-                    <label class="form-label" for="biz">Business name</label>
-                    <input id="biz" class="form-control" placeholder="e.g. Maple Street Rentals LLC, or your own name" @bind="businessName" @bind:event="oninput" />
-                </div>
-                <div class="row g-3 mb-2">
-                    <div class="col-sm-6">
-                        <label class="form-label" for="due">Rent is due on the</label>
-                        <select id="due" class="form-select" @bind="rentDueDay">
-                            @for (var d = 1; d <= 28; d++) { <option value="@d">@d@Suffix(d)</option> }
-                        </select>
-                    </div>
-                    <div class="col-sm-6">
-                        <label class="form-label" for="grace">Rent is late after</label>
-                        <select id="grace" class="form-select" @bind="lateAfterDays">
-                            @foreach (var d in new[] { 0, 3, 5, 7, 10 }) { <option value="@d">@(d == 0 ? "the due date" : $"{d} days")</option> }
-                        </select>
-                    </div>
-                </div>
-                <div class="d-flex justify-content-end">
-                    <button class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(businessName)" @onclick="() => step = 2">Next</button>
-                </div>
-            }
-            else if (step == 2)
-            {
-                <h2 class="h5">Your properties</h2>
-                <p class="small text-muted">Add each building you rent out and its units. A house rented as one home has one unit.</p>
-                @foreach (var p in properties)
-                {
-                    <div class="border rounded p-3 mb-3">
-                        <div class="row g-2">
-                            <div class="col-md-6"><label class="form-label small mb-0">Street address</label><input class="form-control" placeholder="123 Main St" @bind="p.Name" @bind:event="oninput" /></div>
-                            <div class="col-md-3"><label class="form-label small mb-0">City</label><input class="form-control" @bind="p.City" /></div>
-                            <div class="col-md-1"><label class="form-label small mb-0">State</label><input class="form-control" maxlength="2" @bind="p.State" /></div>
-                            <div class="col-md-2"><label class="form-label small mb-0">ZIP</label><input class="form-control" @bind="p.PostalCode" /></div>
-                        </div>
-                        <div class="mt-2 small fw-semibold">Units</div>
-                        @foreach (var u in p.Units)
+                case WizardStep.Welcome:
+                    <h2 class="h5">Let's get you set up</h2>
+                    <p>This guide takes about five minutes for the basics. Everything after that is optional, and you can come back to it any time from <strong>Settings</strong>.</p>
+                    <p class="mb-1"><strong>On this @(IsMac ? "Mac" : "computer") you get:</strong></p>
+                    <ul>
+                        <li>Properties, tenants, leases, and rent tracking</li>
+                        <li>Expenses with receipts, bank imports, maintenance, and vendors</li>
+                        <li>Reports for tax time: profit and loss, 1099s, depreciation, and a packet for your accountant</li>
+                        <li>Automatic backups</li>
+                    </ul>
+                    <p class="mb-1"><strong>You can add, if you want them:</strong></p>
+                    <ul>
+                        <li><strong>An AI assistant</strong> that answers questions about your records and spots bills in your email. Needs an account with an AI company (the guide shows how).</li>
+                        <li><strong>Email and calendar</strong> from Outlook.com or Hotmail. Needs a short one-time registration with Microsoft.</li>
+                        @if (IsMac)
                         {
-                            <div class="d-flex gap-2 align-items-center mt-1">
-                                <input class="form-control form-control-sm" style="max-width: 10rem" placeholder="Unit (e.g. A, 1, Main)" @bind="u.Label" @bind:event="oninput" />
-                                <div class="input-group input-group-sm" style="max-width: 14rem">
-                                    <span class="input-group-text">Rent $</span>
-                                    <input type="number" min="0" step="50" class="form-control" @bind="u.MarketRent" />
-                                    <span class="input-group-text">/mo</span>
-                                </div>
-                                @if (p.Units.Count > 1) { <button class="btn btn-sm btn-link link-danger" @onclick="() => p.Units.Remove(u)">Remove</button> }
-                            </div>
+                            <li><strong>Text messages</strong> with tenants and vendors, from this Mac's Messages app.</li>
                         }
-                        <div class="d-flex gap-2 mt-2">
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => p.Units.Add(new UnitSetup { Label = NextLabel(p) })">Add a unit</button>
-                            @if (properties.Count > 1) { <button class="btn btn-sm btn-link link-danger ms-auto" @onclick="() => properties.Remove(p)">Remove this property</button> }
+                    </ul>
+                    @if (!IsMac)
+                    {
+                        <div class="alert alert-light border small">
+                            <strong>Only on a Mac:</strong> bringing in text messages (they come from Apple's Messages app), reading the words in scanned
+                            papers and photos, and previews of iPhone (HEIC) photos. Everything else works the same on this computer.
+                        </div>
+                    }
+                    break;
+
+                case WizardStep.Business:
+                    <h2 class="h5">Your business</h2>
+                    <div class="mb-3">
+                        <label class="form-label" for="biz">Business name</label>
+                        <input id="biz" class="form-control" placeholder="e.g. Maple Street Rentals LLC, or your own name" @bind="businessName" @bind:event="oninput" />
+                        <div class="form-text">Shown in the menu and on reports.</div>
+                    </div>
+                    <div class="row g-3 mb-2">
+                        <div class="col-sm-6">
+                            <label class="form-label" for="due">Rent is due on the</label>
+                            <select id="due" class="form-select" @bind="rentDueDay">
+                                @for (var d = 1; d <= 28; d++) { <option value="@d">@d@Suffix(d)</option> }
+                            </select>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label" for="grace">Rent is late after</label>
+                            <select id="grace" class="form-select" @bind="lateAfterDays">
+                                @foreach (var d in new[] { 0, 3, 5, 7, 10 }) { <option value="@d">@(d == 0 ? "the due date" : $"{d} days")</option> }
+                            </select>
                         </div>
                     </div>
-                }
-                <button class="btn btn-sm btn-outline-primary mb-3" @onclick="AddProperty">Add another property</button>
-                <div class="d-flex justify-content-between">
-                    <button class="btn btn-link" @onclick="() => step = 1">Back</button>
-                    <button class="btn btn-primary" disabled="@(!PropertiesValid)" @onclick="() => step = 3">Next</button>
-                </div>
-                @if (!PropertiesValid) { <div class="small text-muted text-end mt-1">Each property needs an address and each unit a name.</div> }
-            }
-            else
-            {
-                <h2 class="h5">What do you want to use?</h2>
-                <p class="small text-muted">Tick what you'd like. Parts marked "needs setup" also need a one-time setup by whoever installed the app for you; you can turn them on later.</p>
-                @foreach (var f in FeatureChoices)
-                {
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" id="f-@f.Key" checked="@features[f.Key]" disabled="@(!f.Available)"
-                               @onchange="e => features[f.Key] = (bool)e.Value!" />
-                        <label class="form-check-label" for="f-@f.Key">
-                            <strong>@f.Title</strong> <span class="text-muted">· @f.Description</span>
-                            @if (!f.Available) { <span class="badge text-bg-light border ms-1">needs a Mac</span> }
-                            else if (f.NeedsSetup) { <span class="badge text-bg-light border ms-1">needs setup</span> }
-                        </label>
+                    break;
+
+                case WizardStep.Properties:
+                    <h2 class="h5">Your properties</h2>
+                    <p class="small text-muted">Add each building you rent out and its units. A house rented as one home has one unit. You can add more later.</p>
+                    @foreach (var p in properties)
+                    {
+                        <div class="border rounded p-3 mb-3">
+                            <div class="row g-2">
+                                <div class="col-md-6"><label class="form-label small mb-0">Street address</label><input class="form-control" placeholder="123 Main St" @bind="p.Name" @bind:event="oninput" /></div>
+                                <div class="col-md-3"><label class="form-label small mb-0">City</label><input class="form-control" @bind="p.City" /></div>
+                                <div class="col-md-1"><label class="form-label small mb-0">State</label><input class="form-control" maxlength="2" @bind="p.State" /></div>
+                                <div class="col-md-2"><label class="form-label small mb-0">ZIP</label><input class="form-control" @bind="p.PostalCode" /></div>
+                            </div>
+                            <div class="mt-2 small fw-semibold">Units</div>
+                            @foreach (var u in p.Units)
+                            {
+                                <div class="d-flex gap-2 align-items-center mt-1">
+                                    <input class="form-control form-control-sm" style="max-width: 10rem" placeholder="Unit (e.g. A, 1, Main)" @bind="u.Label" @bind:event="oninput" />
+                                    <div class="input-group input-group-sm" style="max-width: 14rem">
+                                        <span class="input-group-text">Rent $</span>
+                                        <input type="number" min="0" step="50" class="form-control" @bind="u.MarketRent" />
+                                        <span class="input-group-text">/mo</span>
+                                    </div>
+                                    @if (p.Units.Count > 1) { <button class="btn btn-sm btn-link link-danger" @onclick="() => p.Units.Remove(u)">Remove</button> }
+                                </div>
+                            }
+                            <div class="d-flex gap-2 mt-2">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => p.Units.Add(new UnitSetup { Label = NextLabel(p) })">Add a unit</button>
+                                @if (properties.Count > 1) { <button class="btn btn-sm btn-link link-danger ms-auto" @onclick="() => properties.Remove(p)">Remove this property</button> }
+                            </div>
+                        </div>
+                    }
+                    <button class="btn btn-sm btn-outline-primary" @onclick="AddProperty">Add another property</button>
+                    @if (!PropertiesValid) { <div class="small text-muted mt-2">Each property needs an address and each unit a name.</div> }
+                    break;
+
+                case WizardStep.Ai:
+                    <h2 class="h5">AI assistant <span class="badge text-bg-light border fw-normal">optional</span></h2>
+                    <p>
+                        With an AI service connected, the <strong>Ask</strong> page answers questions like "What did I pay the plumber this year?", and the app
+                        suggests expenses from bills in your vendor emails@(IsMac ? " and texts" : ""). Nothing is changed without your OK.
+                    </p>
+                    <p class="small text-muted">
+                        An AI service is a company that runs the AI model; you pay it for what you use, usually a few cents a question.
+                        <strong>Never used one?</strong> OpenAI and Anthropic are the quickest to sign up for. Azure takes more steps but suits you if you already use Microsoft's cloud.
+                        Each has instructions below. To skip this, click <strong>Skip for now</strong>.
+                    </p>
+                    <AiServices OnChanged="RefreshAiAsync" />
+                    @if (AiReady)
+                    {
+                        <div class="alert alert-success py-2 mt-3 mb-0">An AI service is connected. Click Next to turn on the Ask page.</div>
+                    }
+                    break;
+
+                case WizardStep.Email:
+                    <h2 class="h5">Email and calendar <span class="badge text-bg-light border fw-normal">optional</span></h2>
+                    <p>
+                        Copies emails with your tenants and vendors from Outlook.com or Hotmail folders you choose, and shows your calendar's appointments.
+                        Your mailbox isn't changed; the only thing the app adds is appointments you create.
+                    </p>
+                    @if (EmailSettings.CurrentValue.IsConfigured)
+                    {
+                        <div class="alert alert-success py-2">
+                            The registration is saved. @(signedIn ? "You're signed in to Microsoft." : "After this guide, open Email & calendar → Setup and click Sign in to Microsoft.")
+                        </div>
+                    }
+                    <p class="small text-muted mb-1">
+                        Microsoft asks every app that reads mail to be registered once. It's free and takes about five minutes.
+                        Sign in with the <strong>same Hotmail or Outlook.com account</strong> whose mail you want.
+                    </p>
+                    <ol class="small">
+                        <li>Open <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">App registrations in the Azure portal</a> and sign in. If it asks you to create a free Azure account first, follow its steps (a phone number and a card to prove who you are; registering an app costs nothing).</li>
+                        <li>Click <strong>New registration</strong>. Name: <code>Property Manager</code>. Under <em>Supported account types</em> choose <strong>Personal Microsoft accounts only</strong>. Leave <em>Redirect URI</em> empty and click <strong>Register</strong>.</li>
+                        <li>In the menu on the left, open <strong>Authentication</strong>, turn on <strong>Allow public client flows</strong>, and click <strong>Save</strong>.</li>
+                        <li>Open <strong>API permissions → Add a permission → Microsoft Graph → Delegated permissions</strong>. Tick <code>Mail.Read</code>, <code>Calendars.Read</code>, and <code>Calendars.ReadWrite</code>, then <strong>Add permissions</strong>.</li>
+                        <li>Open <strong>Overview</strong> and copy the <strong>Application (client) ID</strong> (letters and numbers with dashes). Paste it here:</li>
+                    </ol>
+                    <div class="d-flex flex-wrap gap-2 align-items-start">
+                        <input class="form-control" style="max-width: 26rem" placeholder="00000000-0000-0000-0000-000000000000" @bind="clientId" @bind:event="oninput" aria-label="Application (client) ID" />
+                        <button class="btn btn-primary" disabled="@(!ClientIdValid)" @onclick="SaveClientIdAsync">Save</button>
                     </div>
-                }
-                @if (error is not null) { <div class="alert alert-warning py-2">@error</div> }
-                <div class="d-flex justify-content-between mt-3">
-                    <button class="btn btn-link" @onclick="() => step = 2">Back</button>
-                    <button class="btn btn-success" disabled="@saving" @onclick="FinishAsync">@(saving ? "Saving…" : "Finish")</button>
-                </div>
+                    @if (clientId.Trim().Length > 0 && !ClientIdValid)
+                    {
+                        <div class="small text-danger mt-1">That doesn't look like a client ID. It's 36 characters with four dashes; copy it from the Overview page.</div>
+                    }
+                    <p class="small text-muted mt-2 mb-0">The ID isn't a password; it only identifies your registration. To skip email, click <strong>Skip for now</strong>.</p>
+                    break;
+
+                case WizardStep.Texts:
+                    <h2 class="h5">Text messages <span class="badge text-bg-light border fw-normal">optional, Mac only</span></h2>
+                    <p>
+                        Brings in text conversations with your tenants and vendors from this Mac's Messages app (including your iPhone's, when Messages in iCloud is on).
+                        You choose whose conversations to bring in; everyone else's are never read.
+                    </p>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="texts-on" @bind="textsOn" />
+                        <label class="form-check-label" for="texts-on">Use text messages</label>
+                    </div>
+                    @if (textsOn)
+                    {
+                        <p class="small text-muted mb-1">macOS protects Messages, so the app needs your permission once:</p>
+                        <ol class="small mb-0">
+                            <li>Open <strong>System Settings → Privacy &amp; Security → Full Disk Access</strong>.</li>
+                            <li>Turn it on for <strong>Property Manager</strong> (or <strong>Terminal</strong>, if you start the app from there). Click <strong>+</strong> to add it if it isn't listed.</li>
+                            <li>Quit and reopen the app, then open the <strong>Messages</strong> page and click <strong>Find contacts in Messages</strong>.</li>
+                        </ol>
+                    }
+                    break;
+
+                case WizardStep.Backups:
+                    <h2 class="h5">Backups <span class="badge text-bg-light border fw-normal">recommended</span></h2>
+                    <p>
+                        Everything you enter is kept on this computer. Once a day the app can copy it all to a folder you choose. Pick one that syncs to the
+                        cloud, so a copy exists somewhere else if this computer breaks.
+                    </p>
+                    <label class="form-label" for="backup-folder">Backup folder</label>
+                    <input id="backup-folder" class="form-control" placeholder="Leave blank for no backups" @bind="backupFolder" @bind:event="oninput" />
+                    @if (suggestedFolders.Count > 0)
+                    {
+                        <div class="d-flex flex-wrap gap-2 mt-2">
+                            @foreach (var (label, path) in suggestedFolders)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => backupFolder = path">Use @label</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="form-text">
+                            No cloud folder (iCloud Drive, OneDrive, Dropbox) was found on this computer. You can type any folder, such as one on an external drive,
+                            e.g. <code>@(IsMac ? "/Volumes/Backup/Property Manager" : @"E:\Property Manager Backups")</code>.
+                        </div>
+                    }
+                    break;
+
+                case WizardStep.Phone:
+                    <h2 class="h5">Use it from your phone <span class="badge text-bg-light border fw-normal">optional</span></h2>
+                    <p>
+                        The app runs on this computer. To open it from your phone, at home or away, install the free app <strong>Tailscale</strong> on both.
+                        It connects your own devices privately; nobody else can reach the app.
+                    </p>
+                    <ol class="small">
+                        <li>On this computer, install <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a> and sign in (a Microsoft, Google, or Apple account works; choose <em>Personal</em>).</li>
+                        <li>On your phone, install Tailscale from the app store and sign in with the <strong>same account</strong>. Leave its switch on.</li>
+                        <li>In Tailscale on this computer, find this computer's name. On your phone's browser, open <code>http://that-name:5220</code>.</li>
+                        <li>Keep this computer on and the app running when you want to reach it.</li>
+                    </ol>
+                    <p class="small text-muted mb-0">
+                        The app only answers this computer and your Tailscale devices. Don't turn on Tailscale's <em>Funnel</em>, which would put it on the public internet.
+                        @if (!IsMac) { <span>On a PC, you may also need to allow the app through Windows Firewall the first time it asks.</span> }
+                    </p>
+                    break;
+
+                case WizardStep.Done:
+                    <h2 class="h5">You're all set</h2>
+                    <ul class="list-unstyled">
+                        <li>✓ Your business and properties are in.</li>
+                        <li>@(Features.CurrentValue.Assistant && AiReady ? "✓ The AI assistant is on." : "– AI assistant: not set up. Add it any time from Settings.")</li>
+                        <li>@(EmailSettings.CurrentValue.IsConfigured ? signedIn ? "✓ Email and calendar are connected." : "✓ Email and calendar are registered. One step left: sign in (below)." : "– Email and calendar: not set up. Add them any time from Settings.")</li>
+                        @if (IsMac)
+                        {
+                            <li>@(Features.CurrentValue.TextMessages ? "✓ Text messages are on. Finish on the Messages page." : "– Text messages: off.")</li>
+                        }
+                        <li>@(Backups.Folder is { } folder ? $"✓ Daily backups go to {folder}." : "– Backups: off. Your records are only on this computer; turn backups on in Settings.")</li>
+                    </ul>
+                    <p class="mb-1"><strong>Good next steps:</strong></p>
+                    <ol>
+                        <li>Add your <strong>tenants</strong>, then their <strong>leases</strong>, so rent can be tracked.</li>
+                        @if (EmailSettings.CurrentValue.IsConfigured && !signedIn)
+                        {
+                            <li>Open <strong>Email &amp; calendar → Setup</strong> and click <strong>Sign in to Microsoft</strong>, then choose your folders and calendars.</li>
+                        }
+                        <li>Enter this year's <strong>expenses</strong>, or bring them in from your bank on the <strong>Import</strong> page.</li>
+                    </ol>
+                    break;
             }
+
+            @if (error is not null) { <div class="alert alert-warning py-2 mt-3 mb-0">@error</div> }
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-4">
+                @if (index > 0 && Step != WizardStep.Done && !(steps[index - 1] is WizardStep.Properties or WizardStep.Business or WizardStep.Welcome && basicsSaved))
+                {
+                    <button class="btn btn-link" disabled="@saving" @onclick="() => { index--; error = null; }">Back</button>
+                }
+                <span class="ms-auto"></span>
+                @if (Step is WizardStep.Ai or WizardStep.Email or WizardStep.Phone or WizardStep.Backups or WizardStep.Texts && CanSkip)
+                {
+                    <button class="btn btn-outline-secondary" disabled="@saving" @onclick="SkipAsync">Skip for now</button>
+                }
+                @if (Step == WizardStep.Done)
+                {
+                    <button class="btn btn-success" @onclick="@(() => Navigation.NavigateTo("/", forceLoad: true))">Open Property Manager</button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" disabled="@(saving || !CanGoNext)" @onclick="NextAsync">@(saving ? "Saving…" : "Next")</button>
+                }
+            </div>
         </div>
     </div>
 }
 
 @code {
-    private bool? alreadySetUp;
-    private int step = 1;
+    private enum WizardStep { Welcome, Business, Properties, Ai, Email, Texts, Backups, Phone, Done }
+
+    private static bool IsMac => OperatingSystem.IsMacOS();
+
+    private bool loaded;
+    private bool startedSetUp;
+    private bool basicsSaved;
+    private List<WizardStep> steps = [];
+    private int index;
+    private WizardStep Step => steps[index];
+
     private string businessName = "";
     private int rentDueDay = 1;
     private int lateAfterDays = 5;
     private readonly List<PropertySetup> properties = [];
-    private readonly Dictionary<string, bool> features = new()
-    {
-        ["TextMessages"] = OperatingSystem.IsMacOS(),
-        ["Email"] = false,
-        ["Calendar"] = false,
-        ["Assistant"] = false,
-        ["Receipts"] = true,
-        ["PropertyPhotos"] = true,
-    };
+    private string clientId = "";
+    private bool signedIn;
+    private bool textsOn = IsMac;
+    private string backupFolder = "";
+    private IReadOnlyList<(string Label, string Path)> suggestedFolders = [];
     private bool saving;
     private string? error;
 
-    private record FeatureChoice(string Key, string Title, string Description, bool Available = true, bool NeedsSetup = false);
+    private static string Title(WizardStep step) => step switch
+    {
+        WizardStep.Business => "Your business",
+        WizardStep.Properties => "Your properties",
+        WizardStep.Ai => "AI assistant",
+        WizardStep.Email => "Email & calendar",
+        WizardStep.Texts => "Text messages",
+        WizardStep.Phone => "Your phone",
+        _ => step.ToString(),
+    };
 
-    private static readonly FeatureChoice[] FeatureChoices =
-    [
-        new("Receipts", "Receipts", "attach photos of receipts to your expenses"),
-        new("PropertyPhotos", "Property photos", "a picture of each house"),
-        new("Email", "Email", "bring in emails with your tenants from Outlook.com or Hotmail", NeedsSetup: true),
-        new("Calendar", "Calendar", "show your Outlook.com appointments on the Dashboard", NeedsSetup: true),
-        new("Assistant", "Ask (AI assistant)", "ask questions about your records in plain English", NeedsSetup: true),
-        new("TextMessages", "Text messages", "bring in texts with tenants from a Mac's Messages app", Available: OperatingSystem.IsMacOS()),
-    ];
+    private bool AiReady => Assistant.Providers.Any(p => p.IsConfigured && (p.Type != AssistantProviderType.Ollama || aiSavedHere));
+    private bool aiSavedHere;
+
+    private bool PropertiesValid => properties.All(p => !string.IsNullOrWhiteSpace(p.Name) && p.Units.Count > 0 && p.Units.All(u => !string.IsNullOrWhiteSpace(u.Label)));
+
+    private bool ClientIdValid => Guid.TryParse(clientId.Trim(), out _);
+
+    /// <summary>Steps that do something on Next can also be skipped; ones already done just move on.</summary>
+    private bool CanSkip => Step switch
+    {
+        WizardStep.Ai => !AiReady,
+        WizardStep.Email => !EmailSettings.CurrentValue.IsConfigured,
+        WizardStep.Backups => backupFolder.Trim().Length > 0 && Backups.Folder is null,
+        _ => false,
+    };
+
+    private bool CanGoNext => Step switch
+    {
+        WizardStep.Business => !string.IsNullOrWhiteSpace(businessName),
+        WizardStep.Properties => PropertiesValid,
+        WizardStep.Ai => AiReady,
+        WizardStep.Email => EmailSettings.CurrentValue.IsConfigured,
+        _ => true,
+    };
 
     protected override async Task OnInitializedAsync()
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        alreadySetUp = await db.Properties.AnyAsync();
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            startedSetUp = basicsSaved = await db.Properties.AnyAsync();
+        }
+        steps = [.. startedSetUp ? [] : new[] { WizardStep.Welcome, WizardStep.Business, WizardStep.Properties }, WizardStep.Ai, WizardStep.Email];
+        if (IsMac)
+        {
+            steps.Add(WizardStep.Texts);
+        }
+        steps.AddRange([WizardStep.Backups, WizardStep.Phone, WizardStep.Done]);
+
         AddProperty();
+        await RefreshAiAsync();
+        clientId = EmailSettings.CurrentValue.IsConfigured ? EmailSettings.CurrentValue.ClientId! : "";
+        textsOn = IsMac && (startedSetUp ? Features.CurrentValue.TextMessages : true);
+        backupFolder = BackupSettings.CurrentValue.Folder ?? "";
+        suggestedFolders = BackupService.SuggestedFolders();
+        try
+        {
+            signedIn = SignIn.IsConfigured && await SignIn.GetSignedInAddressAsync() is not null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            signedIn = false;
+        }
+        loaded = true;
     }
+
+    /// <summary>Ollama needs no key, so it only counts as connected once it's been saved in the app.</summary>
+    private async Task RefreshAiAsync() =>
+        aiSavedHere = (await Settings.GetSavedAsync()).Keys.Any(k => k.StartsWith("Assistant:Providers:Ollama:", StringComparison.OrdinalIgnoreCase));
 
     private void AddProperty() =>
         properties.Add(new PropertySetup { City = properties.LastOrDefault()?.City, State = properties.LastOrDefault()?.State, Units = [new UnitSetup { Label = "A" }] });
@@ -165,35 +389,88 @@ else
     private static string NextLabel(PropertySetup p) =>
         p.Units.All(u => u.Label.Length == 1 && char.IsLetter(u.Label[0])) ? ((char)('A' + p.Units.Count)).ToString() : (p.Units.Count + 1).ToString();
 
-    private bool PropertiesValid => properties.All(p => !string.IsNullOrWhiteSpace(p.Name) && p.Units.Count > 0 && p.Units.All(u => !string.IsNullOrWhiteSpace(u.Label)));
-
-    private async Task FinishAsync()
+    private async Task NextAsync()
     {
         saving = true;
         error = null;
         try
         {
-            var values = new Dictionary<string, string?>
+            switch (Step)
             {
-                ["Business:Name"] = businessName.Trim(),
-                ["Business:RentDueDay"] = rentDueDay.ToString(),
-                ["Business:LateAfterDays"] = lateAfterDays.ToString(),
-            };
-            foreach (var (key, on) in features)
-            {
-                values[$"Features:{key}"] = on ? "true" : "false";
+                case WizardStep.Properties:
+                    await SaveBasicsAsync();
+                    break;
+                case WizardStep.Ai:
+                    await Settings.SaveAsync(new Dictionary<string, string?> { ["Features:Assistant"] = "true", ["Features:ExpenseSuggestions"] = "true" });
+                    break;
+                case WizardStep.Texts:
+                    await Settings.SaveAsync(new Dictionary<string, string?> { ["Features:TextMessages"] = textsOn ? "true" : "false" });
+                    break;
+                case WizardStep.Backups:
+                    if (Backups.Problem(backupFolder) is { } problem)
+                    {
+                        error = problem;
+                        return;
+                    }
+                    await Settings.SaveAsync(new Dictionary<string, string?> { ["Backup:Folder"] = backupFolder.Trim() });
+                    break;
             }
-            await Settings.SaveAsync(values);
-            await using var db = await DbFactory.CreateDbContextAsync();
-            await DbSeeder.SeedAsync(db, properties);
-            // Reload the whole page so the menu reflects the chosen features.
-            Navigation.NavigateTo("/", forceLoad: true);
+            index++;
         }
         catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException)
         {
             error = $"Couldn't save: {ex.Message}";
+        }
+        finally
+        {
             saving = false;
         }
+    }
+
+    /// <summary>Moves on without setting the step up; nothing it would have turned on is turned on.</summary>
+    private async Task SkipAsync()
+    {
+        error = null;
+        if (Step == WizardStep.Ai && !startedSetUp)
+        {
+            await Settings.SaveAsync(new Dictionary<string, string?> { ["Features:Assistant"] = "false" });
+        }
+        if (Step == WizardStep.Backups)
+        {
+            backupFolder = BackupSettings.CurrentValue.Folder ?? "";
+        }
+        index++;
+    }
+
+    /// <summary>Saves the business details and properties, so the app is usable even if the optional steps are left for later.</summary>
+    private async Task SaveBasicsAsync()
+    {
+        await Settings.SaveAsync(new Dictionary<string, string?>
+        {
+            ["Business:Name"] = businessName.Trim(),
+            ["Business:RentDueDay"] = rentDueDay.ToString(),
+            ["Business:LateAfterDays"] = lateAfterDays.ToString(),
+            ["Features:Receipts"] = "true",
+            ["Features:PropertyPhotos"] = "true",
+            // Off until their steps turn them on.
+            ["Features:Assistant"] = AiReady ? "true" : "false",
+            ["Features:Email"] = EmailSettings.CurrentValue.IsConfigured ? "true" : "false",
+            ["Features:Calendar"] = EmailSettings.CurrentValue.IsConfigured ? "true" : "false",
+            ["Features:TextMessages"] = IsMac ? "true" : "false",
+        });
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await DbSeeder.SeedAsync(db, properties);
+        basicsSaved = true;
+    }
+
+    private async Task SaveClientIdAsync()
+    {
+        await Settings.SaveAsync(new Dictionary<string, string?>
+        {
+            ["Email:ClientId"] = clientId.Trim(),
+            ["Features:Email"] = "true",
+            ["Features:Calendar"] = "true",
+        });
     }
 
     private static string Suffix(int day) => (day % 100) switch { 11 or 12 or 13 => "th", _ => (day % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" } };
