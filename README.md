@@ -4,14 +4,7 @@ Property management code that generates tax reports and keeps track of expenses 
 
 A Blazor (ASP.NET Core, .NET 10) app for managing rental properties: units, tenants, leases, rent payments, expenses, maintenance requests, vendors, bank imports, and an annual profit and loss report laid out by IRS Schedule E line.
 
-Data is stored in a local SQLite file (`src/PropertyManager.Web/propertymanager.db`) with EF Core. On first run the database is created and a short setup asks for the business name, the properties and units, and which parts of the app to use (see **First-run setup and Settings**). The owner's portfolio:
-
-| Property | Unit | Market rent |
-| --- | --- | --- |
-| 2228 1st St NW | A | $4,400 |
-| 2228 1st St NW | B | $4,500 |
-| 1354 Taylor St NW | A | $4,500 |
-| 1354 Taylor St NW | B | $1,000 |
+Data is stored in a local SQLite file (`src/PropertyManager.Web/propertymanager.db`) with EF Core. On first run the database is created and a setup guide asks for the business name, the properties and units, and which optional parts to set up (see **First-run setup and Settings**).
 
 ## Install (for owners)
 
