@@ -114,8 +114,10 @@ jobs:
           name: mac-${{ matrix.arch }}
           path: dist/PropertyManager-*.dmg
 
+  # Publishes whatever built. GitHub's Mac machines are sometimes unavailable; then the release goes out with the
+  # Windows installer, and "Re-run failed jobs" later builds the Mac files and adds them to the same release.
   release:
-    if: needs.version.outputs.publish == 'true'
+    if: always() && needs.version.outputs.publish == 'true' && (needs.windows.result == 'success' || needs.mac.result == 'success')
     needs: [version, windows, mac]
     runs-on: ubuntu-latest
     steps:
@@ -128,6 +130,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.version.outputs.value }}
         run: |
-          # Creates the tag too (at the commit that was built) when the release was started from the Actions tab.
-          gh release create "v$VERSION" out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Property Manager $VERSION" \
-            --notes "Download PropertyManager-Setup for Windows, or the .dmg for a Mac (arm64 for Apple silicon M1/M2/M3/M4, x64 for older Intel Macs). Install steps: docs/install-windows.md and docs/install-mac.md."
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # Already published (e.g. a re-run after the Mac machines were unavailable): add or replace the files.
+            gh release upload "v$VERSION" out/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            # Creates the tag too (at the commit that was built) when the release was started from the Actions tab.
+            gh release create "v$VERSION" out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Property Manager $VERSION" \
+              --notes "Download PropertyManager-Setup for Windows, or the .dmg for a Mac (arm64 for Apple silicon M1/M2/M3/M4, x64 for older Intel Macs). Install steps: docs/install-windows.md and docs/install-mac.md."
+          fi
