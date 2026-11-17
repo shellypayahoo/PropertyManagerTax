@@ -9,7 +9,7 @@ namespace PropertyManager.Web.Configuration;
 /// Adds settings saved in the app (the AppSettings table) on top of appsettings.json, user secrets, and environment
 /// variables, so what an owner sets on the Settings page wins. Before the database exists there are none.
 /// </summary>
-public sealed class DatabaseSettingsProvider(string connectionString) : ConfigurationProvider
+public sealed class DatabaseSettingsProvider(string connectionString, SecretProtector secrets) : ConfigurationProvider
 {
     public override void Load()
     {
@@ -23,7 +23,17 @@ public sealed class DatabaseSettingsProvider(string connectionString) : Configur
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                data[reader.GetString(0)] = reader.IsDBNull(1) ? null : reader.GetString(1);
+                var value = reader.IsDBNull(1) ? null : reader.GetString(1);
+                if (SecretProtector.IsProtected(value))
+                {
+                    // An API key saved in the app. One that can't be read here (a restored backup) counts as not set.
+                    if (secrets.Unprotect(value!) is not { } secret)
+                    {
+                        continue;
+                    }
+                    value = secret;
+                }
+                data[reader.GetString(0)] = value;
             }
         }
         catch (SqliteException)
@@ -35,20 +45,20 @@ public sealed class DatabaseSettingsProvider(string connectionString) : Configur
 }
 
 /// <summary>Plugs the settings saved on the Settings page (the AppSettings table) into the app's configuration.</summary>
-public sealed class DatabaseSettingsSource(string connectionString) : IConfigurationSource
+public sealed class DatabaseSettingsSource(string connectionString, SecretProtector secrets) : IConfigurationSource
 {
-    public IConfigurationProvider Build(IConfigurationBuilder builder) => new DatabaseSettingsProvider(connectionString);
+    public IConfigurationProvider Build(IConfigurationBuilder builder) => new DatabaseSettingsProvider(connectionString, secrets);
 }
 
 /// <summary>Adds the database settings as the last (highest-priority) configuration source.</summary>
 public static class DatabaseSettingsExtensions
 {
-    public static IConfigurationBuilder AddDatabaseSettings(this IConfigurationBuilder builder, string? connectionString) =>
-        string.IsNullOrWhiteSpace(connectionString) ? builder : builder.Add(new DatabaseSettingsSource(connectionString));
+    public static IConfigurationBuilder AddDatabaseSettings(this IConfigurationBuilder builder, string? connectionString, SecretProtector secrets) =>
+        string.IsNullOrWhiteSpace(connectionString) ? builder : builder.Add(new DatabaseSettingsSource(connectionString, secrets));
 }
 
 /// <summary>Saves settings changed in the app and reloads configuration so pages see them right away.</summary>
-public class SettingsService(IDbContextFactory<PropertyManagerDbContext> dbFactory, IConfiguration configuration)
+public class SettingsService(IDbContextFactory<PropertyManagerDbContext> dbFactory, IConfiguration configuration, SecretProtector secrets)
 {
     /// <summary>The value saved in the app for a key, or null when the key comes from appsettings.json (or its default).</summary>
     public async Task<IReadOnlyDictionary<string, string?>> GetSavedAsync(CancellationToken ct = default)
@@ -57,14 +67,18 @@ public class SettingsService(IDbContextFactory<PropertyManagerDbContext> dbFacto
         return await db.AppSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, StringComparer.OrdinalIgnoreCase, ct);
     }
 
-    /// <summary>Saves values by configuration key. A null value removes the saved value, going back to appsettings.json.</summary>
+    /// <summary>
+    /// Saves values by configuration key. A null value removes the saved value, going back to appsettings.json.
+    /// Secrets (keys ending in ApiKey) are encrypted before they're stored.
+    /// </summary>
     public async Task SaveAsync(IReadOnlyDictionary<string, string?> values, CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var keys = values.Keys.ToList();
         var existing = await db.AppSettings.Where(s => keys.Contains(s.Key)).ToDictionaryAsync(s => s.Key, ct);
-        foreach (var (key, value) in values)
+        foreach (var (key, plain) in values)
         {
+            var value = plain is not null && SecretProtector.IsSecret(key) ? secrets.Protect(plain) : plain;
             if (value is null)
             {
                 if (existing.TryGetValue(key, out var old))

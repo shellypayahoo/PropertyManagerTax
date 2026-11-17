@@ -115,12 +115,14 @@
     <div class="card mb-3" style="max-width: 52rem" id="ask">
         <div class="card-body">
             <h2 class="h5">Ask (AI assistant)</h2>
-            @if (!Assistant.Providers.Any(p => p.IsConfigured))
+            <p class="text-muted small">
+                The Ask page and expense suggestions need an AI service: a company that runs the AI model, which you pay for what you use.
+                Set up one below (each has step-by-step instructions). The key is stored encrypted on this computer and isn't included in backups.
+            </p>
+            <AiServices OnChanged="StateHasChanged" />
+            @if (Assistant.Providers.Any(p => p.IsConfigured))
             {
-                <p class="text-muted mb-0">No AI service is set up yet. Ask whoever installed the app to add one.</p>
-            }
-            else
-            {
+                <hr />
                 <div class="row g-3 align-items-end">
                     <div class="col-md-6">
                         <label class="form-label" for="model">Start the Ask page on</label>

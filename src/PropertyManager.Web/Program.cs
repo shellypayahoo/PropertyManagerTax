@@ -54,7 +54,9 @@ builder.Services.Configure<AssistantOptions>(builder.Configuration.GetSection(As
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 // Settings changed in the app (Settings page, first-run setup) override appsettings.json.
-builder.Configuration.AddDatabaseSettings(builder.Configuration.GetConnectionString("PropertyManager"));
+var secretProtector = new SecretProtector(builder.Configuration["DataProtection:KeysFolder"]);
+builder.Services.AddSingleton(secretProtector);
+builder.Configuration.AddDatabaseSettings(builder.Configuration.GetConnectionString("PropertyManager"), secretProtector);
 builder.Services.AddScoped<SettingsService>();
 
 // Which parts of the app are on, business rules, and the starting portfolio (see "Configuration" in the README).

@@ -1,0 +1,210 @@
+@using PropertyManager.Core.Assistant
+@using PropertyManager.Web.Configuration
+@inject AssistantService Assistant
+@inject ModelCatalog Catalog
+@inject SettingsService SavedSettings
+
+@* Connects the app to an AI service without editing files: pick a service, paste its details, Test, Save. Keys are
+   stored encrypted (SecretProtector). Used on the Settings page and in the setup wizard. Services set up another way
+   (user secrets, appsettings.Local.json) show as set up and keep working; saving here takes precedence. *@
+@foreach (var service in Services)
+{
+    var current = Current(service);
+    // Ollama needs no key, so it only counts as set up once someone has saved it here.
+    var ready = current?.IsConfigured == true && (service.NeedsKey || savedHere.Contains(service.Name));
+    <div class="border rounded p-2 mb-2 @(ready ? "border-success" : "")">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <strong>@service.Title</strong>
+            @if (ready)
+            {
+                <span class="badge text-bg-success">Set up: @current!.Model</span>
+            }
+            <span class="small text-muted">@service.Blurb</span>
+            @if (editing != service.Name)
+            {
+                <button class="btn btn-sm @(ready ? "btn-outline-secondary" : "btn-outline-primary") ms-auto" @onclick="() => Edit(service)">@(ready ? "Change" : "Set up")</button>
+            }
+        </div>
+        @if (editing == service.Name)
+        {
+            <details class="mt-2" open="@(!ready)">
+                <summary class="small">I don't have this yet: show me how to get it</summary>
+                <div class="border-start border-3 ps-3 mt-2"><AiServiceHelp Type="service.Type" /></div>
+            </details>
+            <div class="row g-2 mt-1">
+                @if (service.NeedsEndpoint)
+                {
+                    <div class="col-12">
+                        <label class="form-label small mb-0" for="ai-endpoint-@service.Name">@service.EndpointLabel</label>
+                        <input id="ai-endpoint-@service.Name" class="form-control form-control-sm" placeholder="@service.EndpointHint" @bind="endpoint" @bind:event="oninput" @bind:after="ClearResult" autocomplete="off" />
+                    </div>
+                }
+                <div class="col-md-5">
+                    <label class="form-label small mb-0" for="ai-model-@service.Name">@service.ModelLabel</label>
+                    <input id="ai-model-@service.Name" class="form-control form-control-sm" placeholder="@service.ModelHint" @bind="model" @bind:event="oninput" @bind:after="ClearResult" autocomplete="off" />
+                </div>
+                @if (service.NeedsKey)
+                {
+                    <div class="col-md-7">
+                        <label class="form-label small mb-0" for="ai-key-@service.Name">Key</label>
+                        <input id="ai-key-@service.Name" type="password" class="form-control form-control-sm" @bind="key" @bind:event="oninput" @bind:after="ClearResult" autocomplete="new-password"
+                               placeholder="@(HasKey(current) ? "A key is saved; leave blank to keep it" : "Paste the key")" />
+                    </div>
+                }
+            </div>
+            @if (result is not null)
+            {
+                <div class="small mt-2 @(resultOk ? "text-success" : "text-danger")">@result</div>
+            }
+            <div class="d-flex flex-wrap gap-2 mt-2">
+                <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="() => TestAsync(service)">@(busy ? "Testing…" : "Test")</button>
+                <button class="btn btn-sm btn-primary" disabled="@busy" @onclick="() => SaveAsync(service)">Save</button>
+                <button class="btn btn-sm btn-link" disabled="@busy" @onclick="() => editing = null">Cancel</button>
+                @if (savedHere.Contains(service.Name))
+                {
+                    <button class="btn btn-sm btn-outline-danger ms-auto" disabled="@busy" @onclick="() => RemoveAsync(service)" title="Forget what was saved here for this service">Remove</button>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Called after a service is saved or removed, so the page around it can refresh.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private record Service(
+        string Name, AssistantProviderType Type, string Title, string Blurb, string ModelLabel, string ModelHint, string DefaultModel,
+        bool NeedsKey = true, bool NeedsEndpoint = false, string EndpointLabel = "", string EndpointHint = "");
+
+    // The provider names match the ones in appsettings.json, so a service set up either way is the same entry.
+    private static readonly Service[] Services =
+    [
+        new("AzureFoundry", AssistantProviderType.AzureFoundry, "Microsoft Azure (Foundry)", "your own Azure account", "Deployment name", "e.g. gpt-5-mini", "",
+            NeedsEndpoint: true, EndpointLabel: "Endpoint", EndpointHint: "https://your-resource.services.ai.azure.com/..."),
+        new("OpenAI", AssistantProviderType.OpenAI, "OpenAI", "simplest to set up", "Model", "a model name from OpenAI's models page", ""),
+        new("Claude", AssistantProviderType.Anthropic, "Anthropic (Claude)", "simple to set up", "Model", "claude-opus-5-5", "claude-opus-5-5"),
+        new("Ollama", AssistantProviderType.Ollama, "Ollama", "free, runs on this computer", "Model", "e.g. llama3.1", "llama3.1",
+            NeedsKey: false, NeedsEndpoint: true, EndpointLabel: "Ollama address", EndpointHint: "http://localhost:11434"),
+    ];
+
+    private string? editing;
+    private string endpoint = "";
+    private string model = "";
+    private string key = "";
+    private string? result;
+    private bool resultOk;
+    private bool busy;
+    private HashSet<string> savedHere = [];
+
+    protected override Task OnInitializedAsync() => LoadSavedAsync();
+
+    private async Task LoadSavedAsync() =>
+        savedHere = (await SavedSettings.GetSavedAsync()).Keys
+            .Where(k => k.StartsWith("Assistant:Providers:", StringComparison.OrdinalIgnoreCase))
+            .Select(k => k.Split(':')[2])
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private AssistantProviderOptions? Current(Service service) =>
+        Assistant.Providers.FirstOrDefault(p => p.Name == service.Name && p.ProviderName == service.Name);
+
+    private void ClearResult() => result = null;
+
+    private static bool HasKey(AssistantProviderOptions? provider) => !string.IsNullOrWhiteSpace(provider?.ApiKey) && !provider!.ApiKey!.Contains('<');
+
+    private static string Filled(string? value) => string.IsNullOrWhiteSpace(value) || value.Contains('<') ? "" : value;
+
+    private void Edit(Service service)
+    {
+        var current = Current(service);
+        editing = service.Name;
+        endpoint = Filled(current?.Endpoint) is { Length: > 0 } e ? e : service.Type == AssistantProviderType.Ollama ? "http://localhost:11434" : "";
+        model = Filled(current?.Model) is { Length: > 0 } m ? m : service.DefaultModel;
+        key = "";
+        result = null;
+    }
+
+    /// <summary>The service as typed, using the saved key when the key box is left blank.</summary>
+    private AssistantProviderOptions Typed(Service service) => new()
+    {
+        Name = service.Name, ProviderName = service.Name, Type = service.Type, Model = model.Trim(),
+        Endpoint = service.NeedsEndpoint ? endpoint.Trim() : null,
+        ApiKey = !service.NeedsKey ? null : key.Trim().Length > 0 ? key.Trim() : Current(service)?.ApiKey,
+        Api = Current(service)?.Api,
+    };
+
+    private string? Missing(Service service)
+    {
+        var typed = Typed(service);
+        return typed.MissingSettings.Count == 0 ? null
+            : "Still needed: " + string.Join(", ", typed.MissingSettings.Select(m => m switch
+            {
+                nameof(AssistantProviderOptions.Model) => service.ModelLabel.ToLowerInvariant(),
+                nameof(AssistantProviderOptions.Endpoint) => service.EndpointLabel.ToLowerInvariant(),
+                nameof(AssistantProviderOptions.ApiKey) => "key",
+                _ => m,
+            })) + ".";
+    }
+
+    private async Task TestAsync(Service service)
+    {
+        if (Missing(service) is { } missing)
+        {
+            (result, resultOk) = (missing, false);
+            return;
+        }
+        busy = true;
+        (result, resultOk) = ("Asking it a one-word question…", true);
+        try
+        {
+            var typed = Typed(service);
+            var problem = await Catalog.TestAsync(typed, typed.Model);
+            (result, resultOk) = problem is null
+                ? ($"✓ {typed.Model} answered. Click Save to use it.", true)
+                : ($"✗ It didn't work: {problem}", false);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task SaveAsync(Service service)
+    {
+        if (Missing(service) is { } missing)
+        {
+            (result, resultOk) = (missing, false);
+            return;
+        }
+        var prefix = $"Assistant:Providers:{service.Name}:";
+        var values = new Dictionary<string, string?>
+        {
+            [prefix + "Type"] = service.Type.ToString(),
+            [prefix + "Model"] = model.Trim(),
+        };
+        if (service.NeedsEndpoint)
+        {
+            values[prefix + "Endpoint"] = endpoint.Trim();
+        }
+        if (service.NeedsKey && key.Trim().Length > 0)
+        {
+            // Encrypted before it's stored; a blank box keeps whatever key is already in use.
+            values[prefix + "ApiKey"] = key.Trim();
+        }
+        await SavedSettings.SaveAsync(values);
+        editing = null;
+        key = "";
+        await LoadSavedAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task RemoveAsync(Service service)
+    {
+        var prefix = $"Assistant:Providers:{service.Name}:";
+        var saved = (await SavedSettings.GetSavedAsync()).Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        await SavedSettings.SaveAsync(saved.ToDictionary(k => k, _ => (string?)null));
+        editing = null;
+        await LoadSavedAsync();
+        await OnChanged.InvokeAsync();
+    }
+}
