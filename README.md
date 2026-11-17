@@ -13,6 +13,17 @@ Data is stored in a local SQLite file (`src/PropertyManager.Web/propertymanager.
 | 1354 Taylor St NW | A | $4,500 |
 | 1354 Taylor St NW | B | $1,000 |
 
+## Install (for owners)
+
+Download the installer from the [releases page](https://github.com/shellypayahoo/propertymanagertax/releases/latest) and follow the step-by-step guide; no technical knowledge needed:
+
+- **Windows PC:** [docs/install-windows.md](docs/install-windows.md)
+- **Mac:** [docs/install-mac.md](docs/install-mac.md)
+
+After installing, the app opens in the browser with a setup guide (see **First-run setup and Settings**). The sections below are for running the app from source, as a developer.
+
+**Publishing a new version:** tag it and push the tag, e.g. `git tag v1.0.0 && git push origin v1.0.0`. GitHub builds the Windows installer and the Mac disk images (`.github/workflows/installers.yml`), checks each installed app starts, and publishes them as a release. The builds also run, without publishing, whenever packaging files change, and can be started by hand from the **Actions** tab.
+
 ## Run on macOS
 
 1. Install the .NET 10 SDK: `brew install --cask dotnet-sdk`, or use the installer from https://dotnet.microsoft.com/download.
@@ -83,6 +94,8 @@ From then on, changes made on one computer don't appear on the other, so treat o
 - Email, calendar, the Ask page, receipts, documents, rent, expenses, and reports work the same.
 
 ## Install for someone else on Windows (no .NET needed)
+
+*Superseded by the Windows installer above; kept for reference.*
 
 To give the app to an owner who isn't technical, build a package that includes .NET, so they install nothing else.
 
