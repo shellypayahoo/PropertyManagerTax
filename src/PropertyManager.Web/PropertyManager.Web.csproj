@@ -5,7 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.*">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
@@ -17,6 +17,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>propertymanager-web-5b7f2c1e</UserSecretsId>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+  <!-- Installed on Windows (dotnet publish -p:DesktopApp=true): no console window; the log goes to a file instead. -->
+  <PropertyGroup Condition="'$(DesktopApp)' == 'true' and $(RuntimeIdentifier.StartsWith('win'))">
+    <OutputType>WinExe</OutputType>
   </PropertyGroup>
 
 </Project>

@@ -28,8 +28,7 @@ public sealed class SecretProtector
     }
 
     /// <summary>The app's own folder for this user: ~/Library/Application Support on a Mac, %LOCALAPPDATA% on Windows.</summary>
-    public static string DefaultKeysFolder =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PropertyManager", "keys");
+    public static string DefaultKeysFolder => Path.Combine(Desktop.DesktopMode.AppDataRoot, "PropertyManager", "keys");
 
     /// <summary>Whether a setting holds a secret, by its name: anything ending in ApiKey.</summary>
     public static bool IsSecret(string settingKey) => settingKey.EndsWith(":ApiKey", StringComparison.OrdinalIgnoreCase);

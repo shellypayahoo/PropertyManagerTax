@@ -198,6 +198,16 @@
     </div>
 }
 
+@if (PropertyManager.Web.Desktop.DesktopMode.IsOn)
+{
+    <div class="card mb-3" style="max-width: 52rem" id="computer">
+        <div class="card-body">
+            <h2 class="h5">This computer</h2>
+            <ThisComputer ShowDetails="true" />
+        </div>
+    </div>
+}
+
 <div class="card mb-3" style="max-width: 52rem" id="access">
     <div class="card-body">
         <h2 class="h5">Who can open the app</h2>

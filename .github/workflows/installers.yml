@@ -1,0 +1,115 @@
+# Builds the Windows installer and the Mac apps. Runs when packaging files change (to check they still build),
+# by hand from the Actions tab, and when a version tag is pushed (git tag v1.0.0 && git push origin v1.0.0), which
+# also publishes them as a GitHub release for people to download.
+name: Installers
+
+on:
+  push:
+    # Branches: only when packaging changes (paths below). Tags: always (paths don't apply to tags).
+    branches: ['**']
+    tags: ['v*']
+    paths:
+      - 'packaging/**'
+      - 'scripts/package-*'
+      - '.github/workflows/installers.yml'
+      - 'src/PropertyManager.Web/Desktop/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.v.outputs.value }}
+    steps:
+      - id: v
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else echo "value=0.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"; fi
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish the app
+        shell: pwsh
+        run: |
+          dotnet publish src/PropertyManager.Web -c Release -r win-x64 --self-contained true -p:DesktopApp=true -p:Version=${{ needs.version.outputs.value }} -o dist/windows/app
+          Copy-Item packaging/appsettings.json dist/windows/app/appsettings.json -Force
+          Remove-Item dist/windows/app/appsettings.Development.json, dist/windows/app/appsettings.Local.json -ErrorAction SilentlyContinue
+          New-Item dist/windows/app/desktop-app -ItemType File -Force | Out-Null
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc /DAppVersion=${{ needs.version.outputs.value }} /DSourceDir="$PWD\dist\windows\app" packaging\windows\PropertyManager.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check the installed app starts
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist/PropertyManager-Setup-*.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=' -Wait
+          $exe = "$env:LOCALAPPDATA\Programs\Property Manager\PropertyManager.Web.exe"
+          Start-Process $exe -ArgumentList '--no-browser'
+          $ok = $false
+          for ($i = 0; $i -lt 60 -and -not $ok; $i++) { Start-Sleep 2; try { $r = Invoke-WebRequest http://localhost:5220/setup -UseBasicParsing -TimeoutSec 5; $ok = $r.StatusCode -eq 200 } catch {} }
+          if (-not $ok) { Get-Content "$env:LOCALAPPDATA\Property Manager\logs\app.log" -ErrorAction SilentlyContinue; throw 'The installed app did not answer.' }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Property Manager\propertymanager.db")) { throw 'No database in the data folder.' }
+          Write-Host 'The installed app answered, with its data in %LOCALAPPDATA%\Property Manager.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/PropertyManager-Setup-*.exe
+
+  mac:
+    needs: version
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [arm64, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build the app and disk image
+        run: scripts/package-mac.sh ${{ matrix.arch }} ${{ needs.version.outputs.value }}
+      - name: Check the app starts
+        if: matrix.arch == 'arm64'
+        run: |
+          "dist/mac-arm64/Property Manager.app/Contents/Resources/app/PropertyManager.Web" --no-browser &
+          for i in $(seq 1 60); do sleep 2; if curl -fs -o /dev/null http://localhost:5220/setup; then break; fi; done
+          curl -fs -o /dev/null http://localhost:5220/setup || { cat "$HOME/Library/Application Support/Property Manager/logs/app.log" || true; exit 1; }
+          test -f "$HOME/Library/Application Support/Property Manager/propertymanager.db"
+          echo "The app answered, with its data in ~/Library/Application Support/Property Manager."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ matrix.arch }}
+          path: dist/PropertyManager-*.dmg
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --title "Property Manager ${GITHUB_REF_NAME#v}" \
+            --notes "Download PropertyManager-Setup for Windows, or the .dmg for a Mac (arm64 for Apple silicon M1/M2/M3/M4, x64 for older Intel Macs). Install steps: docs/install-windows.md and docs/install-mac.md."

@@ -235,6 +235,10 @@ else
                         <li>In Tailscale on this computer, find this computer's name. On your phone's browser, open <code>http://that-name:5220</code>.</li>
                         <li>Keep this computer on and the app running when you want to reach it.</li>
                     </ol>
+                    @if (PropertyManager.Web.Desktop.DesktopMode.IsOn)
+                    {
+                        <div class="border rounded p-3 mb-3"><ThisComputer /></div>
+                    }
                     <p class="small text-muted mb-0">
                         The app only answers this computer and your Tailscale devices. Don't turn on Tailscale's <em>Funnel</em>, which would put it on the public internet.
                         @if (!IsMac) { <span>On a PC, you may also need to allow the app through Windows Firewall the first time it asks.</span> }

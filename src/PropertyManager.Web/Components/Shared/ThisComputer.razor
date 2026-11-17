@@ -1,0 +1,94 @@
+@using PropertyManager.Web.Configuration
+@using PropertyManager.Web.Desktop
+@inject SettingsService SavedSettings
+@inject IConfiguration Configuration
+@inject IHostApplicationLifetime Lifetime
+@inject IServiceProvider Services
+@* For an installed copy (DesktopMode): start with the computer, let a phone reach it through Tailscale, and stop or
+   restart the app. Shown on the Settings page and in the setup guide's phone step; nothing in a copy run from source. *@
+
+@if (DesktopMode.IsOn && Services.GetService<DesktopState>() is { } state)
+{
+    @if (stopped)
+    {
+        <div class="alert alert-secondary mb-0">
+            Property Manager has stopped. To open it again, use its icon (@(OperatingSystem.IsMacOS() ? "in Applications" : "on the Start menu or desktop")).
+        </div>
+    }
+    else
+    {
+        @if (StartAtSignIn.IsSupported)
+        {
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" role="switch" id="start-at-sign-in" checked="@startAtSignIn" @onchange="SetStartAtSignIn" />
+                <label class="form-check-label" for="start-at-sign-in">
+                    <strong>Start Property Manager when I sign in to this computer</strong>
+                    <span class="text-muted small d-block">It runs in the background without opening a window, so it's ready when you need it.</span>
+                </label>
+            </div>
+        }
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" role="switch" id="phone-access" checked="@phoneAccess" @onchange="SetPhoneAccessAsync" />
+            <label class="form-check-label" for="phone-access">
+                <strong>Let my phone reach it (with Tailscale)</strong>
+                <span class="text-muted small d-block">
+                    Answers your Tailscale devices as well as this computer, and keeps this computer from going to sleep while the app runs.
+                    @(OperatingSystem.IsWindows() ? "Windows may ask whether to allow it through the firewall: choose Allow." : "")
+                </span>
+            </label>
+        </div>
+        @if (phoneAccess != state.PhoneAccess)
+        {
+            <div class="alert alert-info py-2 d-flex flex-wrap align-items-center gap-2">
+                <span>This takes effect when Property Manager restarts.</span>
+                <button class="btn btn-sm btn-primary ms-auto" @onclick="Restart">Restart now</button>
+            </div>
+        }
+        @if (ShowDetails)
+        {
+            <div class="small text-muted mt-2">
+                Your records are in <code>@DesktopMode.DataFolder</code>; the app's log is <code>@state.LogPath</code>.
+            </div>
+            <button class="btn btn-sm btn-outline-danger mt-2" @onclick="Stop">Stop Property Manager</button>
+        }
+    }
+}
+
+@code {
+    /// <summary>Also show where the data is and a Stop button (Settings page; not in the setup guide).</summary>
+    [Parameter] public bool ShowDetails { get; set; }
+
+    private bool startAtSignIn;
+    private bool phoneAccess;
+    private bool stopped;
+
+    protected override void OnInitialized()
+    {
+        startAtSignIn = StartAtSignIn.IsOn;
+        phoneAccess = Configuration.GetValue<bool>("Desktop:PhoneAccess");
+    }
+
+    private void SetStartAtSignIn(ChangeEventArgs e)
+    {
+        startAtSignIn = (bool)e.Value!;
+        StartAtSignIn.Set(startAtSignIn);
+    }
+
+    private async Task SetPhoneAccessAsync(ChangeEventArgs e)
+    {
+        phoneAccess = (bool)e.Value!;
+        await SavedSettings.SaveAsync(new Dictionary<string, string?> { ["Desktop:PhoneAccess"] = phoneAccess ? "true" : "false" });
+    }
+
+    private void Restart()
+    {
+        stopped = false;
+        DesktopMode.Restart(Lifetime);
+    }
+
+    private void Stop()
+    {
+        stopped = true;
+        Lifetime.StopApplication();
+    }
+}

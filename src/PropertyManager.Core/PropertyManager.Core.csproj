@@ -10,7 +10,7 @@
     <InternalsVisibleTo Include="PropertyManager.Tests" />
     <PackageReference Include="Anthropic" Version="12.54.1" />
     <PackageReference Include="Anthropic.Foundry" Version="0.7.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
     <PackageReference Include="Microsoft.Extensions.AI" Version="10.10.0" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.10.1" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.90.1" />

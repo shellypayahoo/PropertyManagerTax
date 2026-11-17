@@ -11,11 +11,30 @@ using PropertyManager.Core.Services;
 using PropertyManager.Core.Storage;
 using PropertyManager.Web.Components;
 using PropertyManager.Web.Configuration;
+using PropertyManager.Web.Desktop;
 
 // All amounts are US dollars, so format currency and dates as en-US regardless of the machine's locale.
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
 
-var builder = WebApplication.CreateBuilder(args);
+// Installed copies (PC installer, Mac app) open the copy that's already running instead of starting a second one.
+if (DesktopMode.IsOn && DesktopMode.HandOffToRunningCopy(args))
+{
+    return;
+}
+
+var builder = WebApplication.CreateBuilder(DesktopMode.IsOn
+    // Started from a shortcut or the Dock, the working folder could be anywhere; the app's files are next to the program.
+    ? new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory }
+    : new WebApplicationOptions { Args = args });
+FileLoggerProvider? fileLog = null;
+if (DesktopMode.IsOn)
+{
+    // The owner's data lives in their own app-data folder, not next to the program (which may be read-only).
+    Directory.CreateDirectory(DesktopMode.DataFolder);
+    builder.Configuration.AddInMemoryCollection(DesktopMode.Settings());
+    fileLog = new FileLoggerProvider(Path.Combine(DesktopMode.DataFolder, "logs"));
+    builder.Logging.AddProvider(fileLog);
+}
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -58,6 +77,15 @@ var secretProtector = new SecretProtector(builder.Configuration["DataProtection:
 builder.Services.AddSingleton(secretProtector);
 builder.Configuration.AddDatabaseSettings(builder.Configuration.GetConnectionString("PropertyManager"), secretProtector);
 builder.Services.AddScoped<SettingsService>();
+
+if (DesktopMode.IsOn)
+{
+    // Only this computer, unless the owner turned on phone access (Settings → This computer); the access check below
+    // then still lets in only Tailscale devices.
+    var phoneAccess = builder.Configuration.GetValue<bool>("Desktop:PhoneAccess");
+    builder.WebHost.UseUrls(phoneAccess ? $"http://0.0.0.0:{DesktopMode.Port}" : DesktopMode.LocalUrl);
+    builder.Services.AddSingleton(new DesktopState(phoneAccess, fileLog!.LogPath));
+}
 
 // Which parts of the app are on, business rules, and the starting portfolio (see "Configuration" in the README).
 builder.Services.Configure<FeatureOptions>(builder.Configuration.GetSection(FeatureOptions.Section));
@@ -384,5 +412,20 @@ app.MapGet("/email-attachments/{id:int}", async (int id, bool? download, IDbCont
 });
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+if (DesktopMode.IsOn)
+{
+    app.Lifetime.ApplicationStarted.Register(() =>
+    {
+        if (app.Services.GetRequiredService<DesktopState>().PhoneAccess)
+        {
+            DesktopMode.KeepAwake();
+        }
+        if (!args.Contains(DesktopMode.NoBrowserArgument))
+        {
+            DesktopMode.OpenBrowser(DesktopMode.LocalUrl);
+        }
+    });
+}
 
 app.Run();
