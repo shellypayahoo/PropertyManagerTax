@@ -1,6 +1,7 @@
-# Builds the Windows installer and the Mac apps. Runs when packaging files change (to check they still build),
-# by hand from the Actions tab, and when a version tag is pushed (git tag v1.0.0 && git push origin v1.0.0), which
-# also publishes them as a GitHub release for people to download.
+# Builds the Windows installer and the Mac apps. Runs when packaging files change (to check they still build), and
+# publishes them as a GitHub release for people to download in either of two ways:
+#   - on github.com: Actions → Installers → Run workflow, and type the version (e.g. 1.0.0); or
+#   - from a terminal: git tag v1.0.0 && git push origin v1.0.0
 name: Installers
 
 on:
@@ -14,6 +15,11 @@ on:
       - '.github/workflows/installers.yml'
       - 'src/PropertyManager.Web/Desktop/**'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish, e.g. 1.0.0 (leave blank to only build and check, without publishing)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -27,11 +33,21 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       value: ${{ steps.v.outputs.value }}
+      publish: ${{ steps.v.outputs.publish }}
     steps:
       - id: v
+        env:
+          REQUESTED: ${{ inputs.version }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-          else echo "value=0.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"; fi
+          requested="${REQUESTED#v}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"; echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$requested" ]]; then
+            if [[ ! "$requested" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "::error::Version must look like 1.0.0"; exit 1; fi
+            echo "value=$requested" >> "$GITHUB_OUTPUT"; echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"; echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
 
   windows:
     needs: version
@@ -99,8 +115,8 @@ jobs:
           path: dist/PropertyManager-*.dmg
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, mac]
+    if: needs.version.outputs.publish == 'true'
+    needs: [version, windows, mac]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -110,6 +126,8 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.value }}
         run: |
-          gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --title "Property Manager ${GITHUB_REF_NAME#v}" \
+          # Creates the tag too (at the commit that was built) when the release was started from the Actions tab.
+          gh release create "v$VERSION" out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Property Manager $VERSION" \
             --notes "Download PropertyManager-Setup for Windows, or the .dmg for a Mac (arm64 for Apple silicon M1/M2/M3/M4, x64 for older Intel Macs). Install steps: docs/install-windows.md and docs/install-mac.md."

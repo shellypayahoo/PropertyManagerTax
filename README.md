@@ -15,7 +15,7 @@ Download the installer from the [releases page](https://github.com/shellypayahoo
 
 After installing, the app opens in the browser with a setup guide (see **First-run setup and Settings**). The sections below are for running the app from source, as a developer.
 
-**Publishing a new version:** tag it and push the tag, e.g. `git tag v1.0.0 && git push origin v1.0.0`. GitHub builds the Windows installer and the Mac disk images (`.github/workflows/installers.yml`), checks each installed app starts, and publishes them as a release. The builds also run, without publishing, whenever packaging files change, and can be started by hand from the **Actions** tab.
+**Publishing a new version:** on github.com, open the repository's **Actions** tab, choose **Installers** on the left, click **Run workflow**, type the version (e.g. `1.0.0`), and click the green **Run workflow** button. (Or from a terminal with push access: `git tag v1.0.0 && git push origin v1.0.0`.) GitHub builds the Windows installer and the Mac disk images (`.github/workflows/installers.yml`), checks each installed app starts, and publishes them as a release. The builds also run, without publishing, whenever packaging files change, and can be started by hand from the **Actions** tab.
 
 ## Run on macOS
 
